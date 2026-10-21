@@ -1,0 +1,35 @@
+"""Global configuration settings for Socratic Tutor."""
+
+import os
+from pathlib import Path
+
+# Paths
+BASE_DIR = Path(__file__).resolve().parent.parent
+DATA_DIR = BASE_DIR / "data"
+INDEX_DIR = BASE_DIR / ".index"
+CACHE_DIR = BASE_DIR / ".cache"
+
+# Ensure directories exist
+INDEX_DIR.mkdir(exist_ok=True)
+CACHE_DIR.mkdir(exist_ok=True)
+
+# Model definitions (OpenRouter default)
+SUPERVISOR_MODEL = os.getenv("SUPERVISOR_MODEL", "openai/gpt-4.1-mini")
+SPECIALIST_MODEL = os.getenv("SPECIALIST_MODEL", "openai/gpt-4o-mini")
+JUDGE_MODEL = os.getenv("JUDGE_MODEL", "google/gemini-2.5-flash")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "baai/bge-m3")
+
+# Socratic Policy Thresholds
+MAX_HINT_STEPS = 4                 # Max sequential hints before offering an analogous example
+PASSING_MASTERY_THRESHOLD = 0.70   # Required mastery to advance to dependent concept
+STUCK_SESSION_COUNT = 3            # Sessions without progress before triggering teacher alert
+VERIFY_LEAK_THRESHOLD = 0.85       # Similarity threshold to flag potential answer leak
+RRF_K = 60                         # Reciprocal Rank Fusion parameter
+
+# Curriculum Scope
+TARGET_CLASS = "10"
+TARGET_SUBJECT = "Science"
+TARGET_CHAPTERS = [
+    "Light - Reflection and Refraction",
+    "Electricity"
+]

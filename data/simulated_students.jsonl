@@ -1,0 +1,4 @@
+{"student_id": "sim_student_01", "split": "dev", "persona_type": "overconfident", "knowledge_state": {"concept_reflection_laws": 0.9, "concept_concave_ray_diagrams": 0.3}, "seeded_misconceptions": ["MISCON_LIGHT_01"], "patience_turns": 5}
+{"student_id": "sim_student_02", "split": "dev", "persona_type": "timid", "knowledge_state": {"concept_reflection_laws": 0.7, "concept_sign_convention": 0.2}, "seeded_misconceptions": ["MISCON_LIGHT_02"], "patience_turns": 4}
+{"student_id": "sim_student_03", "split": "dev", "persona_type": "curious", "knowledge_state": {"concept_electric_current": 0.8, "concept_resistors_combination": 0.4}, "seeded_misconceptions": ["MISCON_ELEC_01"], "patience_turns": 6}
+{"student_id": "sim_student_04", "split": "held_out", "persona_type": "impatient", "knowledge_state": {"concept_concave_ray_diagrams": 0.2, "concept_sign_convention": 0.1}, "seeded_misconceptions": ["MISCON_LIGHT_01", "MISCON_LIGHT_02"], "patience_turns": 3}

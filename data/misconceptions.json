@@ -1,0 +1,29 @@
+[
+  {
+    "id": "MISCON_LIGHT_01",
+    "chapter": "Light - Reflection and Refraction",
+    "concept_id": "concept_concave_ray_diagrams",
+    "name": "Concave Mirror Always Inverts",
+    "description": "Student believes a concave mirror always produces an inverted image, missing that an object between Pole and Focus forms a virtual, erect, magnified image.",
+    "diagnostic_probe": "What happens to the image when you bring an object very close to the mirror, between the pole and focus?",
+    "scaffolding_hint": "Trace a ray from the top of the object parallel to the principal axis and another through the center of curvature. Do they diverge in front of the mirror?"
+  },
+  {
+    "id": "MISCON_LIGHT_02",
+    "chapter": "Light - Reflection and Refraction",
+    "concept_id": "concept_sign_convention",
+    "name": "Positive Focal Length for Concave Mirror",
+    "description": "Student assumes focal length is positive because it is a real focus, forgetting the Cartesian rule that distances measured to the left of the pole are negative.",
+    "diagnostic_probe": "According to the Cartesian coordinate system, which side of the pole does the focus of a concave mirror lie on?",
+    "scaffolding_hint": "In NCERT Section 10.2.3, the pole is taken as the origin (0,0). Is the focus along the negative x-axis or positive x-axis?"
+  },
+  {
+    "id": "MISCON_ELEC_01",
+    "chapter": "Electricity",
+    "concept_id": "concept_resistors_combination",
+    "name": "Current Gets Used Up in Series",
+    "description": "Student thinks the first resistor in a series circuit consumes more current than subsequent resistors.",
+    "diagnostic_probe": "Does an electric charge get destroyed inside a resistor, or does it flow continuously through the loop?",
+    "scaffolding_hint": "Remember that electric current is the rate of flow of charge. In a single continuous pathway, the same number of electrons passing any point per second must remain constant."
+  }
+]

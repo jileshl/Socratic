@@ -1,0 +1,76 @@
+{
+  "concepts": [
+    {
+      "id": "concept_reflection_laws",
+      "chapter": "Light - Reflection and Refraction",
+      "title": "Laws of Reflection",
+      "prerequisites": []
+    },
+    {
+      "id": "concept_spherical_mirrors",
+      "chapter": "Light - Reflection and Refraction",
+      "title": "Spherical Mirrors: Pole, Center of Curvature, Focus",
+      "prerequisites": ["concept_reflection_laws"]
+    },
+    {
+      "id": "concept_concave_ray_diagrams",
+      "chapter": "Light - Reflection and Refraction",
+      "title": "Image Formation by Concave Mirrors",
+      "prerequisites": ["concept_spherical_mirrors"]
+    },
+    {
+      "id": "concept_sign_convention",
+      "chapter": "Light - Reflection and Refraction",
+      "title": "New Cartesian Sign Convention",
+      "prerequisites": ["concept_spherical_mirrors"]
+    },
+    {
+      "id": "concept_mirror_formula",
+      "chapter": "Light - Reflection and Refraction",
+      "title": "Mirror Formula and Magnification",
+      "prerequisites": ["concept_concave_ray_diagrams", "concept_sign_convention"]
+    },
+    {
+      "id": "concept_refraction_laws",
+      "chapter": "Light - Reflection and Refraction",
+      "title": "Refraction of Light and Snell's Law",
+      "prerequisites": ["concept_reflection_laws"]
+    },
+    {
+      "id": "concept_lens_formula",
+      "chapter": "Light - Reflection and Refraction",
+      "title": "Lens Formula and Power of a Lens",
+      "prerequisites": ["concept_refraction_laws", "concept_sign_convention"]
+    },
+    {
+      "id": "concept_electric_current",
+      "chapter": "Electricity",
+      "title": "Electric Current and Circuit",
+      "prerequisites": []
+    },
+    {
+      "id": "concept_potential_difference",
+      "chapter": "Electricity",
+      "title": "Electric Potential and Potential Difference",
+      "prerequisites": ["concept_electric_current"]
+    },
+    {
+      "id": "concept_ohms_law",
+      "chapter": "Electricity",
+      "title": "Ohm's Law and Resistance",
+      "prerequisites": ["concept_potential_difference"]
+    },
+    {
+      "id": "concept_resistors_combination",
+      "chapter": "Electricity",
+      "title": "Resistors in Series and Parallel",
+      "prerequisites": ["concept_ohms_law"]
+    },
+    {
+      "id": "concept_joules_heating",
+      "chapter": "Electricity",
+      "title": "Heating Effect of Electric Current",
+      "prerequisites": ["concept_resistors_combination"]
+    }
+  ]
+}

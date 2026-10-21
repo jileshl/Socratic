@@ -9,6 +9,15 @@ Who it is for. A student and a teacher who needs to know where the class is stru
 
 Scope. Cover one subject and three or four chapters, such as Class 10 Science (Light – Reflection and Refraction, Electricity) or Class 10 Maths (Quadratic Equations, Arithmetic Progressions, Introduction to Trigonometry).
 
+## Project Documentation & Engineering Roadmap
+
+- 🗺️ **[TODOS.md](file:///Users/idda/workspace/Socratic/TODOS.md)**: Master sequential breakdown of all 10 engineering milestones (L4–L16).
+- 📊 **[REPORT.md](file:///Users/idda/workspace/Socratic/REPORT.md)**: Capstone report template tracking experiments E1, E2, E3, and E4.
+- 🔒 **[THREAT_MODEL.md](file:///Users/idda/workspace/Socratic/THREAT_MODEL.md)**: Security analysis, minor safety guardrails, and red-team test suite.
+- 🧠 **[MEMORY_POLICY.md](file:///Users/idda/workspace/Socratic/MEMORY_POLICY.md)**: Minor learner privacy policy, data retention, and `/forget_me` procedure.
+
+---
+
 <img width="1694" height="1190" alt="image" src="https://github.com/user-attachments/assets/a108c08b-618e-4751-a66b-a002579933ec" />
 
 *Figure 4: Socratic Tutor. Numbers match the walkthrough below.*
