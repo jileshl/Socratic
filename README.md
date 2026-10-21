@@ -11,10 +11,11 @@ Scope. Cover one subject and three or four chapters, such as Class 10 Science (L
 
 ## Project Documentation & Engineering Roadmap
 
-- 🗺️ **[TODOS.md](file:///Users/idda/workspace/Socratic/TODOS.md)**: Master sequential breakdown of all 10 engineering milestones (L4–L16).
-- 📊 **[REPORT.md](file:///Users/idda/workspace/Socratic/REPORT.md)**: Capstone report template tracking experiments E1, E2, E3, and E4.
-- 🔒 **[THREAT_MODEL.md](file:///Users/idda/workspace/Socratic/THREAT_MODEL.md)**: Security analysis, minor safety guardrails, and red-team test suite.
-- 🧠 **[MEMORY_POLICY.md](file:///Users/idda/workspace/Socratic/MEMORY_POLICY.md)**: Minor learner privacy policy, data retention, and `/forget_me` procedure.
+- 🗺️ **[TODOS.md](TODOS.md)**: Master sequential breakdown of all 10 engineering milestones (L4–L16).
+- 🏫 **[SCHOOL_OUTREACH_AND_QUESTIONNAIRE.md](SCHOOL_OUTREACH_AND_QUESTIONNAIRE.md)**: Formal letter to Principal (Narayana School, Borivali) & comprehensive teacher research protocol.
+- 📊 **[REPORT.md](REPORT.md)**: Capstone report template tracking experiments E1, E2, E3, and E4.
+- 🔒 **[THREAT_MODEL.md](THREAT_MODEL.md)**: Security analysis, minor safety guardrails, and red-team test suite.
+- 🧠 **[MEMORY_POLICY.md](MEMORY_POLICY.md)**: Minor learner privacy policy, data retention, and `/forget_me` procedure.
 
 ---
 
