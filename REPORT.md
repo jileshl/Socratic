@@ -21,63 +21,96 @@
 ## 1. System Architecture & Request Walkthrough
 
 ### 1.1 Architecture Diagram
+Requests flow top to bottom. There are two lanes: the **student** (left) and the **teacher** (right). Between the supervisor and each specialist, `v` means *the supervisor calls the specialist* and `^` means *the result comes back*. This is the **agent loop**: the supervisor calls one specialist at a time, reads its result, decides the next step, and sends the final reply only when the turn is done. `(R)` = read-only tool, `(W)` = write tool.
 ```
-                     +----------------------------+
-                     |  Student (Class 9-10) / UI  |
-                     +--------------+-------------+
-                                    |
-                                    v
-                     +----------------------------+
-                     |      Input Guardrails      |
-                     |  PII Mask · Injection · Scope|
-                     +--------------+-------------+
-                                    |
-                                    v
-                     +----------------------------+
-                     | Supervisor & Study Planner | <----+
-                     |  (LangGraph Orchestration) |      |
-                     +--------------+-------------+      |
-                                    |                    | Learner Memory
-            +-----------------------+--------------------+ (Mastery by concept,
-            |                       |                    |  misconceptions seen,
-            v                       v                    v  effective explanations)
-   +-----------------+     +-----------------+     +-----------------+
-   |  Diagnostician  |     |   Tutor Agent   |     |  Grader Agent   |
-   | (Probing Qs ->  |     | (Socratic Hints |     | (Solver check + |
-   |  Misconception) |     |  from NCERT)    |     |  rubric eval)   |
-   +--------+--------+     +--------+--------+     +--------+--------+
-            |                       |                       |
-            |                       v                       |
-            |              +-----------------+              |
-            |              | Question Setter |              |
-            |              | (Difficulty &   |              |
-            |              |  Prerequisites) |              |
-            |              +--------+--------+              |
-            |                       |                       |
-            +-----------------------+-----------------------+
-                                    |
-                                    v
-                     +----------------------------+
-                     |  Teacher Approval Gate     |
-                     | interrupt() on Q-Bank write|
-                     +--------------+-------------+
-                                    |
-                                    v
-                     +----------------------------+
-                     |     Output Guardrails      |
-                     |  Leak Check · Grounding    |
-                     +----------------------------+
+                     +---------------------------------+                    +-----------------------+
+                     |       STUDENT (Class 9-10)      |                    |TEACHER (teacher login)|
+                     +----------------+----------------+                    +-----------+-----------+
+                                      |                                                 |
+                                      |                                                 |
+                                      v                                                 v
++---------------------------------------------------------------------------------------------------+
+|    Tutor UI + FastAPI  (streaming · sessions · the LOGIN decides the role, never the chat text)   |
+|   student view: chat · practice · quiz                       teacher view: dashboard · approvals  |
++-------------------------------------+-------------------------------------------------+-----------+
+                                      |                                                 |
+                                      v                                                 v
+                     +---------------------------------+                   +------------------------+
+                     |         Input guardrails        |                   |   Teacher dashboard    |
+                     |   PII mask · injection · scope  |                   | class misconceptions · |
+                     | age-appropriate · distress check|                   |answer leaks · mastery ·|
+                     +----------------+----------------+                   |waiting approvals · cost|
+                                      |                                    |ALERTS: stuck 3 sessions|
+                                      |                                    |+ distress (immediately)|
+                                      v                                    +------------+-----------+
+    +---------------------------------------------------------------------+             |
+    | RUN HOOKS (every turn) · start the trace · reset + check the budget |             |
+    | · count loop steps · stop at limits (steps, cost, 3 identical calls)|             |
+    | · model-call hooks: every LLM call metered + traced (supervisor too)|             |
+    +---------------------------------+-----------------------------------+             |
+                                      |                                                 |
+                                      v                                                 |
+    +---------------------------------------------------------------------+             |
+    |                SUPERVISOR + STUDY PLANNER (LangGraph)               |             |
+ +--+ reads learner model (learner-store tool, via HOOKS) · shows the plan|             |
+ |  |   picks the next specialist · gets each result back · decides next  |             |
+ |  |         replans after a quiz · checkpointer (stop + resume)         |             |
+ |  +----+-----------------+-----------------+-----------------+----------+             |
+ |       |     ^           |     ^           |     ^           |     ^      v = call    |
+ |       |     |           |     |           |     |           |     |      ^ = result  |
+ |       v     |           v     |           v     |           v     |     (agent loop) |
+ |  +----------+----+ +----------+----+ +----------+----+ +----------+----+             |
+ |  | Diagnostician | |     Tutor     | |     Grader    | |Question setter|             |
+ |  | probes, finds | | cited Socratic| |  solver check | |  picks level; |             |
+ |  | misconception | |hint, no answer| |    + rubric   | | key by solver |  teacher    |
+ |  +-------+-------+ +-------+-------+ +-------+-------+ +-------+-------+ opens a set |
+ |          |                 |                 |                 |                     |
+ |          v                 v                 v                 v                     |
+ |  +---------------------------------------------------------------------+             |
+ |  | TOOL HOOKS · pre: permissions + mode rules (practice/quiz) + budget |             |
+ |  |             · post: log every call + scrub personal data            |             |
+ |  |  each specialist: call a tool -> read the result -> repeat (ReAct)  |             |
+ |  +-------+-----------------+-----------------+-----------------+-------+             |
+ |          |                 |                 |                 |                     |
+ |          v                 v                 v                 v                     |
+ |  +---------------+ +---------------+ +---------------+ +---------------+             v
+ |  |textbook-kb (R)| | math-tools (R)| | learner-store | | question-bank |  +---------------------+
+ |  | hybrid index: | |    solve ·    | | (R/W) mastery,| |  propose (W)  |->|    APPROVAL GATE    |
+ |  | BM25 + vectors| | equivalence · | |misconceptions,| | only question |  |  interrupt() on the |
+ |  |   + reranker  | | numeric check | |  what worked  | |setter may call|  | EXACT question set: |
+ |  +---------------+ +---------------+ +---------------+ +---------------+  |   approve · edit ·  |
+ | final reply, when the loop ends                                           |        reject       |
+ |                                                                           +----------+----------+
+ +-------------------+                                                                  |
+                     v                                                                  v
+    +---------------------------------+                                      +---------------------+
+    |        Output guardrails        |                                      |question-bank.publish|
+    |   no answer leak · grounded in  |                                      | only after approval;|
+    |    NCERT · citation IDs valid   |                                      | an edit = re-approve|
+    +----------------+----------------+                                      +---------------------+
+                     v
+    +---------------------------------+
+    |  Reply streamed to the student  |
+    +---------------------------------+
+
+=====================================================================================================
+  Runs alongside every request:  ingestion (NCERT -> chunks -> hybrid index) · traces · metrics +
+  Grafana · eval harness (golden set, simulated students, judge) · Reflexion loop · CI eval gate
+=====================================================================================================
 ```
 
 ### 1.2 End-to-End Walkthrough (Step-by-Step)
-1. **Input Guardrail**: The student asks a question (e.g., *"Why is the image in a concave mirror upside down?"*). Guardrails sanitize personal identifiers (names, roll numbers) and scan for prompt injections or answer extraction attempts.
-2. **Supervisor & Planner Routing**: Inspects the student's concept mastery vector from `learner_store`. In practice mode, tool hooks enforce that no complete worked solutions can be emitted.
-3. **Diagnostician**: Employs probing questions to map the student's answer against the chapter's catalogued misconceptions.
-4. **Tutor (Socratic Scaffolding)**: Queries `textbook-kb` with hybrid search (BM25 + vectors) and cross-encoder reranking. Emits a grounded Socratic hint with precise NCERT citations.
-5. **Question Setter & Math Solver**: Generates/selects an appropriate difficulty question. `math-tools` (SymPy) solves and verifies algebraic/numeric solutions ahead of student presentation.
-6. **Grader**: Evaluates student responses via deterministic numerical equivalence and rubric-based qualitative assessment.
-7. **Study Plan Update**: Planner advances the student through the concept graph or routes back to prerequisites if the student is stuck.
-8. **Teacher Gate & Alerts**: New question sets require human teacher approval via `interrupt()`. Alerts fire if a student remains stuck for $\ge 3$ sessions.
+1. **Login and UI**: The student opens a practice session. The login decides the role, so typing "I'm the teacher" in chat never reaches the teacher view.
+2. **Input guardrails**: The question (e.g. *"Why is the image in a concave mirror upside down?"*) is checked. Personal details are masked, and the text is checked for injection and age-appropriateness. Any sign of distress alerts the teacher immediately.
+3. **Run hooks**: Start the trace for this turn, reset and check the budget, and start counting loop steps. Every LLM call is metered and traced from here on.
+4. **Supervisor and study planner**: Reads the learner model (through the learner-store tool), shows the study plan, and calls the first specialist.
+5. **Diagnostician**: Asks one probing question and matches the reply to the chapter's misconception catalogue. The result goes back to the supervisor.
+6. **Tutor**: Searches `textbook-kb` (BM25 + vectors + RRF, reranker) and drafts a cited Socratic hint, not the answer. Tool hooks block complete worked solutions in practice mode. The result goes back to the supervisor.
+7. **Question setter**: Picks a practice question at the right difficulty. `math-tools` computes the answer key before the question is shown.
+8. **Grader**: Checks the student's answer with `math-tools` (numeric or equivalence check) and a rubric. `learner-store` records the mastery change, the misconception seen and the explanation that worked.
+9. **Planner update**: The supervisor replans on the concept graph: move ahead, or go back to a prerequisite. A student stuck on one concept for 3 sessions triggers a teacher alert.
+10. **Output guardrails and reply**: When the loop ends, the final reply is checked for answer leaks, grounding and valid citation IDs, then streamed to the student.
+11. **Teacher lane**: The teacher logs in and sees class misconceptions, leaks, mastery, waiting approvals, cost and alerts. They open a question set the question setter proposed. The graph is paused at `interrupt()` on that **exact** set, and the teacher approves, edits or rejects. Only an approved set is published. Any edit needs a fresh approval.
 
 ---
 
