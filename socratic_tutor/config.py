@@ -20,7 +20,7 @@ JUDGE_MODEL = os.getenv("JUDGE_MODEL", "google/gemini-2.5-flash")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "baai/bge-m3")
 
 # Socratic Policy Thresholds
-MAX_HINT_STEPS = 4                 # Max sequential hints before offering an analogous example
+MAX_HINT_STEPS = 3                 # Teacher-validated limit before switching strategy
 PASSING_MASTERY_THRESHOLD = 0.70   # Required mastery to advance to dependent concept
 STUCK_SESSION_COUNT = 3            # Sessions without progress before triggering teacher alert
 VERIFY_LEAK_THRESHOLD = 0.85       # Similarity threshold to flag potential answer leak
@@ -31,5 +31,6 @@ TARGET_CLASS = "10"
 TARGET_SUBJECT = "Science"
 TARGET_CHAPTERS = [
     "Light - Reflection and Refraction",
+    "Human Eye and the Colourful World",
     "Electricity"
 ]

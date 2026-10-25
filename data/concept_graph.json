@@ -19,6 +19,12 @@
       "prerequisites": ["concept_spherical_mirrors"]
     },
     {
+      "id": "concept_convex_ray_diagrams",
+      "chapter": "Light - Reflection and Refraction",
+      "title": "Image Formation by Convex Mirrors",
+      "prerequisites": ["concept_spherical_mirrors"]
+    },
+    {
       "id": "concept_sign_convention",
       "chapter": "Light - Reflection and Refraction",
       "title": "New Cartesian Sign Convention",
@@ -28,19 +34,122 @@
       "id": "concept_mirror_formula",
       "chapter": "Light - Reflection and Refraction",
       "title": "Mirror Formula and Magnification",
-      "prerequisites": ["concept_concave_ray_diagrams", "concept_sign_convention"]
+      "prerequisites": [
+        "concept_concave_ray_diagrams",
+        "concept_convex_ray_diagrams",
+        "concept_sign_convention"
+      ]
     },
     {
       "id": "concept_refraction_laws",
       "chapter": "Light - Reflection and Refraction",
       "title": "Refraction of Light and Snell's Law",
-      "prerequisites": ["concept_reflection_laws"]
+      "prerequisites": []
+    },
+    {
+      "id": "concept_refractive_index",
+      "chapter": "Light - Reflection and Refraction",
+      "title": "Refractive Index and Speed of Light",
+      "prerequisites": ["concept_refraction_laws"]
+    },
+    {
+      "id": "concept_lens_image_formation",
+      "chapter": "Light - Reflection and Refraction",
+      "title": "Image Formation and Ray Diagrams for Convex and Concave Lenses",
+      "prerequisites": [
+        "concept_refraction_laws",
+        "concept_refractive_index"
+      ]
     },
     {
       "id": "concept_lens_formula",
       "chapter": "Light - Reflection and Refraction",
-      "title": "Lens Formula and Power of a Lens",
-      "prerequisites": ["concept_refraction_laws", "concept_sign_convention"]
+      "title": "Lens Formula and Magnification",
+      "prerequisites": [
+        "concept_lens_image_formation",
+        "concept_sign_convention"
+      ]
+    },
+    {
+      "id": "concept_lens_power",
+      "chapter": "Light - Reflection and Refraction",
+      "title": "Power of a Lens and Combination of Lenses",
+      "prerequisites": ["concept_lens_formula"]
+    },
+    {
+      "id": "concept_human_eye_structure",
+      "chapter": "Human Eye and the Colourful World",
+      "title": "Structure and Function of the Human Eye",
+      "prerequisites": []
+    },
+    {
+      "id": "concept_accommodation",
+      "chapter": "Human Eye and the Colourful World",
+      "title": "Power of Accommodation",
+      "prerequisites": ["concept_human_eye_structure"]
+    },
+    {
+      "id": "concept_myopia",
+      "chapter": "Human Eye and the Colourful World",
+      "title": "Myopia and Its Correction",
+      "prerequisites": [
+        "concept_accommodation",
+        "concept_lens_image_formation"
+      ]
+    },
+    {
+      "id": "concept_hypermetropia",
+      "chapter": "Human Eye and the Colourful World",
+      "title": "Hypermetropia and Its Correction",
+      "prerequisites": [
+        "concept_accommodation",
+        "concept_lens_image_formation"
+      ]
+    },
+    {
+      "id": "concept_presbyopia",
+      "chapter": "Human Eye and the Colourful World",
+      "title": "Presbyopia and Its Correction",
+      "prerequisites": [
+        "concept_accommodation",
+        "concept_lens_image_formation"
+      ]
+    },
+    {
+      "id": "concept_prism_refraction",
+      "chapter": "Human Eye and the Colourful World",
+      "title": "Refraction of Light Through a Glass Prism",
+      "prerequisites": [
+        "concept_refraction_laws",
+        "concept_refractive_index"
+      ]
+    },
+    {
+      "id": "concept_dispersion",
+      "chapter": "Human Eye and the Colourful World",
+      "title": "Dispersion of White Light and Spectrum",
+      "prerequisites": ["concept_prism_refraction"]
+    },
+    {
+      "id": "concept_rainbow_formation",
+      "chapter": "Human Eye and the Colourful World",
+      "title": "Rainbow Formation",
+      "prerequisites": ["concept_dispersion"]
+    },
+    {
+      "id": "concept_atmospheric_refraction",
+      "chapter": "Human Eye and the Colourful World",
+      "title": "Atmospheric Refraction: Twinkling Stars and Delayed Sunset",
+      "prerequisites": [
+        "concept_refraction_laws",
+        "concept_refractive_index"
+      ]
+    },
+    {
+      "id": "concept_scattering",
+      "chapter": "Human Eye and the Colourful World",
+      "title": "Scattering of Light and Tyndall Effect",
+      "prerequisites": []
     },
     {
       "id": "concept_electric_current",
@@ -61,16 +170,43 @@
       "prerequisites": ["concept_potential_difference"]
     },
     {
+      "id": "concept_factors_resistance",
+      "chapter": "Electricity",
+      "title": "Factors on which Resistance Depends and Resistivity",
+      "prerequisites": ["concept_ohms_law"]
+    },
+    {
+      "id": "concept_series_combination",
+      "chapter": "Electricity",
+      "title": "Resistors in Series",
+      "prerequisites": ["concept_ohms_law"]
+    },
+    {
+      "id": "concept_parallel_combination",
+      "chapter": "Electricity",
+      "title": "Resistors in Parallel",
+      "prerequisites": ["concept_ohms_law"]
+    },
+    {
       "id": "concept_resistors_combination",
       "chapter": "Electricity",
-      "title": "Resistors in Series and Parallel",
-      "prerequisites": ["concept_ohms_law"]
+      "title": "Equivalent Resistance in Series and Parallel Networks",
+      "prerequisites": [
+        "concept_series_combination",
+        "concept_parallel_combination"
+      ]
     },
     {
       "id": "concept_joules_heating",
       "chapter": "Electricity",
       "title": "Heating Effect of Electric Current",
-      "prerequisites": ["concept_resistors_combination"]
+      "prerequisites": ["concept_ohms_law"]
+    },
+    {
+      "id": "concept_electric_power",
+      "chapter": "Electricity",
+      "title": "Electric Power and Commercial Unit of Energy",
+      "prerequisites": ["concept_ohms_law"]
     }
   ]
 }

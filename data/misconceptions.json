@@ -2,28 +2,325 @@
   {
     "id": "MISCON_LIGHT_01",
     "chapter": "Light - Reflection and Refraction",
-    "concept_id": "concept_concave_ray_diagrams",
-    "name": "Concave Mirror Always Inverts",
-    "description": "Student believes a concave mirror always produces an inverted image, missing that an object between Pole and Focus forms a virtual, erect, magnified image.",
-    "diagnostic_probe": "What happens to the image when you bring an object very close to the mirror, between the pole and focus?",
-    "scaffolding_hint": "Trace a ray from the top of the object parallel to the principal axis and another through the center of curvature. Do they diverge in front of the mirror?"
+    "concept_id": "concept_reflection_laws",
+    "name": "Angles measured from the mirror surface",
+    "description": "The learner measures the angles of incidence and reflection from the mirror surface instead of from the normal, so equal-looking angles can be assigned the wrong numerical values.",
+    "diagnostic_probe": "A ray strikes a plane mirror making 30° with the mirror surface. What angle would you label as the angle of incidence in a ray diagram?",
+    "scaffolding_hint": "Before assigning an angle, draw the line perpendicular to the reflecting surface at the point where the ray strikes."
   },
   {
     "id": "MISCON_LIGHT_02",
     "chapter": "Light - Reflection and Refraction",
+    "concept_id": "concept_spherical_mirrors",
+    "name": "Focus and centre of curvature are the same point",
+    "description": "The learner treats the principal focus F and centre of curvature C as the same location, missing that for a small-aperture spherical mirror the focus lies midway between the pole P and C, with R = 2f.",
+    "diagnostic_probe": "If the distance PC of a spherical mirror is 30 cm, where would you place F on a labelled principal-axis sketch?",
+    "scaffolding_hint": "Compare the distances PF and PC rather than treating both labels as names for one point."
+  },
+  {
+    "id": "MISCON_LIGHT_03",
+    "chapter": "Light - Reflection and Refraction",
+    "concept_id": "concept_concave_ray_diagrams",
+    "name": "Concave mirrors always invert images",
+    "description": "The learner believes every concave-mirror image is real and inverted, missing the special case when the object is between the pole and focus and the reflected rays must be extended backward to locate the image.",
+    "diagnostic_probe": "How would the ray construction change if an object is moved from just beyond F to a position between F and P of a concave mirror?",
+    "scaffolding_hint": "Trace two reflected rays and ask whether they actually meet in front of the mirror or whether only their backward extensions meet."
+  },
+  {
+    "id": "MISCON_LIGHT_04",
+    "chapter": "Light - Reflection and Refraction",
+    "concept_id": "concept_convex_ray_diagrams",
+    "name": "A convex mirror can become magnifying at close range",
+    "description": "The learner transfers concave-mirror behaviour to a convex mirror and expects a nearby object to produce an enlarged or real image, missing that the convex-mirror image remains behind the mirror and diminished for finite object distances.",
+    "diagnostic_probe": "As an object moves steadily closer to a convex mirror, what do you predict about the image's location, orientation, and relative size?",
+    "scaffolding_hint": "Use a ray parallel to the principal axis and another directed toward the centre of curvature, then locate where their backward extensions meet."
+  },
+  {
+    "id": "MISCON_LIGHT_05",
+    "chapter": "Light - Reflection and Refraction",
     "concept_id": "concept_sign_convention",
-    "name": "Positive Focal Length for Concave Mirror",
-    "description": "Student assumes focal length is positive because it is a real focus, forgetting the Cartesian rule that distances measured to the left of the pole are negative.",
-    "diagnostic_probe": "According to the Cartesian coordinate system, which side of the pole does the focus of a concave mirror lie on?",
-    "scaffolding_hint": "In NCERT Section 10.2.3, the pole is taken as the origin (0,0). Is the focus along the negative x-axis or positive x-axis?"
+    "name": "A concave mirror must have positive focal length",
+    "description": "The learner assigns the focal-length sign from the idea that a real focus should be positive, missing that the New Cartesian convention determines the sign from direction relative to the pole and the chosen axis.",
+    "diagnostic_probe": "On a Cartesian-axis sketch with the object to the left of a concave mirror, what sign would you assign to the coordinate of F before using the mirror formula?",
+    "scaffolding_hint": "Place P at the origin and decide whether F lies along the positive or negative x-direction."
+  },
+  {
+    "id": "MISCON_LIGHT_06",
+    "chapter": "Light - Reflection and Refraction",
+    "concept_id": "concept_mirror_formula",
+    "name": "Mirror magnification uses the lens sign relation",
+    "description": "The learner uses m = v/u for a spherical mirror, missing the negative sign in the mirror relation m = -v/u and therefore misreads image orientation from calculated magnification.",
+    "diagnostic_probe": "A mirror calculation gives u = -20 cm and v = -40 cm. Without drawing the image first, what expression would you use to determine the sign of magnification?",
+    "scaffolding_hint": "Compare the magnification relation derived for mirrors with the one used for lenses; check whether reflection introduces an extra sign."
+  },
+  {
+    "id": "MISCON_LIGHT_07",
+    "chapter": "Light - Reflection and Refraction",
+    "concept_id": "concept_refraction_laws",
+    "name": "Refraction always bends light toward the normal",
+    "description": "The learner treats bending toward the normal as a universal rule, missing that the direction of bending depends on whether light enters an optically denser or optically rarer medium and that normal incidence produces no directional change.",
+    "diagnostic_probe": "A ray travels obliquely from glass into air. How would you decide on which side of its original direction the refracted ray should lie?",
+    "scaffolding_hint": "Compare the optical densities of the two media and first decide whether the ray speeds up or slows down on crossing the boundary."
+  },
+  {
+    "id": "MISCON_LIGHT_08",
+    "chapter": "Light - Reflection and Refraction",
+    "concept_id": "concept_refractive_index",
+    "name": "Higher refractive index means higher light speed",
+    "description": "The learner reads refractive index as directly proportional to the speed of light in the medium, missing that absolute refractive index is the ratio c/v, so the relationship is inverse.",
+    "diagnostic_probe": "Two transparent media have refractive indices 1.33 and 1.52. In which one would you expect light to take less time to travel the same distance, and how would you justify it?",
+    "scaffolding_hint": "Write the refractive-index definition as a ratio involving the speed in vacuum and the speed in the medium before comparing the two cases."
+  },
+  {
+    "id": "MISCON_LIGHT_09",
+    "chapter": "Light - Reflection and Refraction",
+    "concept_id": "concept_lens_image_formation",
+    "name": "A convex lens always magnifies",
+    "description": "The learner generalises from using a magnifying glass and assumes a convex lens always produces an enlarged image, missing that image size and nature depend on the object's position relative to F and 2F.",
+    "diagnostic_probe": "If the same convex lens is used first with an object just inside F and then with the object far beyond 2F, should the two images have the same relative size and nature?",
+    "scaffolding_hint": "Mark F and 2F on both sides of the lens and construct two standard rays for each object position."
+  },
+  {
+    "id": "MISCON_LIGHT_10",
+    "chapter": "Light - Reflection and Refraction",
+    "concept_id": "concept_lens_power",
+    "name": "Lens power can use focal length in centimetres",
+    "description": "The learner substitutes focal length in centimetres directly into P = 1/f, missing that focal length must be expressed in metres for power in dioptres and that the sign of f carries into the sign of P.",
+    "diagnostic_probe": "A lens has focal length -50 cm. What unit conversion and sign checks should you make before calculating its power?",
+    "scaffolding_hint": "Rewrite the focal length in the SI length unit used by the definition of dioptre before taking the reciprocal."
+  },
+  {
+    "id": "MISCON_LIGHT_11",
+    "chapter": "Light - Reflection and Refraction",
+    "concept_id": "concept_lens_formula",
+    "name": "Lens formula is identical to the mirror formula",
+    "description": "The learner substitutes lens distances into the spherical-mirror relation without accounting for the different signed relationship used for lenses, leading to an incorrect image distance or focal length.",
+    "diagnostic_probe": "For a convex lens with u = -30 cm and f = +20 cm, which signed relation between u, v, and f would you write before solving for the image distance?",
+    "scaffolding_hint": "Write the mirror and lens formulae side by side and compare the sign attached to the object-distance term."
+  },
+  {
+    "id": "MISCON_EYE_01",
+    "chapter": "Human Eye and the Colourful World",
+    "concept_id": "concept_human_eye_structure",
+    "name": "The pupil focuses the image",
+    "description": "The learner treats the pupil as the focusing element of the eye, missing the distinction between the pupil's role in regulating incoming light, the refracting roles of the cornea and lens, and the retina as the light-sensitive image surface.",
+    "diagnostic_probe": "If the pupil becomes smaller in bright light, which part of the eye would you expect to be responsible for bringing rays from an object to focus on the retina?",
+    "scaffolding_hint": "Separate the jobs of controlling light quantity, bending light, and detecting the formed image."
+  },
+  {
+    "id": "MISCON_EYE_02",
+    "chapter": "Human Eye and the Colourful World",
+    "concept_id": "concept_accommodation",
+    "name": "Accommodation works by moving the retina",
+    "description": "The learner thinks the eye focuses near and distant objects by changing the lens-to-retina distance, missing that the eye mainly adjusts the curvature and focal length of the crystalline lens through the ciliary muscles.",
+    "diagnostic_probe": "When you shift your gaze from a distant tree to a nearby book, what quantity in the eye would you expect to change to keep the image sharp?",
+    "scaffolding_hint": "Think about which eye structure the ciliary muscles can reshape and which screen-like structure stays in place."
+  },
+  {
+    "id": "MISCON_EYE_03",
+    "chapter": "Human Eye and the Colourful World",
+    "concept_id": "concept_myopia",
+    "name": "Near-sightedness means nearby objects are blurry",
+    "description": "The learner interprets the everyday phrase 'near-sightedness' as difficulty seeing near objects, missing that in myopia nearby objects can be clear while the far point is closer than infinity and distant images tend to form before the retina.",
+    "diagnostic_probe": "A student reads a book clearly but cannot read the blackboard from the back row. Which feature of the student's clear-vision range would you examine first?",
+    "scaffolding_hint": "Use the meanings of near point and far point rather than relying on the everyday wording of the defect's name."
+  },
+  {
+    "id": "MISCON_EYE_04",
+    "chapter": "Human Eye and the Colourful World",
+    "concept_id": "concept_hypermetropia",
+    "name": "Far-sightedness means distant vision is defective",
+    "description": "The learner interprets 'far-sightedness' as an inability to see far objects, missing that hypermetropia mainly affects near vision because the near point is shifted farther away and light from nearby objects would focus beyond the retina without correction.",
+    "diagnostic_probe": "A person can see a distant sign clearly but must hold a book unusually far away to read it comfortably. Which boundary of clear vision has shifted?",
+    "scaffolding_hint": "Compare the person's reading distance with the normal near point instead of inferring the defect from the word 'far'."
+  },
+  {
+    "id": "MISCON_EYE_05",
+    "chapter": "Human Eye and the Colourful World",
+    "concept_id": "concept_presbyopia",
+    "name": "Presbyopia is just an eyeball-shape defect",
+    "description": "The learner treats presbyopia as the same geometric defect as myopia or hypermetropia, missing that it is associated with ageing, weakened ciliary muscles, and reduced flexibility of the eye lens, which lowers accommodation.",
+    "diagnostic_probe": "If an older person's near point gradually recedes over time, what change in the eye's focusing mechanism would you investigate?",
+    "scaffolding_hint": "Focus on how easily the eye lens can change its curvature rather than only on the overall length of the eyeball."
+  },
+  {
+    "id": "MISCON_EYE_06",
+    "chapter": "Human Eye and the Colourful World",
+    "concept_id": "concept_prism_refraction",
+    "name": "A prism's emergent ray stays parallel to the incident ray",
+    "description": "The learner applies the rectangular glass-slab result to a prism and expects equal-and-opposite bending to restore the original direction, missing that the prism's refracting faces are inclined and produce a net deviation.",
+    "diagnostic_probe": "If a glass slab and a triangular prism are made of the same glass, what feature of their boundary geometry should you compare before predicting the emergent-ray direction?",
+    "scaffolding_hint": "Draw the normals at both refracting faces and compare whether those faces are parallel or inclined."
+  },
+  {
+    "id": "MISCON_EYE_07",
+    "chapter": "Human Eye and the Colourful World",
+    "concept_id": "concept_dispersion",
+    "name": "A prism creates colours from colourless light",
+    "description": "The learner believes the prism manufactures the colours seen in a spectrum, missing that white light contains component colours that separate because different colours are deviated by different amounts.",
+    "diagnostic_probe": "If the coloured band from one prism is passed through a suitably inverted second prism, what observation would help you decide whether the first prism created new colours?",
+    "scaffolding_hint": "Think about whether the separated components can be brought back together after the first prism."
+  },
+  {
+    "id": "MISCON_EYE_08",
+    "chapter": "Human Eye and the Colourful World",
+    "concept_id": "concept_rainbow_formation",
+    "name": "A rainbow is produced by reflection alone",
+    "description": "The learner explains a rainbow as sunlight simply reflecting from raindrops, missing the sequence involving refraction and dispersion on entry, internal reflection, and refraction again on exit.",
+    "diagnostic_probe": "When sunlight enters and later leaves a raindrop, at how many different stages would you need to consider a change of medium in order to trace a rainbow ray?",
+    "scaffolding_hint": "Trace one ray through the drop boundary, then through its internal bounce, and inspect what happens again at the boundary on the way out."
+  },
+  {
+    "id": "MISCON_EYE_09",
+    "chapter": "Human Eye and the Colourful World",
+    "concept_id": "concept_atmospheric_refraction",
+    "name": "Stars twinkle because their light output rapidly changes",
+    "description": "The learner attributes twinkling to rapid changes in the star itself, missing that continuously changing atmospheric refraction alters the apparent position and the amount of starlight entering the eye; distant stars behave approximately as point sources.",
+    "diagnostic_probe": "Why would comparing a star with a planet on the same night help test whether twinkling is caused mainly by the source itself or by the path through the atmosphere?",
+    "scaffolding_hint": "Compare a nearly point-sized source with an extended source while both are viewed through the same changing layers of air."
+  },
+  {
+    "id": "MISCON_EYE_10",
+    "chapter": "Human Eye and the Colourful World",
+    "concept_id": "concept_scattering",
+    "name": "The sky is blue because the atmosphere is blue",
+    "description": "The learner treats blue as an inherent colour of air or as a simple reflection of another blue surface, missing that fine atmospheric particles scatter shorter visible wavelengths more strongly than longer wavelengths.",
+    "diagnostic_probe": "If the atmosphere contained no particles capable of scattering sunlight, what change in the appearance of the daytime sky would your explanation predict?",
+    "scaffolding_hint": "Compare how strongly different visible wavelengths are scattered rather than assigning a colour to the air itself."
   },
   {
     "id": "MISCON_ELEC_01",
     "chapter": "Electricity",
+    "concept_id": "concept_electric_current",
+    "name": "Conventional current follows electron flow",
+    "description": "The learner assumes the conventional current arrow must point in the same direction as electron motion in a metallic wire, missing that conventional current was defined as the direction of positive-charge flow and is opposite to electron flow.",
+    "diagnostic_probe": "In a metal-wire circuit, if electrons drift from the negative terminal toward the positive terminal, how would you decide the direction to draw the conventional-current arrow?",
+    "scaffolding_hint": "Recall which sign of charge was historically used to define current direction before electrons were known."
+  },
+  {
+    "id": "MISCON_ELEC_02",
+    "chapter": "Electricity",
+    "concept_id": "concept_potential_difference",
+    "name": "Battery voltage is the amount of charge stored",
+    "description": "The learner interprets a battery's voltage rating as a quantity of charge or current contained in the battery, missing that potential difference describes energy or work transferred per unit charge and drives charge motion in a connected circuit.",
+    "diagnostic_probe": "Two batteries are both labelled 6 V but are used in different circuits. What physical quantity does the shared 6 V label compare between their terminals?",
+    "scaffolding_hint": "Start from the definition involving work done and charge, and ask what is specified per coulomb."
+  },
+  {
+    "id": "MISCON_ELEC_03",
+    "chapter": "Electricity",
+    "concept_id": "concept_potential_difference",
+    "name": "A voltmeter should be connected in series",
+    "description": "The learner connects a voltmeter in the path of current because it 'measures electricity flowing', missing that potential difference is a comparison between two points and is measured across those points.",
+    "diagnostic_probe": "To measure the potential difference across one resistor in a circuit, where would you place the two voltmeter terminals on a circuit diagram?",
+    "scaffolding_hint": "Identify the two endpoints whose electrical difference you want to compare before deciding how the meter should span them."
+  },
+  {
+    "id": "MISCON_ELEC_04",
+    "chapter": "Electricity",
+    "concept_id": "concept_ohms_law",
+    "name": "Resistance must increase when voltage increases",
+    "description": "The learner reads R = V/I as proof that raising V automatically raises R, missing that for a given ohmic metallic conductor at constant temperature, V and I change proportionally while their ratio remains constant.",
+    "diagnostic_probe": "For the same metallic resistor kept at the same temperature, a second measurement uses twice the potential difference. What would you expect a V-I graph to reveal about the ratio V/I?",
+    "scaffolding_hint": "Use the straight-line V-I relation through the origin and compare slopes rather than changing one symbol in isolation."
+  },
+  {
+    "id": "MISCON_ELEC_05",
+    "chapter": "Electricity",
+    "concept_id": "concept_factors_resistance",
+    "name": "A thicker wire has greater resistance",
+    "description": "The learner reasons that more conducting material in a thicker wire must create more opposition to current, missing that for the same material and length, resistance is inversely proportional to cross-sectional area.",
+    "diagnostic_probe": "Two wires have the same material and length, but one has twice the cross-sectional area. Which wire would you predict allows a larger current from the same source, and why?",
+    "scaffolding_hint": "Use R = ρl/A and change only the area while keeping material and length fixed."
+  },
+  {
+    "id": "MISCON_ELEC_06",
+    "chapter": "Electricity",
+    "concept_id": "concept_series_combination",
+    "name": "Current is divided among series resistors",
+    "description": "The learner thinks each series resistor receives a fraction of the current, or that current is used up as it passes successive resistors, missing that a single series path carries the same current through every component.",
+    "diagnostic_probe": "If an ammeter is moved from before the first resistor to between the second and third resistors in one series loop, how should its reading compare?",
+    "scaffolding_hint": "Ask whether there is any junction at which charge has an alternative path to split into."
+  },
+  {
+    "id": "MISCON_ELEC_07",
+    "chapter": "Electricity",
+    "concept_id": "concept_parallel_combination",
+    "name": "Parallel branches must carry equal current",
+    "description": "The learner assumes splitting at a junction means equal current in every parallel branch, missing that each branch has the same potential difference but its current depends on that branch's resistance.",
+    "diagnostic_probe": "Two resistors of 5 Ω and 10 Ω are connected in parallel to the same battery. What should you compare first to decide whether their branch currents are equal?",
+    "scaffolding_hint": "Identify which electrical quantity is common to both branches, then apply the V-I-R relation separately to each resistor."
+  },
+  {
+    "id": "MISCON_ELEC_08",
+    "chapter": "Electricity",
     "concept_id": "concept_resistors_combination",
-    "name": "Current Gets Used Up in Series",
-    "description": "Student thinks the first resistor in a series circuit consumes more current than subsequent resistors.",
-    "diagnostic_probe": "Does an electric charge get destroyed inside a resistor, or does it flow continuously through the loop?",
-    "scaffolding_hint": "Remember that electric current is the rate of flow of charge. In a single continuous pathway, the same number of electrons passing any point per second must remain constant."
+    "name": "Adding a parallel resistor increases total resistance",
+    "description": "The learner transfers the series rule to a parallel network and expects the equivalent resistance to grow when another branch is added, missing that parallel branches provide additional current paths and the reciprocal-resistance relation applies.",
+    "diagnostic_probe": "A resistor is connected across a battery, and then a second resistor is added as a new parallel branch. How should you test whether the equivalent resistance became larger or smaller?",
+    "scaffolding_hint": "For two branches, compare 1/Rp with the individual reciprocals and check the possible size of Rp relative to either resistor."
+  },
+  {
+    "id": "MISCON_ELEC_09",
+    "chapter": "Electricity",
+    "concept_id": "concept_joules_heating",
+    "name": "Doubling current only doubles heating",
+    "description": "The learner assumes heat produced is directly proportional to current, missing the square dependence in Joule's law H = I²Rt when resistance and time are held constant.",
+    "diagnostic_probe": "If the current through the same resistor is doubled for the same length of time, by what factor would you predict the heat output changes before doing the calculation?",
+    "scaffolding_hint": "Write the heating relation and compare the current term in the two cases without changing R or t."
+  },
+  {
+    "id": "MISCON_ELEC_10",
+    "chapter": "Electricity",
+    "concept_id": "concept_electric_power",
+    "name": "Kilowatt-hour is a unit of power",
+    "description": "The learner treats kWh as another unit of power because it contains 'kilowatt', missing that multiplying power by time gives energy and that the commercial 'unit' of electricity is an energy unit.",
+    "diagnostic_probe": "An appliance is rated in watts, while an electricity bill records kilowatt-hours. What operation connects these two quantities over a period of use?",
+    "scaffolding_hint": "Recall the relationship between energy, power, and time, then inspect the dimensions of kW multiplied by h."
+  },
+  {
+    "id": "MISCON_LIGHT_12",
+    "chapter": "Light - Reflection and Refraction",
+    "concept_id": "concept_reflection_laws",
+    "name": "Lateral inversion confused with vertical inversion",
+    "description": "The learner treats lateral inversion in a plane mirror as though the image is turned upside down, missing that the plane-mirror image remains erect while its lateral orientation is reversed.",
+    "diagnostic_probe": "An upright arrow and a written word are placed in front of a plane mirror. Which orientation changes would you expect in their images: top-bottom, left-right, or both?",
+    "scaffolding_hint": "Compare whether the image stays upright with what happens to the object's two sides."
+  },
+  {
+    "id": "MISCON_EYE_11",
+    "chapter": "Human Eye and the Colourful World",
+    "concept_id": "concept_myopia",
+    "name": "Convex lens incorrectly chosen to correct myopia",
+    "description": "The learner chooses a convex lens to correct myopia, missing that myopia is corrected using a concave lens, which diverges the incoming rays so that the eye can focus the image on the retina rather than in front of it.",
+    "diagnostic_probe": "For a myopic eye, rays from a distant object would come to focus before reaching the retina. Before those rays enter the eye, should the corrective lens make them more convergent or more divergent?",
+    "scaffolding_hint": "Trace where the uncorrected rays would meet, then ask how changing their direction before they enter the eye could move that focus back onto the retina."
+  },
+  {
+    "id": "MISCON_EYE_12",
+    "chapter": "Human Eye and the Colourful World",
+    "concept_id": "concept_scattering",
+    "name": "Red danger lights are visible because red travels faster",
+    "description": "The learner explains the use of red danger signals by claiming that red light propagates faster than other visible colours, missing the NCERT explanation that red light is scattered less by fog or smoke and therefore remains visible from farther away.",
+    "diagnostic_probe": "A student says red is used for danger signals because red light travels faster than blue light. What property of light passing through fog or smoke should be examined to test this explanation?",
+    "scaffolding_hint": "Focus on how strongly fog or smoke redirects different colours rather than on how quickly the light travels."
+  },
+  {
+    "id": "MISCON_ELEC_11",
+    "chapter": "Electricity",
+    "concept_id": "concept_electric_current",
+    "name": "Ammeter incorrectly connected in parallel",
+    "description": "The learner connects an ammeter across a component as though it were a voltmeter, missing that the current being measured must pass through the ammeter and therefore the ammeter is connected in series with that part of the circuit.",
+    "diagnostic_probe": "You want to measure the current through one resistor. Where should the ammeter be placed so that the charge flowing through that resistor also passes through the meter?",
+    "scaffolding_hint": "Think about whether the charges whose rate of flow you want to measure must travel through the measuring instrument."
+  },
+  {
+    "id": "MISCON_ELEC_12",
+    "chapter": "Electricity",
+    "concept_id": "concept_potential_difference",
+    "name": "Voltage and current treated as the same quantity",
+    "description": "The learner treats voltage and current as interchangeable descriptions of the same electrical quantity, missing that electric current describes the rate of flow of charge whereas potential difference describes work done per unit charge.",
+    "diagnostic_probe": "A student says that 6 V and 6 A are simply two units for the same electrical quantity. Which defining relationships would you compare to check that claim?",
+    "scaffolding_hint": "Look at the quantities and units that appear in the definitions of electric current and potential difference."
   }
 ]
