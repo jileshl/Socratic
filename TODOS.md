@@ -21,6 +21,19 @@ graph TD
 
 ---
 
+## Teacher-Validated Implementation Requirements
+
+The teacher consultation validated the following application behaviours. The questionnaire itself is not stored in the repository.
+
+1. Use at most three progressive hints before switching tutoring strategy: conceptual orientation, procedural or ray-diagram guidance, then formula-specific guidance.
+2. After repeated failure on parallel-resistor problems, remediate Ohm's law first, follow with a focused current-division review, then retry.
+3. Flag a learner after three consecutive failures on the same concept or more than ten minutes on one problem.
+4. For academic-distress language, respond supportively, reduce the task to a simpler micro-step, and silently surface a teacher-dashboard flag while continuing low-difficulty work. Define visibility, retention, and deletion rules before persisting this sensitive flag.
+
+Human-judge calibration, assessment-material approval, question-bank rejection criteria, and student-archetype proportions remain incomplete and must not be presented as teacher-validated results.
+
+---
+
 ### Milestone 1 — TODO 1: Curriculum Data & Structured Ingestion (L4–L5)
 * **Goal**: Ingest NCERT Class 10 Science (Light & Electricity) textbooks and exemplar problems without losing formulas, ray diagram descriptions, or exercise IDs.
 * **Files**:

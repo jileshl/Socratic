@@ -17,6 +17,18 @@ Scope. Cover one subject and three or four chapters, such as Class 10 Science (L
 - 🔒 **[THREAT_MODEL.md](THREAT_MODEL.md)**: Security analysis, minor safety guardrails, and red-team test suite.
 - 🧠 **[MEMORY_POLICY.md](MEMORY_POLICY.md)**: Minor learner privacy policy, data retention, and `/forget_me` procedure.
 
+## Curriculum Data and Retrieval Baseline
+
+The canonical curriculum datasets are `data/concept_graph.json`, `data/misconceptions.json`, `data/gold_questions.jsonl`, and `data/retrieval_queries.jsonl`. To reproduce the current lexical baseline after installing `requirements.txt`:
+
+```bash
+python scripts/build_index.py --git-revision HEAD --force
+python scripts/map_retrieval_chunks.py
+python scripts/evaluate_dev.py --retrieval-only
+```
+
+The BM25 development baseline is Recall@5 = **0.9028** on 24 development queries (20/24 with full recall). The 12 held-out queries remain unused for tuning. Dense retrieval, RRF fusion with dense results, and reranking are not yet implemented.
+
 ---
 
 <img width="1694" height="1190" alt="image" src="https://github.com/user-attachments/assets/a108c08b-618e-4751-a66b-a002579933ec" />

@@ -2,6 +2,12 @@
 __pycache__/
 *.py[codz]
 *$py.class
+.DS_Store
+
+# Copyrighted/local curriculum sources and generated retrieval index
+*.pdf
+data/source_pdfs/
+.index/
 
 # C extensions
 *.so

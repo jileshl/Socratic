@@ -1,0 +1,27 @@
+{
+  "backend": "BM25 with RRF plumbing; dense retrieval not implemented",
+  "corpus": {
+    "chapters": 3,
+    "section_chunks": 35,
+    "source_revision": "c6bec7b77e30ffc22c6997600f2157f0cd6d3d0e"
+  },
+  "evaluation": {
+    "split": "dev",
+    "query_count": 24,
+    "top_k": 5,
+    "recall_at_5": 0.9028,
+    "full_recall_queries": 20,
+    "held_out_evaluated": false
+  },
+  "partial_or_missed_queries": [
+    {"id": "RQ_004", "recall_at_5": 0.5},
+    {"id": "RQ_007", "recall_at_5": 0.5},
+    {"id": "RQ_031", "recall_at_5": 0.0},
+    {"id": "RQ_032", "recall_at_5": 0.67}
+  ],
+  "reproduce": [
+    "python scripts/build_index.py --git-revision HEAD --force",
+    "python scripts/map_retrieval_chunks.py",
+    "python scripts/evaluate_dev.py --retrieval-only"
+  ]
+}

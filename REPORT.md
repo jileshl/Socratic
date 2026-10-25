@@ -8,7 +8,7 @@
 
 | Metric | Target / Minimum Bar | Current System Result |
 | :--- | :--- | :--- |
-| **Recall@5 (Hybrid Retrieval)** | $\ge 0.80$ on 30+ labelled queries | *Pending measurement* |
+| **Recall@5 (Retrieval)** | $\ge 0.80$ on 30+ labelled queries | **0.9028 BM25 dev baseline** on 24 queries; final 30+ query protocol pending |
 | **Answer Leak Rate (Practice Mode)** | $0.0\%$ (Strictly enforced) | *Pending measurement* |
 | **Misconception Diagnosis Accuracy** | $\ge 80\%$ on simulated students | *Pending measurement* |
 | **Quiz Score Gain ($\Delta$)** | Measurable positive shift post-hinting | *Pending measurement* |
@@ -171,16 +171,19 @@ Requests flow top to bottom. There are two lanes: the **student** (left) and the
 
 ## 3. Retrieval Performance (L4–L6)
 
-* **Corpus**: NCERT Class 10 Science (Light – Reflection and Refraction, Electricity).
-* **Chunking Strategy**: Structured section chunking preserving formulas, ray diagram descriptions, and exemplar exercise IDs.
+* **Corpus**: Three NCERT Class 10 Science chapters: Light – Reflection and Refraction, Human Eye and the Colourful World, and Electricity.
+* **Chunking Strategy**: 35 stable section-level chunks preserving chapter and section metadata.
+* **Evaluation Set**: 24 development queries mapped from labelled NCERT section IDs to generated chunk IDs. The 12 held-out queries were not run or used for tuning.
 * **Retrieval Modality Comparison**:
 
-| Modality | Recall@5 (30 Labelled Queries) | Mean Reciprocal Rank (MRR) | Latency (ms) |
+| Modality | Recall@5 (24 Dev Queries) | Mean Reciprocal Rank (MRR) | Latency (ms) |
 | :--- | :--- | :--- | :--- |
-| BM25 (Lexical alone) | - | - | - |
-| Dense Embeddings alone | - | - | - |
-| **Hybrid (BM25 + Dense + RRF)** | - | - | - |
-| **Hybrid + Cross-Encoder Reranker**| - | - | - |
+| BM25 (lexical baseline) | **0.9028** (20/24 full recall) | Not measured | Not measured |
+| Dense embeddings alone | Not implemented | - | - |
+| **Hybrid (BM25 + Dense + RRF)** | RRF plumbing present; dense index pending | - | - |
+| **Hybrid + Cross-Encoder Reranker**| Not implemented | - | - |
+
+Four development queries had partial or missed section coverage (`RQ_004`, `RQ_007`, `RQ_031`, and `RQ_032`). This baseline measures lexical retrieval only and must not be presented as the final hybrid result. The frozen held-out split remains reserved for final evaluation.
 
 ---
 

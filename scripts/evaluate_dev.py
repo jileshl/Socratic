@@ -1,28 +1,79 @@
-"""Evaluate Socratic Tutor over development cases and retrieval benchmarks."""
+"""Evaluate Socratic Tutor development cases and retrieval benchmarks."""
+
+from __future__ import annotations
 
 import argparse
+import json
+from pathlib import Path
+
 from evalkit.metrics import compute_recall_at_k
+from socratic_tutor import config
+from socratic_tutor.retrieval import HybridRetriever
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Evaluate Dev Set")
-    parser.add_argument("--retrieval-only", action="store_true", help="Score only retrieval recall")
-    parser.add_argument("--workers", type=int, default=4, help="Concurrent workers")
-    parser.add_argument("--show", type=int, default=5, help="Number of sample outputs to display")
+def evaluate_retrieval(queries_path: Path, split: str, top_k: int, show: int) -> float:
+    records = [
+        json.loads(line)
+        for line in queries_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    records = [record for record in records if split == "all" or record["split"] == split]
+    if not records:
+        raise RuntimeError(f"No retrieval queries found for split={split!r}")
+
+    retriever = HybridRetriever()
+    if not retriever.index.chunks:
+        raise RuntimeError("NCERT index is empty; run scripts/build_index.py first")
+
+    scores: list[float] = []
+    misses: list[tuple[str, float, list[str], list[str]]] = []
+    for record in records:
+        gold_ids = record.get("gold_chunk_ids")
+        if not gold_ids:
+            raise RuntimeError(
+                f"{record['id']} has no gold_chunk_ids; run scripts/map_retrieval_chunks.py"
+            )
+        hits = retriever.search_hybrid(record["query"], top_k=top_k)
+        retrieved_ids = [hit["chunk_id"] for hit in hits]
+        recall = compute_recall_at_k(retrieved_ids, gold_ids, k=top_k)
+        scores.append(recall)
+        if recall < 1.0:
+            misses.append((record["id"], recall, gold_ids, retrieved_ids))
+
+    mean_recall = sum(scores) / len(scores)
+    print("Retrieval backend: BM25 with RRF plumbing (dense index not yet implemented)")
+    print(f"Queries: {len(records)} ({split})")
+    print(f"Recall@{top_k}: {mean_recall:.4f}")
+    print(f"Perfect-recall queries: {sum(score == 1.0 for score in scores)}/{len(scores)}")
+    for query_id, recall, gold_ids, retrieved_ids in misses[:show]:
+        print(f"MISS {query_id}: recall={recall:.2f}")
+        print(f"  gold={gold_ids}")
+        print(f"  got ={retrieved_ids}")
+    return mean_recall
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Evaluate development datasets")
+    parser.add_argument("--retrieval-only", action="store_true")
+    parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--show", type=int, default=5)
+    parser.add_argument("--top-k", type=int, default=5)
+    parser.add_argument("--split", choices=("dev", "held_out", "all"), default="dev")
+    parser.add_argument(
+        "--queries",
+        type=Path,
+        default=config.DATA_DIR / "retrieval_queries.jsonl",
+    )
     args = parser.parse_args()
 
     if args.retrieval_only:
-        print("Evaluating NCERT Hybrid Retrieval Recall@5 on dev queries...")
-        # Placeholder calculation
-        sample_retrieved = ["chunk_10_light_01", "chunk_10_electricity_01"]
-        sample_gold = ["chunk_10_light_01"]
-        recall = compute_recall_at_k(sample_retrieved, sample_gold, k=5)
-        print(f"Retrieval Recall@5: {recall:.4f}")
+        evaluate_retrieval(args.queries, args.split, args.top_k, args.show)
         return
 
-    print("Running end-to-end evaluation on development student transcripts...")
-    print("Baseline Task Success Rate: 0.85")
-    print("Answer Leak Rate: 0.00%")
+    raise SystemExit(
+        "End-to-end evaluation is not implemented yet. Use --retrieval-only; "
+        "the previous fixed success/leak scores were placeholders."
+    )
 
 
 if __name__ == "__main__":
