@@ -3,9 +3,20 @@
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 # Paths
 BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BASE_DIR / "data"
+load_dotenv(BASE_DIR / ".env")
+
+
+def _configured_path(variable: str, default: Path) -> Path:
+    value = Path(os.getenv(variable, str(default))).expanduser()
+    return value.resolve() if value.is_absolute() else (BASE_DIR / value).resolve()
+
+
+DATA_DIR = _configured_path("DATA_DIR", BASE_DIR / "data")
+DOCUMENT_PATH = _configured_path("DOCUMENT_PATH", DATA_DIR)
 INDEX_DIR = BASE_DIR / ".index"
 CACHE_DIR = BASE_DIR / ".cache"
 
