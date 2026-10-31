@@ -22,10 +22,12 @@ Scope. Cover one subject and three or four chapters, such as Class 10 Science (L
 The canonical curriculum datasets are `data/concept_graph.json`, `data/misconceptions.json`, `data/gold_questions.jsonl`, and `data/retrieval_queries.jsonl`. To reproduce the current lexical baseline after installing `requirements.txt`:
 
 ```bash
-python scripts/build_index.py --git-revision HEAD --force
+python scripts/build_index.py --force
 python scripts/map_retrieval_chunks.py
 python scripts/evaluate_dev.py --retrieval-only
 ```
+
+`DATA_DIR` and `DOCUMENT_PATH` can be configured in `.env`. `DOCUMENT_PATH` must contain the three NCERT chapter PDFs; `DATA_DIR` contains the canonical JSON/JSONL datasets.
 
 The BM25 development baseline is Recall@5 = **0.9028** on 24 development queries (20/24 with full recall). The 12 held-out queries remain unused for tuning. Dense retrieval, RRF fusion with dense results, and reranking are not yet implemented.
 

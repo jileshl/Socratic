@@ -1,9 +1,8 @@
-"""Build a stable NCERT section index from local PDFs or a temporary Git source."""
+"""Build a stable NCERT section index from locally supplied PDFs."""
 
 from __future__ import annotations
 
 import argparse
-import subprocess
 from pathlib import Path
 
 from socratic_tutor import config
@@ -22,39 +21,12 @@ CHAPTERS = (
 )
 
 
-def _read_source(source_dir: Path, filename: str, git_revision: str | None) -> bytes:
-    if git_revision:
-        repo_root = Path(__file__).resolve().parent.parent
-        tree = subprocess.run(
-            ["git", "ls-tree", "-r", "-z", git_revision, "--", "data"],
-            cwd=repo_root,
-            check=True,
-            capture_output=True,
-        )
-        target = f"data/{filename}"
-        blob_id: str | None = None
-        for entry in tree.stdout.split(b"\0"):
-            if not entry:
-                continue
-            metadata, encoded_path = entry.split(b"\t", maxsplit=1)
-            if encoded_path.decode("utf-8") == target:
-                blob_id = metadata.split()[2].decode("ascii")
-                break
-        if blob_id is None:
-            raise FileNotFoundError(f"{target} not found at Git revision {git_revision}")
-        blob = subprocess.run(
-            ["git", "cat-file", "blob", blob_id],
-            cwd=repo_root,
-            check=True,
-            capture_output=True,
-        )
-        return blob.stdout
-
+def _read_source(source_dir: Path, filename: str) -> bytes:
     path = source_dir / filename
     if not path.exists():
         raise FileNotFoundError(
-            f"Missing {path}. Keep source PDFs outside Git and pass --source-dir, "
-            "or use --git-revision only while the old PDF commit remains available."
+            f"Missing {path}. Set DOCUMENT_PATH or pass --source-dir with the "
+            "directory containing the NCERT PDFs."
         )
     return path.read_bytes()
 
@@ -64,12 +36,8 @@ def main() -> None:
     parser.add_argument(
         "--source-dir",
         type=Path,
-        default=config.DATA_DIR / "source_pdfs",
-        help="Untracked directory containing the three NCERT chapter PDFs",
-    )
-    parser.add_argument(
-        "--git-revision",
-        help="Read PDFs from data/ at this Git revision without checking them out",
+        default=config.DOCUMENT_PATH,
+        help="Directory containing the NCERT PDFs (default: DOCUMENT_PATH)",
     )
     parser.add_argument("--force", action="store_true", help="Replace any existing index")
     args = parser.parse_args()
@@ -80,7 +48,7 @@ def main() -> None:
 
     chunks: list[dict] = []
     for chapter_num, chapter_title, filename in CHAPTERS:
-        pdf_bytes = _read_source(args.source_dir, filename, args.git_revision)
+        pdf_bytes = _read_source(args.source_dir, filename)
         chapter_chunks = chunk_ncert_pdf(pdf_bytes, chapter_num, chapter_title)
         if not chapter_chunks:
             raise RuntimeError(f"No sections extracted from {filename}")
