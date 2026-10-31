@@ -3,12 +3,11 @@
 # "Could not find a version that satisfies the requirement gradio>=5.0".
 # Run `python scripts/check_env.py` first — it tells you exactly what to fix.
 #
-#   conda create -n hw2 python=3.11 -y && conda activate hw2
+#   conda create -n hw2 python=3.12 -y && conda activate hw2
 #   pip install -r requirements.txt
 #
-# Everything here is CPU-only. Chroma's default embedder is a MiniLM running on
-# onnxruntime — no torch, no GPU, no multi-gigabyte download. If your machine
-# already struggles, the only heavy dependency is chromadb.
+# Everything here is CPU-only. Chroma and the targeted OCR fallback use ONNX
+# Runtime; no torch or GPU is required. Chroma/OpenCV are the largest additions.
 
 requests>=2.31
 python-dotenv>=1.0
@@ -17,6 +16,10 @@ python-dotenv>=1.0
 chromadb>=0.5,<2          # vector store + default ONNX embedding function
 rank-bm25>=0.2.2          # lexical search
 pypdf>=5,<7               # local NCERT PDF text extraction
+fonttools>=4.0            # improves extraction from embedded CFF fonts
+pillow>=10                # decode embedded PDF images for targeted OCR
+rapidocr-onnxruntime>=1.4,<2  # CPU OCR fallback for text-bearing figures/pages
+opencv-python>=4.8,<4.11  # stable image backend for RapidOCR on supported CPUs
 
 # orchestration
 langgraph>=0.2,<2         # classic StateGraph API; 0.2.x and 1.x both work

@@ -1,6 +1,8 @@
 """Focused tests for NCERT section chunking and lexical retrieval."""
 
-from socratic_tutor.kb import chunk_ncert_text
+from PIL import Image
+
+from socratic_tutor.kb import _ocr_page_images, chunk_ncert_text
 from socratic_tutor.retrieval import HybridRetriever
 
 
@@ -33,6 +35,37 @@ class _MemoryCollection:
         }
 
 
+class _FakeImageFile:
+    def __init__(self, image: Image.Image):
+        self.image = image
+
+
+class _FakeMediaBox:
+    width = 595
+    height = 842
+
+
+class _FakePage:
+    mediabox = _FakeMediaBox()
+
+    def __init__(self, images: list[_FakeImageFile]):
+        self.images = images
+
+
+class _FakeOcr:
+    def __init__(self):
+        self.calls = 0
+
+    def __call__(self, image):
+        self.calls += 1
+        return [
+            ([], "Ray F", 0.95),
+            ([], "uncertain", 0.2),
+            ([], "1064CH10", 0.98),
+            ([], "口口", 0.99),
+        ], None
+
+
 def test_section_chunk_ids_are_stable() -> None:
     text = """
 9.1 REFLECTION OF LIGHT
@@ -51,6 +84,71 @@ A concave mirror can form real or virtual images.
     ]
     assert chunks[0].section_id == "9.1"
     assert "angle of incidence" in chunks[0].content
+
+
+def test_equation_metadata_uses_canonical_section_formulas() -> None:
+    optics = chunk_ncert_text(
+        "9.2.4 Mirror Formula and Magnification\n"
+        "The extracted formula appears as 1 1 1 v u f+ = (9.1).\n"
+        "9.3.7 Lens Formula and Magnification\n"
+        "The extracted formula appears as 1 1 1 v u f- = (9.8).",
+        "9",
+        "Light - Reflection and Refraction",
+    )
+    electricity = chunk_ncert_text(
+        "11.4 Ohm's Law\nThe potential difference is related to current and resistance.",
+        "11",
+        "Electricity",
+    )
+
+    mirror = next(chunk for chunk in optics if chunk.section_id == "9.2.4")
+    lens = next(chunk for chunk in optics if chunk.section_id == "9.3.7")
+    ohms_law = electricity[0]
+
+    assert mirror.equations == ["1/f = 1/v + 1/u", "m = h'/h = -v/u"]
+    assert lens.equations == ["1/f = 1/v - 1/u", "m = h'/h = v/u"]
+    assert ohms_law.equations == ["V = I*R", "R = V/I", "I = V/R"]
+    assert "1 1 1 v u f+ = (9.1)" in mirror.content
+
+
+def test_unmapped_section_has_no_guessed_equations() -> None:
+    chunks = chunk_ncert_text(
+        "9.1 Reflection of Light\nThe activity uses x = y as an example.",
+        "9",
+        "Light - Reflection and Refraction",
+    )
+
+    assert chunks[0].equations == []
+
+
+def test_ocr_adds_confident_text_from_embedded_figure() -> None:
+    image = Image.new("RGB", (200, 200), "white")
+    engine = _FakeOcr()
+
+    text = _ocr_page_images(_FakePage([_FakeImageFile(image)]), "Native page text", engine)
+
+    assert text == ["Ray F"]
+    assert engine.calls == 1
+
+
+def test_ocr_skips_full_page_image_when_native_text_is_present() -> None:
+    image = Image.new("RGB", (1200, 1700), "white")
+    engine = _FakeOcr()
+
+    text = _ocr_page_images(_FakePage([_FakeImageFile(image)]), "Readable native text" * 10, engine)
+
+    assert text == []
+    assert engine.calls == 0
+
+
+def test_ocr_uses_full_page_image_when_native_text_is_sparse() -> None:
+    image = Image.new("RGB", (1200, 1700), "white")
+    engine = _FakeOcr()
+
+    text = _ocr_page_images(_FakePage([_FakeImageFile(image)]), "", engine)
+
+    assert text == ["Ray F"]
+    assert engine.calls == 1
 
 
 def test_bm25_ranks_relevant_section_first() -> None:
