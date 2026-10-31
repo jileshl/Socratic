@@ -66,6 +66,11 @@ class _FakeOcr:
         ], None
 
 
+class _FakeCrossEncoder:
+    def predict(self, pairs: list[list[str]], show_progress_bar: bool = False) -> list[float]:
+        return [0.1, 0.9][:len(pairs)]
+
+
 def test_section_chunk_ids_are_stable() -> None:
     text = """
 9.1 REFLECTION OF LIGHT
@@ -246,3 +251,27 @@ def test_hybrid_search_validates_top_k_and_rrf_constant() -> None:
         assert "positive" in str(exc)
     else:
         raise AssertionError("Expected non-positive RRF constant to be rejected")
+
+
+def test_query_rewriting_adds_textbook_terms_for_colloquial_wording() -> None:
+    query = "Why does a pencil look broken in glass?"
+
+    rewritten = HybridRetriever.rewrite_query(query)
+
+    assert rewritten.startswith(query)
+    assert "refraction" in rewritten
+    assert "interface" in rewritten
+
+
+def test_cross_encoder_reranks_candidates_and_attaches_scores() -> None:
+    retriever = HybridRetriever(index=_MemoryIndex([]))
+    retriever._reranker = _FakeCrossEncoder()
+    candidates = [
+        {"chunk_id": "first", "content": "lower model score"},
+        {"chunk_id": "second", "content": "higher model score"},
+    ]
+
+    hits = retriever.rerank("query", candidates, top_k=1)
+
+    assert [hit["chunk_id"] for hit in hits] == ["second"]
+    assert hits[0]["reranker_score"] == 0.9

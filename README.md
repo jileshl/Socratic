@@ -19,15 +19,16 @@ Scope. Cover one subject and three or four chapters, such as Class 10 Science (L
 
 ## Curriculum Data and Retrieval Baseline
 
-The canonical curriculum datasets are `data/concept_graph.json`, `data/misconceptions.json`, `data/gold_questions.jsonl`, and `data/retrieval_queries.jsonl`. To reproduce the retrieval comparison after installing `requirements.txt` in `.venv`:
+The canonical curriculum datasets are `data/concept_graph.json`, `data/misconceptions.json`, `data/gold_questions.jsonl`, and `data/retrieval_queries.jsonl`. The retrieval comparison uses 30 dev queries; 12 held-out queries are reserved. After installing `requirements.txt` in `.venv`, run:
 
 ```bash
 PYTHONPATH=. .venv/bin/python scripts/build_index.py --git-revision HEAD --force
-PYTHONPATH=. .venv/bin/python scripts/map_retrieval_chunks.py --output /tmp/socratic-retrieval-queries.jsonl
-PYTHONPATH=. .venv/bin/python scripts/evaluate_dev.py --retrieval-only --split dev --top-k 5 --queries /tmp/socratic-retrieval-queries.jsonl
+for mode in bm25 dense hybrid hybrid-no-rewrite; do
+	PYTHONPATH=. .venv/bin/python scripts/evaluate_dev.py --retrieval-only --mode "$mode" --split dev --top-k 5
+done
 ```
 
-On the same rebuilt 35-chunk index and 24 development queries, BM25 Recall@5 was **0.9028** (20/24 perfect-recall queries) and BM25 + Chroma dense retrieval + RRF scored **0.9375** (22/24), a gain of 3.47 percentage points. Query-level gains and a regression are documented in [REPORT.md](REPORT.md#L170). The 12 held-out queries remain unused for tuning. Dense-only retrieval, MRR, and latency are not measured; cross-encoder reranking is not implemented.
+On the same rebuilt 35-chunk index and 30 development queries, BM25 and dense-only each scored **0.9000 Recall@5**; hybrid with query rewriting scored **0.9500**, versus **0.9167** without rewriting. The optional cross-encoder also scored **0.9500**; it did not increase aggregate recall in this run. To enable it, install `requirements-reranker.txt` and evaluate with `--mode hybrid-reranked`. Query-level gains and regressions are documented in [REPORT.md](REPORT.md). MRR and latency are not measured.
 
 ---
 
