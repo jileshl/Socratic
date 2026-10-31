@@ -41,7 +41,7 @@ def evaluate_retrieval(queries_path: Path, split: str, top_k: int, show: int) ->
             misses.append((record["id"], recall, gold_ids, retrieved_ids))
 
     mean_recall = sum(scores) / len(scores)
-    print("Retrieval backend: BM25 with RRF plumbing (dense index not yet implemented)")
+    print("Retrieval backend: BM25 + Chroma dense search + RRF")
     print(f"Queries: {len(records)} ({split})")
     print(f"Recall@{top_k}: {mean_recall:.4f}")
     print(f"Perfect-recall queries: {sum(score == 1.0 for score in scores)}/{len(scores)}")

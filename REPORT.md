@@ -18,7 +18,7 @@
 
 ---
 
-## 1. System Architecture & Request Walkthrough
+## 1. System Architecture & Request Walkthrougȟ
 
 ### 1.1 Architecture Diagram
 Requests flow top to bottom. There are two lanes: the **student** (left) and the **teacher** (right). Between the supervisor and each specialist, `v` means *the supervisor calls the specialist* and `^` means *the result comes back*. This is the **agent loop**: the supervisor calls one specialist at a time, reads its result, decides the next step, and sends the final reply only when the turn is done. `(R)` = read-only tool, `(W)` = write tool.
@@ -174,16 +174,27 @@ Requests flow top to bottom. There are two lanes: the **student** (left) and the
 * **Corpus**: Three NCERT Class 10 Science chapters: Light – Reflection and Refraction, Human Eye and the Colourful World, and Electricity.
 * **Chunking Strategy**: 35 stable section-level chunks preserving chapter and section metadata.
 * **Evaluation Set**: 24 development queries mapped from labelled NCERT section IDs to generated chunk IDs. The 12 held-out queries were not run or used for tuning.
-* **Retrieval Modality Comparison**:
+* **Comparison Setup**: Same rebuilt index, 24 development queries, and top-5 cutoff for BM25 and hybrid. Recall is macro-averaged per query. Hybrid uses Chroma dense retrieval with RRF ($k=60$).
 
-| Modality | Recall@5 (24 Dev Queries) | Mean Reciprocal Rank (MRR) | Latency (ms) |
-| :--- | :--- | :--- | :--- |
-| BM25 (lexical baseline) | **0.9028** (20/24 full recall) | Not measured | Not measured |
-| Dense embeddings alone | Not implemented | - | - |
-| **Hybrid (BM25 + Dense + RRF)** | RRF plumbing present; dense index pending | - | - |
-| **Hybrid + Cross-Encoder Reranker**| Not implemented | - | - |
+| Modality | Recall@5 (24 Dev Queries) | Queries with Full Recall | Mean Reciprocal Rank (MRR) | Latency (ms) |
+| :--- | :--- | :--- | :--- | :--- |
+| BM25 (lexical baseline) | **0.9028** | 20/24 | Not measured | Not measured |
+| Dense embeddings alone | Not measured | - | Not measured | Not measured |
+| **Hybrid (BM25 + Dense + RRF)** | **0.9375** | 22/24 | Not measured | Not measured |
+| **Hybrid + Cross-Encoder Reranker** | Not implemented | - | - | - |
 
-Four development queries had partial or missed section coverage (`RQ_004`, `RQ_007`, `RQ_031`, and `RQ_032`). This baseline measures lexical retrieval only and must not be presented as the final hybrid result. The frozen held-out split remains reserved for final evaluation.
+Hybrid improved macro Recall@5 by **0.0347** (3.47 percentage points) over BM25 in this dev run. This small development set supports further evaluation, not a guarantee of general improvement. The held-out split remains reserved for final evaluation.
+
+### Retrieval Examples
+
+| Query | Student-style question | BM25 Recall@5 | Hybrid Recall@5 | Observed result |
+| :--- | :--- | :---: | :---: | :--- |
+| `RQ_007` | Convex lens at 2F1: where is the image and is it the same size? | 0.50 | **1.00** | BM25 found Section 9.3.4 but missed ray-diagram Section 9.3.5. Hybrid retrieved both relevant sections in its top five. |
+| `RQ_031` | Do parallel resistors always split current equally? | 0.00 | **1.00** | BM25 missed Section 11.6.2; hybrid retrieved it in the top five. |
+| `RQ_032` | Parallel resistors in series with another resistor: how to find total resistance and current? | 0.67 | **1.00** | BM25 found the series and parallel sections but missed Ohm's Law (11.4). Hybrid included all three relevant sections. |
+| `RQ_028` | A resistor has 12 V across it and 2.5 A; find its resistance. | **1.00** | 0.00 | Regression: BM25 included Ohm's Law (11.4) at rank 5; hybrid's top five contained adjacent electricity sections but omitted it. |
+
+The examples show why hybrid retrieval needs regression checks: it recovered several paraphrased or multi-section targets, but displaced an exact numerical-query match. Dense-only recall, MRR, latency, and reranker results have not been measured.
 
 ---
 
