@@ -28,6 +28,7 @@ jobs:
     needs: tests
     env:
       EVAL_STUB: "1"   # the smoke run uses the offline stand-in; stub rows never reach the report
+      NCERT_PDF_ZIP_URL: ${{ secrets.NCERT_PDF_ZIP_URL }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
