@@ -23,9 +23,8 @@ What we did not do: turn off certificate checking, or commit the PDFs (or the in
 
 ## Fix
 
-- `scripts/fetch_ncert.py` now tries a private zip of the three PDFs first (`NCERT_PDF_ZIP_URL`, stored as a GitHub Actions secret and never written into the repository), then falls back to ncert.nic.in with retries and a browser-like User-Agent.
-- `.github/workflows/ci.yml` passes the secret to the `eval-gate` job.
-- Fix commit: [sha — TO FILL after push]
+- `scripts/fetch_ncert.py` now first downloads a zip of the three PDFs from the team's Google Drive (link in `config/ncert_zip_url.txt`, or the `NCERT_PDF_ZIP_URL` secret if one is set), then falls back to ncert.nic.in with retries and a browser-like User-Agent. The PDFs themselves stay out of the repository.
+- Fix commits: `9a11709` (zip download) and [sha — TO FILL] (link file)
 - Passing run after the fix: [link — TO FILL]
 
 ## What it shows

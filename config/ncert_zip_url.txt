@@ -1,0 +1,8 @@
+# Download link for a zip of the three NCERT Class 10 Science chapter PDFs
+# (Chapters 9, 10 and 11), used by scripts/fetch_ncert.py in CI and Docker.
+# ncert.nic.in refuses GitHub's servers, so CI cannot download from NCERT directly.
+# The PDFs are not committed (the guide forbids redistributing them); this file
+# only points to a copy on the team's Google Drive, shared "anyone with the link".
+# If this repository is ever made public, delete this file or turn off link sharing.
+# The NCERT_PDF_ZIP_URL environment variable / Actions secret overrides this file.
+https://drive.google.com/uc?export=download&id=151j0DNC5K1TK3KWn0wz3RFcmS2YEQf_4

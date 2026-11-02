@@ -6,11 +6,12 @@ script fetches them on demand (locally, in Docker and in CI).
 
 Sources, tried in this order:
 
-1. NCERT_PDF_ZIP_URL (optional): a private link to a zip holding the three PDFs
-   under the file names below. CI uses this, stored as a GitHub Actions secret,
-   because ncert.nic.in refuses connections from GitHub's servers and serves an
-   incomplete certificate chain (see docs/CI_FAILURE.md). The link is never
-   written into the repository.
+1. A link to a zip holding the three PDFs under the file names below: the
+   NCERT_PDF_ZIP_URL environment variable (or GitHub Actions secret) if set,
+   otherwise the first non-comment line of config/ncert_zip_url.txt. CI needs
+   this because ncert.nic.in refuses connections from GitHub's servers and
+   serves an incomplete certificate chain (see docs/CI_FAILURE.md). The PDFs
+   themselves are never committed.
 2. ncert.nic.in directly (jesc1 = Class 10 Science, English; 09/10/11 = chapter),
    with retries. This works from most machines in India.
 
@@ -33,6 +34,7 @@ import zipfile
 from pathlib import Path
 
 BASE_URL = os.getenv("NCERT_BASE_URL", "https://ncert.nic.in/textbook/pdf/")
+URL_FILE = Path(__file__).resolve().parent.parent / "config" / "ncert_zip_url.txt"
 USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36"
 
 # (remote file on ncert.nic.in, local file name expected by scripts/build_index.py)
@@ -114,12 +116,25 @@ def from_ncert(target_dir: Path, wanted: list[tuple[str, str]]) -> list[tuple[st
     return still
 
 
+def zip_url() -> str:
+    """The private zip link: environment variable first, then config/ncert_zip_url.txt."""
+    from_env = os.getenv("NCERT_PDF_ZIP_URL", "").strip()
+    if from_env:
+        return from_env
+    if URL_FILE.exists():
+        for line in URL_FILE.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line and not line.startswith("#"):
+                return line
+    return ""
+
+
 def fetch(target_dir: Path, force: bool) -> int:
     target_dir.mkdir(parents=True, exist_ok=True)
     wanted = _missing(target_dir, force)
-    zip_url = os.getenv("NCERT_PDF_ZIP_URL", "").strip()
-    if wanted and zip_url:
-        wanted = from_zip(zip_url, target_dir, wanted)
+    zip_url_value = zip_url()
+    if wanted and zip_url_value:
+        wanted = from_zip(zip_url_value, target_dir, wanted)
     if wanted:
         wanted = from_ncert(target_dir, wanted)
     return len(wanted)
@@ -135,7 +150,7 @@ def main() -> None:
     failures = fetch(args.target_dir, args.force)
     if failures:
         hint = (
-            "In CI: ask the repo owner to add the NCERT_PDF_ZIP_URL secret (docs/CI_FAILURE.md)."
+            "In CI: check that config/ncert_zip_url.txt holds a working 'anyone with the link' zip URL (docs/CI_FAILURE.md)."
             if os.getenv("GITHUB_ACTIONS")
             else f"Download them from https://ncert.nic.in/textbook.php into {args.target_dir} using the file names in scripts/fetch_ncert.py."
         )
