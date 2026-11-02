@@ -36,3 +36,6 @@ pytest>=8.0
 
 #langChain text splitters
 langchain-text-splitters>=1.1.2
+
+# Optional dependency for cross-encoder reranking.
+sentence-transformers>=3,<6
