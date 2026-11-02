@@ -71,8 +71,9 @@ def main() -> None:
         return
 
     raise SystemExit(
-        "End-to-end evaluation is not implemented yet. Use --retrieval-only; "
-        "the previous fixed success/leak scores were placeholders."
+        "End-to-end evaluation now lives in the evaluation harness:\n"
+        "  python -m evalkit.runner --config eval/configs/e1_c2.yaml --split dev\n"
+        "See docs/EVALUATION_GUIDE.md."
     )
 
 

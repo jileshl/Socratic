@@ -1,0 +1,8 @@
+# E1 · C0: fixed workflow (retrieval + one prompt, no agent decisions). Same model and guardrail as C2.
+experiment: E1
+condition: "C0 fixed workflow"
+system: c0
+suites: [sessions, redteam, clean]
+flags: {defences: true, memory: true, playbook: false}
+options: {sessions_per_student: 1, judge: true}
+workers: 4

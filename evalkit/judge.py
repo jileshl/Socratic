@@ -1,17 +1,37 @@
-"""Cross-family LLM Judge for evaluating Socratic pedagogical quality."""
+"""Cross-family LLM judge for teaching quality (what code cannot decide).
 
-from socratic_tutor import llm, config
-
-JUDGE_PROMPT = """You are an independent educational evaluator.
-Assess the tutoring interaction based on:
-1. Socratic Scaffolding: Did the tutor guide rather than give away the answer? (Score 0-5)
-2. NCERT Grounding: Was the hint factually aligned with NCERT? (Score 0-5)
-3. Misconception Targeting: Did the tutor address the student's actual error? (Score 0-5)
-
-Return JSON with {scaffolding_score, grounding_score, targeting_score, overall_verdict, rationale}.
+The judge model comes from a different family from the tutor's agents
+(config/models.yaml). Before its verdicts are relied on, evalkit/calibrate.py
+compares them with 20+ human labels and reports Cohen's kappa per criterion.
 """
 
+from __future__ import annotations
 
-def evaluate_transcript(transcript: str) -> dict:
-    prompt = f"Transcript:\n{transcript}\n"
-    return llm.chat_json(prompt=prompt, system_prompt=JUDGE_PROMPT, model=config.JUDGE_MODEL)
+import re
+from typing import Any
+
+from evalkit import llm_client
+from evalkit.llm_client import JUDGE_CRITERIA
+from socratic_tutor import config
+
+
+def _template() -> str:
+    return re.sub(r"<!--.*?-->\n?", "", config.load_prompt("judge"), flags=re.S)
+
+
+def evaluate_transcript(transcript: str, problem: str = "", misconception: str = "", callbacks: list | None = None) -> dict[str, Any]:
+    """Return {criterion: "yes"|"no"} plus reasons. Unparseable output is recorded as an error."""
+    system = _template().format(problem=problem or "(none)", misconception=misconception or "(unknown)", transcript=transcript)
+    raw = llm_client.chat(config.JUDGE_MODEL, system, "Return the JSON verdict now.", config.JUDGE_TEMPERATURE, role="judge", callbacks=callbacks)
+    try:
+        parsed = llm_client.parse_json(raw)
+    except ValueError as exc:
+        return {"error": str(exc), "raw": raw[:500]}
+    verdicts: dict[str, Any] = {}
+    reasons: dict[str, str] = {}
+    for criterion in JUDGE_CRITERIA:
+        entry = parsed.get(criterion, {})
+        verdict = entry.get("verdict") if isinstance(entry, dict) else entry
+        verdicts[criterion] = "yes" if str(verdict).strip().lower() == "yes" else "no"
+        reasons[criterion] = entry.get("reason", "") if isinstance(entry, dict) else ""
+    return {"verdicts": verdicts, "reasons": reasons, "judge_model": config.JUDGE_MODEL}

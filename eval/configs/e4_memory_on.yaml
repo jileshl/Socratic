@@ -1,0 +1,8 @@
+# E4 · learner memory on: same two-session protocol with the learner model.
+experiment: E4
+condition: "Memory on"
+system: c2
+suites: [sessions]
+flags: {defences: true, memory: true, playbook: false}
+options: {sessions_per_student: 2, judge: true}
+workers: 4

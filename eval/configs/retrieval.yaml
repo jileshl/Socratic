@@ -1,0 +1,7 @@
+# Retrieval · Recall@5 and MRR on the labelled queries (no LLM calls, no API key needed).
+# Run it before and after one retrieval change; the git commit in the log tells the two apart.
+experiment: RET
+condition: "Retrieval (current index)"
+system: c2
+suites: [retrieval]
+workers: 1

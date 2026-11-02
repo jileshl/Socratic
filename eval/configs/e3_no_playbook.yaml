@@ -1,0 +1,8 @@
+# E3 · before: no Reflexion lessons. Run on the held-out students (--split heldout --repeats 3).
+experiment: E3
+condition: "No playbook"
+system: c2
+suites: [sessions]
+flags: {defences: true, memory: true, playbook: false}
+options: {sessions_per_student: 1, judge: true}
+workers: 4

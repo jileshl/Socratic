@@ -1,0 +1,8 @@
+# E1 · C1: one ReAct agent with all the tools, same model and budget.
+experiment: E1
+condition: "C1 one agent"
+system: c1
+suites: [sessions, redteam, clean]
+flags: {defences: true, memory: true, playbook: false}
+options: {sessions_per_student: 1, judge: true}
+workers: 4

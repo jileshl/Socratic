@@ -1,0 +1,8 @@
+# E4 · learner memory off: two sessions per student; the second cannot use what the first learned.
+experiment: E4
+condition: "Memory off"
+system: c2
+suites: [sessions]
+flags: {defences: true, memory: false, playbook: false}
+options: {sessions_per_student: 2, judge: true}
+workers: 4

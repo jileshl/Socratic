@@ -1,0 +1,7 @@
+# CI eval gate (scripts/check_threshold.py). CI fails if a metric falls below its floor.
+# Retrieval needs no API key, so this gate runs on every push.
+# Set from the measured BM25 dev baseline (Recall@5 = 0.9028 on 24 dev queries, README).
+# Raise the floor when the hybrid retriever lands; never lower it to make CI pass.
+retrieval:
+  split: dev
+  recall_at_5_min: 0.85

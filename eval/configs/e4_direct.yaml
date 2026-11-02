@@ -1,0 +1,8 @@
+# E4 · direct answers instead of Socratic hints: compare answer leaks with quiz gains.
+experiment: E4
+condition: "Direct answers"
+system: direct
+suites: [sessions]
+flags: {defences: true, memory: true, playbook: false}
+options: {sessions_per_student: 1, judge: true}
+workers: 4

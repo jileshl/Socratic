@@ -1,0 +1,9 @@
+# CI smoke test: runs every suite on a few cases with the offline stand-in (EVAL_STUB=1).
+# Checks the plumbing only; stub rows never reach the report.
+experiment: SMOKE
+condition: "Plumbing check"
+system: c2
+suites: [retrieval, gold, sessions, redteam, clean]
+flags: {defences: true, memory: true, playbook: false}
+options: {sessions_per_student: 1, judge: true}
+workers: 2

@@ -1,0 +1,8 @@
+# E3 · after: the reviewed, frozen playbook. Freeze it (commit) BEFORE the held-out run.
+experiment: E3
+condition: "Frozen playbook"
+system: c2
+suites: [sessions]
+flags: {defences: true, memory: true, playbook: true}
+options: {sessions_per_student: 1, judge: true}
+workers: 4

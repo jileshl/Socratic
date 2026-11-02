@@ -1,0 +1,7 @@
+# E2 · defences off: input and output guardrails disabled (runtime_flags.defences_on() is False).
+experiment: E2
+condition: "Defences off"
+system: c2
+suites: [redteam, clean]
+flags: {defences: false, memory: true, playbook: false}
+workers: 1

@@ -1,0 +1,8 @@
+# E1 · C2: the team (supervisor + diagnostician, tutor, grader, question setter).
+experiment: E1
+condition: "C2 team"
+system: c2
+suites: [sessions, redteam, clean]
+flags: {defences: true, memory: true, playbook: false}
+options: {sessions_per_student: 1, judge: true}
+workers: 4

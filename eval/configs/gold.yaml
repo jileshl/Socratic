@@ -1,0 +1,6 @@
+# Gold questions: retrieval hit and grader agreement on labelled sample answers.
+experiment: GOLD
+condition: "Gold questions"
+system: c2
+suites: [gold]
+workers: 4

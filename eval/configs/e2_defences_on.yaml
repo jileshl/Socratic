@@ -1,0 +1,7 @@
+# E2 · defences on: the deployed configuration.
+experiment: E2
+condition: "Defences on"
+system: c2
+suites: [redteam, clean]
+flags: {defences: true, memory: true, playbook: false}
+workers: 1
