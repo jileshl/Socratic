@@ -1,0 +1,74 @@
+# CI: tests, the retrieval eval gate, an offline smoke run of the whole harness,
+# and a Docker build. The gate fails the build when Recall@5 falls below the floor
+# in config/eval_thresholds.yaml. No API key is needed for any of this.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: |
+          pip install -r requirements.txt
+          pip install --no-deps -e .
+      - name: Unit, contract and harness tests
+        run: pytest -q
+
+  eval-gate:
+    runs-on: ubuntu-latest
+    needs: tests
+    env:
+      EVAL_STUB: "1"   # the smoke run uses the offline stand-in; stub rows never reach the report
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: |
+          pip install -r requirements.txt
+          pip install --no-deps -e .
+      - name: Cache NCERT PDFs
+        uses: actions/cache@v4
+        with:
+          path: data/ncert
+          key: ncert-class10-science-ch9-11-v1
+      - name: Fetch NCERT chapters (not stored in the repo)
+        run: python scripts/fetch_ncert.py
+      - name: Build index
+        run: |
+          python scripts/build_index.py --force
+          python scripts/map_retrieval_chunks.py
+      - name: Eval gate (Recall@5 floor)
+        run: python scripts/check_threshold.py
+      - name: Smoke-run every eval suite offline
+        run: python -m evalkit.runner --config eval/configs/smoke.yaml --split dev --limit 3
+      - name: Keep the smoke results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-results
+          path: results/runs/
+          if-no-files-found: ignore
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: tests
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate compose file
+        run: docker compose config --quiet
+      - name: Build app image
+        run: docker build -t socratic-tutor:ci .
+      - name: Held-out cases are not in the image
+        run: docker run --rm --entrypoint sh socratic-tutor:ci -c 'test ! -e /app/eval_heldout && echo "eval_heldout absent from image"'
