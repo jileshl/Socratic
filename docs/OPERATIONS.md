@@ -70,7 +70,7 @@ The teacher view covers what the brief asks for: misconceptions by concept acros
 ## CI (`.github/workflows/ci.yml`)
 
 1. `tests`: pytest, fully offline.
-2. `eval-gate`: fetch NCERT PDFs (cached), build the index, `scripts/check_threshold.py` fails the build if dev Recall@5 drops below `config/eval_thresholds.yaml` (0.85; current baseline 0.9028), then a stub smoke run of every suite.
+2. `eval-gate`: fetch NCERT PDFs (cached; from the private `NCERT_PDF_ZIP_URL` secret, because ncert.nic.in refuses GitHub's servers), build the index, `scripts/check_threshold.py` fails the build if dev Recall@5 drops below `config/eval_thresholds.yaml` (0.85; current baseline 0.9028), then a stub smoke run of every suite.
 3. `docker`: validates the compose file, builds the image, and checks that `eval_heldout` is not inside it.
 
 The guide asks for one failed CI run with an explanation; see `docs/CI_FAILURE.md`.
