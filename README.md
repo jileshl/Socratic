@@ -9,7 +9,39 @@ Who it is for. A student and a teacher who needs to know where the class is stru
 
 Scope. Cover one subject and three or four chapters, such as Class 10 Science (Light – Reflection and Refraction, Electricity) or Class 10 Maths (Quadratic Equations, Arithmetic Progressions, Introduction to Trigonometry).
 
+## Run it
+
+```bash
+cp .env.example .env            # add OPENROUTER_API_KEY, change TEACHER_PIN
+docker compose up --build
+```
+
+| URL | What |
+|---|---|
+| http://localhost:8000 | student view (practice and quiz modes) |
+| http://localhost:8000/teacher | teacher view: class misconceptions, approvals, alerts, transcript labelling |
+| http://localhost:3000 | Grafana dashboard |
+| http://localhost:9090 | Prometheus (alert `AnswerLeakSpike`) |
+
+Without Docker: see **[docs/SETUP_GUIDE.md](docs/SETUP_GUIDE.md)**. Tests run offline: `pytest -q`.
+
+## Evaluate
+
+```bash
+python -m evalkit.runner --config eval/configs/e1_c2.yaml --split dev
+docker compose --profile eval run --rm eval --config eval/configs/e1_c2.yaml --split heldout --repeats 3
+python -m evalkit.report        # tables for REPORT.md from results/experiment_log.csv
+```
+
+Experiments E1–E4 and the retrieval before/after comparison are config files in `eval/configs/`. Held-out cases live in `eval_heldout/`, which only the eval container mounts. **No results are committed**: every number in the report must come from a logged run with a real model. Offline stand-in runs are marked STUB and excluded. Details: **[docs/EVALUATION_GUIDE.md](docs/EVALUATION_GUIDE.md)**.
+
 ## Project Documentation & Engineering Roadmap
+
+- 🧪 **[docs/EVALUATION_GUIDE.md](docs/EVALUATION_GUIDE.md)**: evaluation protocol, datasets, experiments, judge calibration (R5).
+- ⚙️ **[docs/OPERATIONS.md](docs/OPERATIONS.md)**: services, metrics, alerts, stop/resume, approvals, CI (R6).
+- 🔌 **[docs/INTEGRATION_CONTRACT.md](docs/INTEGRATION_CONTRACT.md)**: what the app and harness read from the agent graph (for R3/R4).
+- 🗂️ **[docs/DATA_CARD.md](docs/DATA_CARD.md)**: every dataset, who wrote it, review status.
+- 🎬 **[docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md)**: final demo and backup video script.
 
 - 🗺️ **[TODOS.md](TODOS.md)**: Master sequential breakdown of all 10 engineering milestones (L4–L16).
 - 🏫 **[SCHOOL_OUTREACH_AND_QUESTIONNAIRE.md](SCHOOL_OUTREACH_AND_QUESTIONNAIRE.md)**: Formal letter to Principal (Narayana School, Borivali) & comprehensive teacher research protocol.
@@ -19,15 +51,16 @@ Scope. Cover one subject and three or four chapters, such as Class 10 Science (L
 
 ## Curriculum Data and Retrieval Baseline
 
-The canonical curriculum datasets are `data/concept_graph.json`, `data/misconceptions.json`, `data/gold_questions.jsonl`, and `data/retrieval_queries.jsonl`. To reproduce the current lexical baseline after installing `requirements.txt`:
+The canonical curriculum datasets are `data/concept_graph.json`, `data/misconceptions.json`, `data/gold_questions.jsonl` (dev cases only; held-out cases are in `eval_heldout/`), and `data/retrieval_queries.jsonl`. The NCERT PDFs are not stored in the repository (the guide forbids redistributing them). To reproduce the current lexical baseline after installing `requirements.txt`:
 
 ```bash
+python scripts/fetch_ncert.py
 python scripts/build_index.py --force
 python scripts/map_retrieval_chunks.py
 python scripts/evaluate_dev.py --retrieval-only
 ```
 
-`DATA_DIR` and `DOCUMENT_PATH` can be configured in `.env`. `DOCUMENT_PATH` must contain the three NCERT chapter PDFs; `DATA_DIR` contains the canonical JSON/JSONL datasets.
+`DATA_DIR` and `DOCUMENT_PATH` can be configured in `.env`. `DOCUMENT_PATH` (default `data/ncert/`) must contain the three NCERT chapter PDFs; `DATA_DIR` contains the canonical JSON/JSONL datasets.
 
 The BM25 development baseline is Recall@5 = **0.9028** on 24 development queries (20/24 with full recall). The 12 held-out queries remain unused for tuning. Dense retrieval, RRF fusion with dense results, and reranking are not yet implemented.
 

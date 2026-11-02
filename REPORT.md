@@ -116,6 +116,8 @@ Requests flow top to bottom. There are two lanes: the **student** (left) and the
 
 ## 2. Experiments & Evaluation
 
+> Fill every table in this section from `results/report_tables.md` (`python -m evalkit.report`), which is built only from logged, non-stub runs. Each cell shows the mean and the min–max spread across repeats. Report the split, the number of repeats and the exact model IDs (also in the generated tables). Protocol: docs/EVALUATION_GUIDE.md.
+
 ### Experiment 1: Single Agent vs. Multi-Agent Team (E1)
 *Comparison of C0 (fixed workflow/single prompt), C1 (single agent with all tools), and C2 (specialized multi-agent team).*
 
@@ -193,10 +195,10 @@ Four development queries had partial or missed section coverage (`RQ_004`, `RQ_0
 
 | Tool Name | Test Suite Coverage | Edge Cases Validated |
 | :--- | :--- | :--- |
-| `solve_mirror_formula` | 100% | Virtual image ($v > 0$), object at infinity, object at focus |
-| `solve_lens_formula` | 100% | Concave vs convex sign conventions |
-| `check_algebraic_equivalence` | 100% | Fractional powers, rearranged Ohm's law ($I = V/R$) |
-| `numeric_check_tolerance` | 100% | Floating-point rounding ($\pm 2\%$ tolerance) |
+| `solve_mirror_formula` | *Pending: coverage not measured* | object at focus (tests/test_contract.py); cross-checked against evalkit/reference_solver.py |
+| `solve_lens_formula` | *Pending: coverage not measured* | cross-checked against evalkit/reference_solver.py |
+| `check_algebraic_equivalence` | *Not implemented yet* | — |
+| `numeric_check` | *Pending: coverage not measured* | relative tolerance (5%) |
 
 ---
 
