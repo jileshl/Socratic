@@ -1,0 +1,11 @@
+# Held-out evaluation cases must never be inside the app image.
+eval_heldout/
+results/
+.index/
+.cache/
+.git/
+.venv/
+venv/
+**/__pycache__/
+*.pdf
+.env

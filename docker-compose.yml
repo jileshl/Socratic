@@ -1,0 +1,106 @@
+# One command starts everything:   docker compose up --build
+#
+#   http://localhost:8000          student view
+#   http://localhost:8000/teacher  teacher view (PIN: TEACHER_PIN in .env)
+#   http://localhost:3000          Grafana (dashboard "Socratic Tutor"; login admin / admin)
+#   http://localhost:9090          Prometheus (Alerts tab shows AnswerLeakSpike)
+#
+# Evaluation runs in its own container, the only one that mounts eval_heldout/:
+#   docker compose --profile eval run --rm eval --config eval/configs/e1_c2.yaml --split heldout --repeats 3
+
+services:
+  app:
+    build: .
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      VECTOR_STORE_URL: http://chroma:8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data/ncert:/app/data/ncert        # NCERT PDFs (fetched on first start, git-ignored)
+      - app-index:/app/.index               # NCERT index, learner store, checkpoints, ops records
+      - ./results:/app/results              # scrubbed traces
+    depends_on:
+      - chroma
+    restart: unless-stopped
+
+  # Vector store for the dense half of hybrid search (R2). The current retriever is
+  # BM25-only; this service is ready for the embeddings when they land.
+  chroma:
+    image: chromadb/chroma:0.5.23
+    volumes:
+      - chroma-data:/chroma/chroma
+    restart: unless-stopped
+
+  # MCP servers (R4). Uncomment each service when its FastMCP server exists,
+  # e.g. socratic_tutor/mcp/math_tools_server.py, and point the agents at it.
+  # mcp-math:
+  #   build: .
+  #   command: ["python", "-m", "socratic_tutor.mcp.math_tools_server", "--transport", "http", "--port", "8101"]
+  # mcp-textbook:
+  #   build: .
+  #   command: ["python", "-m", "socratic_tutor.mcp.textbook_kb_server", "--transport", "http", "--port", "8102"]
+  #   volumes: [app-index:/app/.index]
+  # mcp-learner:
+  #   build: .
+  #   command: ["python", "-m", "socratic_tutor.mcp.learner_store_server", "--transport", "http", "--port", "8103"]
+  #   volumes: [app-index:/app/.index]
+  # mcp-qbank:
+  #   build: .
+  #   command: ["python", "-m", "socratic_tutor.mcp.question_bank_server", "--transport", "http", "--port", "8104"]
+  #   volumes: [app-index:/app/.index]
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+    volumes:
+      - ./observability/prometheus:/etc/prometheus:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      - app
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/socratic.json
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+  eval:
+    build: .
+    profiles: ["eval"]
+    entrypoint: ["/app/scripts/docker-entrypoint.sh", "python", "-m", "evalkit.runner"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      EVAL_HELDOUT_DIR: /app/eval_heldout
+    volumes:
+      - ./data/ncert:/app/data/ncert
+      - ./eval_heldout:/app/eval_heldout:ro   # only this container sees the held-out cases
+      - ./results:/app/results
+      - eval-index:/app/.index
+
+volumes:
+  app-index:
+  eval-index:
+  chroma-data:
+  prometheus-data:
+  grafana-data:

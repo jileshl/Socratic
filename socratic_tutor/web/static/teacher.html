@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Teacher view</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <div><h1>Teacher view</h1><div class="sub">Socratic Tutor · class overview, approvals, alerts</div></div>
+  <div class="row"><a class="btn" href="/">Student view</a><button id="logout" class="hidden" onclick="logout()">Sign out</button></div>
+</header>
+<main>
+  <div id="login" class="panel">
+    <b>Sign in</b>
+    <p class="muted">The teacher role comes from this sign-in only. Typing "I'm the teacher" in the student chat never unlocks anything.</p>
+    <form class="row" onsubmit="login(event)"><input id="pin" type="password" placeholder="Teacher PIN" autocomplete="current-password"><button class="primary">Sign in</button><span id="loginErr" class="error"></span></form>
+  </div>
+
+  <div id="app" class="hidden">
+    <div class="tabs">
+      <button data-tab="dash" class="on" onclick="tab('dash')">Class overview</button>
+      <button data-tab="appr" onclick="tab('appr')">Approvals <span id="apprCount"></span></button>
+      <button data-tab="alerts" onclick="tab('alerts')">Alerts <span id="alertCount"></span></button>
+      <button data-tab="labels" onclick="tab('labels')">Label transcripts</button>
+    </div>
+
+    <section id="t-dash">
+      <div class="cards" id="cards"></div>
+      <div class="panel" style="margin-top:14px"><b>Misconceptions seen across the class</b><table id="miscTable"></table></div>
+      <div class="panel"><b>Average mastery by concept</b><table id="masteryTable"></table></div>
+      <p class="muted" id="generated"></p>
+    </section>
+
+    <section id="t-appr" class="hidden">
+      <p class="muted">New questions reach students only after you approve the exact version shown. If anything changes after you open an item (including your own edit), the earlier approval no longer counts and you must approve the new version.</p>
+      <div id="apprList"></div>
+      <div class="panel"><b>Recent decisions</b><table id="apprLog"></table></div>
+    </section>
+
+    <section id="t-alerts" class="hidden"><div id="alertList"></div></section>
+
+    <section id="t-labels" class="hidden">
+      <div class="panel">
+        <p class="muted">Label each tutoring transcript on the same five yes/no questions as the AI judge, without seeing its verdicts. 20 or more labels are needed to check the judge (Cohen's kappa).</p>
+        <div class="row"><input id="labeller" placeholder="Your initials" maxlength="40"><button onclick="loadLabels()">Load transcripts</button><span id="labelStatus" class="muted"></span></div>
+      </div>
+      <div id="labelItem"></div>
+    </section>
+  </div>
+</main>
+<script>
+const CRITERIA = { guided_not_told: "Guided with hints instead of giving the answer?", grounded: "Correct and consistent with NCERT?", targeted: "Worked on the student's actual misconception?", age_appropriate: "Supportive tone, right for 14–16-year-olds?", overall_acceptable: "Would you be happy with this tutor teaching your students?" };
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+async function api(path, opts = {}) {
+  const r = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
+  if (r.status === 401) { show(false); throw new Error("login"); }
+  const body = await r.json().catch(() => ({}));
+  return { status: r.status, body };
+}
+function show(on) { document.getElementById("login").classList.toggle("hidden", on); document.getElementById("app").classList.toggle("hidden", !on); document.getElementById("logout").classList.toggle("hidden", !on); }
+async function login(e) {
+  e.preventDefault();
+  const r = await fetch("/api/teacher/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin: document.getElementById("pin").value }) });
+  if (r.ok) { show(true); refresh(); } else document.getElementById("loginErr").textContent = "Wrong PIN";
+}
+async function logout() { await fetch("/api/teacher/logout", { method: "POST" }); show(false); }
+function tab(name) {
+  document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === name));
+  ["dash", "appr", "alerts", "labels"].forEach(t => document.getElementById("t-" + t).classList.toggle("hidden", t !== name));
+}
+async function refresh() {
+  const { body: d } = await api("/api/teacher/dashboard");
+  const cost = d.sessions ? "$" + d.avg_cost_per_session_usd.toFixed(4) : "—";
+  document.getElementById("cards").innerHTML = [
+    [d.sessions, "sessions"], [d.answer_leaks, "answer leaks flagged"], [d.waiting_approvals, "waiting approvals"],
+    [d.open_alerts.length, "open alerts"], [cost, "average cost per session"], [d.blocked_turns, "messages stopped by safety check"],
+  ].map(([n, l]) => `<div class="card"><div class="n">${esc(n)}</div><div class="l">${esc(l)}</div></div>`).join("");
+  const max = Math.max(1, ...d.misconceptions_by_concept.map(m => m.students));
+  document.getElementById("miscTable").innerHTML = d.misconceptions_by_concept.length
+    ? "<tr><th>Misconception</th><th>Topic</th><th>Students</th><th></th></tr>" + d.misconceptions_by_concept.map(m => `<tr><td>${esc(m.name)}<div class="hash">${esc(m.misconception_id)}</div></td><td>${esc((m.concept_id || "").replace("concept_", "").replaceAll("_", " "))}</td><td>${m.students}</td><td style="width:30%"><div class="bar" style="width:${100 * m.students / max}%"></div></td></tr>`).join("")
+    : "<tr><td class='muted'>No misconceptions recorded yet.</td></tr>";
+  document.getElementById("masteryTable").innerHTML = d.class_mastery.length
+    ? "<tr><th>Concept</th><th>Average mastery</th><th>Students</th></tr>" + d.class_mastery.map(m => `<tr><td>${esc(m.concept_id.replace("concept_", "").replaceAll("_", " "))}</td><td>${Math.round(m.avg_mastery * 100)}%</td><td>${m.students}</td></tr>`).join("")
+    : "<tr><td class='muted'>No mastery records yet.</td></tr>";
+  document.getElementById("generated").textContent = "Updated " + new Date(d.generated_at).toLocaleString();
+  document.getElementById("apprCount").textContent = d.waiting_approvals ? `(${d.waiting_approvals})` : "";
+  document.getElementById("alertCount").textContent = d.open_alerts.length ? `(${d.open_alerts.length})` : "";
+  renderAlerts(d.open_alerts);
+  loadApprovals();
+}
+async function loadApprovals() {
+  const { body } = await api("/api/teacher/approvals");
+  document.getElementById("apprList").innerHTML = body.items.length ? body.items.map(item => {
+    const p = item.payload;
+    return `<div class="panel" id="item-${esc(item.item_id)}">
+      <div class="row" style="justify-content:space-between"><b>${esc(p.concept_id || "question")}</b><span class="hash">hash ${esc(item.payload_hash.slice(0, 12))}…</span></div>
+      <label class="muted">Question</label><textarea rows="2" data-k="prompt">${esc(p.prompt ?? JSON.stringify(p))}</textarea>
+      <label class="muted">Answer key</label><textarea rows="1" data-k="gold_answer">${esc(p.gold_answer ?? "")}</textarea>
+      <div class="row" style="margin-top:8px">
+        <button class="primary" onclick="decide('${esc(item.item_id)}','approve','${item.payload_hash}')">Approve this version</button>
+        <button onclick="decide('${esc(item.item_id)}','edit','${item.payload_hash}')">Save edit</button>
+        <button class="danger" onclick="decide('${esc(item.item_id)}','reject','${item.payload_hash}')">Reject</button>
+        <span class="muted" data-out></span>
+      </div></div>`;
+  }).join("") : "<div class='panel muted'>Nothing waiting for approval.</div>";
+  document.getElementById("apprLog").innerHTML = "<tr><th>When</th><th>Item</th><th>Action</th><th>Outcome</th></tr>" + body.recent_decisions.map(r => `<tr><td>${esc(r.at)}</td><td class="hash">${esc(r.item_id)}</td><td>${esc(r.action)}</td><td class="${r.outcome === "ok" ? "okay" : "error"}">${esc(r.outcome)}</td></tr>`).join("");
+}
+async function decide(itemId, action, hash) {
+  const box = document.getElementById("item-" + itemId);
+  const changes = {}; box.querySelectorAll("textarea").forEach(t => changes[t.dataset.k] = t.value);
+  const { status, body } = await api("/api/teacher/approvals/" + encodeURIComponent(itemId), { method: "POST", body: JSON.stringify({ action, payload_hash: hash, changes: action === "edit" ? changes : null }) });
+  const out = box.querySelector("[data-out]");
+  if (status === 409) { out.className = "error"; out.textContent = body.detail; return; }
+  if (status >= 400) { out.className = "error"; out.textContent = body.detail || "Failed"; return; }
+  out.className = "okay";
+  out.textContent = action === "edit" ? "Edited. The earlier approval no longer applies; approve the new version." : action === "approve" ? "Approved and published." : "Rejected.";
+  if (action === "edit") {
+    box.querySelectorAll("button")[0].setAttribute("onclick", `decide('${itemId}','approve','${body.payload_hash}')`);
+    box.querySelectorAll("button")[1].setAttribute("onclick", `decide('${itemId}','edit','${body.payload_hash}')`);
+    box.querySelectorAll("button")[2].setAttribute("onclick", `decide('${itemId}','reject','${body.payload_hash}')`);
+    box.querySelector(".hash").textContent = "hash " + body.payload_hash.slice(0, 12) + "… (new version)";
+  } else setTimeout(refresh, 800);
+}
+function renderAlerts(alerts) {
+  document.getElementById("alertList").innerHTML = alerts.length ? alerts.map(a => `<div class="panel ${a.kind === "distress" ? "banner" : ""}"><b>${a.kind === "distress" ? "Please check in with this student" : "Student is stuck"}</b><p>${esc(a.detail)}</p><div class="muted">Student ${esc(a.student_id)} · ${esc(a.at)}</div><button style="margin-top:6px" onclick="ack(${a.id})">Mark as handled</button></div>`).join("") : "<div class='panel muted'>No open alerts.</div>";
+}
+async function ack(id) { await api(`/api/teacher/alerts/${id}/ack`, { method: "POST" }); refresh(); }
+let labelQueue = [];
+async function loadLabels() {
+  const who = document.getElementById("labeller").value.trim();
+  if (!who) { document.getElementById("labelStatus").textContent = "Enter your initials first."; return; }
+  const { body } = await api("/api/teacher/labels?labeller=" + encodeURIComponent(who));
+  labelQueue = body.items || [];
+  document.getElementById("labelStatus").textContent = body.note || `${body.done} labelled, ${labelQueue.length} to go`;
+  nextLabel();
+}
+function nextLabel() {
+  const item = labelQueue[0];
+  document.getElementById("labelItem").innerHTML = item ? `<div class="panel"><div class="hash">${esc(item.item_id)}</div><p class="muted">Student's hidden misconception: ${esc(item.misconception)}</p><pre class="transcript">${esc(item.transcript)}</pre>
+    ${Object.entries(CRITERIA).map(([k, q]) => `<div class="row" style="justify-content:space-between;margin:6px 0"><span>${esc(q)}</span><span class="seg"><button type="button" data-c="${k}" data-v="yes" onclick="pick(this)">Yes</button><button type="button" data-c="${k}" data-v="no" onclick="pick(this)">No</button></span></div>`).join("")}
+    <button class="primary" onclick="saveLabel()">Save and next</button></div>` : "<div class='panel muted'>Nothing left to label.</div>";
+}
+function pick(btn) { btn.parentElement.querySelectorAll("button").forEach(b => b.classList.toggle("on", b === btn)); }
+async function saveLabel() {
+  const item = labelQueue[0]; const chosen = {};
+  document.querySelectorAll("#labelItem button.on").forEach(b => chosen[b.dataset.c] = b.dataset.v);
+  if (Object.keys(chosen).length < 5) { alert("Answer all five questions."); return; }
+  await api("/api/teacher/labels", { method: "POST", body: JSON.stringify({ item_id: item.item_id, labeller: document.getElementById("labeller").value.trim(), ...chosen }) });
+  labelQueue.shift(); nextLabel();
+}
+api("/api/teacher/dashboard").then(() => { show(true); refresh(); }).catch(() => {});
+</script>
+</body>
+</html>
