@@ -19,12 +19,18 @@ Scope. Cover one subject and three or four chapters, such as Class 10 Science (L
 
 ## Curriculum Data and Retrieval Baseline
 
-The canonical curriculum datasets are `data/concept_graph.json`, `data/misconceptions.json`, `data/gold_questions.jsonl`, and `data/retrieval_queries.jsonl`. To reproduce the current lexical baseline after installing `requirements.txt`:
+The canonical curriculum datasets are `data/concept_graph.json`, `data/misconceptions.json`, `data/gold_questions.jsonl`, and `data/retrieval_queries.jsonl`. The retrieval comparison uses 30 dev queries; 12 held-out queries are reserved. After installing `requirements.txt` in `.venv`, run:
 
-```bash
+On the same rebuilt 35-chunk index and 30 development queries, BM25 and dense-only each scored **0.9000 Recall@5**; hybrid with query rewriting scored **0.9500**, versus **0.9167** without rewriting. The optional cross-encoder also scored **0.9500**; it did not increase aggregate recall in this run. To enable it, install `requirements-reranker.txt` and evaluate with `--mode hybrid-reranked`. Query-level gains and regressions are documented in [REPORT.md](REPORT.md). MRR and latency are not measured.
 python scripts/build_index.py --force
 python scripts/map_retrieval_chunks.py
 python scripts/evaluate_dev.py --retrieval-only
+
+```bash
+PYTHONPATH=. .venv/bin/python
+for mode in bm25 dense hybrid hybrid-no-rewrite; do
+	python scripts/evaluate_dev.py --retrieval-only --mode "$mode" --split dev --top-k 5
+done
 ```
 
 `DATA_DIR` and `DOCUMENT_PATH` can be configured in `.env`. `DOCUMENT_PATH` must contain the three NCERT chapter PDFs; `DATA_DIR` contains the canonical JSON/JSONL datasets.

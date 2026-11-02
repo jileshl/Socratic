@@ -11,7 +11,13 @@ from socratic_tutor import config
 from socratic_tutor.retrieval import HybridRetriever
 
 
-def evaluate_retrieval(queries_path: Path, split: str, top_k: int, show: int) -> float:
+def evaluate_retrieval(
+    queries_path: Path,
+    split: str,
+    top_k: int,
+    show: int,
+    mode: str = "hybrid",
+) -> float:
     records = [
         json.loads(line)
         for line in queries_path.read_text(encoding="utf-8").splitlines()
@@ -33,7 +39,16 @@ def evaluate_retrieval(queries_path: Path, split: str, top_k: int, show: int) ->
             raise RuntimeError(
                 f"{record['id']} has no gold_chunk_ids; run scripts/map_retrieval_chunks.py"
             )
-        hits = retriever.search_hybrid(record["query"], top_k=top_k)
+        if mode == "bm25":
+            hits = retriever.search_bm25(record["query"], top_k=top_k)
+        elif mode == "dense":
+            hits = retriever.search_dense(record["query"], top_k=top_k)
+        elif mode == "hybrid-no-rewrite":
+            hits = retriever.search_hybrid(record["query"], top_k=top_k, rewrite=False)
+        elif mode == "hybrid-reranked":
+            hits = retriever.search_hybrid(record["query"], top_k=top_k, rerank=True)
+        else:
+            hits = retriever.search_hybrid(record["query"], top_k=top_k)
         retrieved_ids = [hit["chunk_id"] for hit in hits]
         recall = compute_recall_at_k(retrieved_ids, gold_ids, k=top_k)
         scores.append(recall)
@@ -41,7 +56,7 @@ def evaluate_retrieval(queries_path: Path, split: str, top_k: int, show: int) ->
             misses.append((record["id"], recall, gold_ids, retrieved_ids))
 
     mean_recall = sum(scores) / len(scores)
-    print("Retrieval backend: BM25 with RRF plumbing (dense index not yet implemented)")
+    print(f"Retrieval mode: {mode}")
     print(f"Queries: {len(records)} ({split})")
     print(f"Recall@{top_k}: {mean_recall:.4f}")
     print(f"Perfect-recall queries: {sum(score == 1.0 for score in scores)}/{len(scores)}")
@@ -58,6 +73,11 @@ def main() -> None:
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--show", type=int, default=5)
     parser.add_argument("--top-k", type=int, default=5)
+    parser.add_argument(
+        "--mode",
+        choices=("bm25", "dense", "hybrid", "hybrid-no-rewrite", "hybrid-reranked"),
+        default="hybrid",
+    )
     parser.add_argument("--split", choices=("dev", "held_out", "all"), default="dev")
     parser.add_argument(
         "--queries",
@@ -67,7 +87,7 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.retrieval_only:
-        evaluate_retrieval(args.queries, args.split, args.top_k, args.show)
+        evaluate_retrieval(args.queries, args.split, args.top_k, args.show, mode=args.mode)
         return
 
     raise SystemExit(

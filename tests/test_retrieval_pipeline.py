@@ -1,12 +1,74 @@
 """Focused tests for NCERT section chunking and lexical retrieval."""
 
-from socratic_tutor.kb import chunk_ncert_text
+from PIL import Image
+
+from socratic_tutor.kb import _ocr_page_images, chunk_ncert_text
 from socratic_tutor.retrieval import HybridRetriever
 
 
 class _MemoryIndex:
     def __init__(self, chunks: list[dict]):
         self.chunks = chunks
+
+
+class _MemoryCollection:
+    def __init__(self, ranked_ids: list[str], distances: list[float]):
+        self.documents: dict[str, str] = {}
+        self.ranked_ids = ranked_ids
+        self.distances = distances
+
+    def get(self, include: list[str]) -> dict:
+        ids = list(self.documents)
+        return {"ids": ids, "documents": [self.documents[chunk_id] for chunk_id in ids]}
+
+    def upsert(self, ids: list[str], documents: list[str]) -> None:
+        self.documents.update(zip(ids, documents))
+
+    def delete(self, ids: list[str]) -> None:
+        for chunk_id in ids:
+            self.documents.pop(chunk_id, None)
+
+    def query(self, query_texts: list[str], n_results: int, include: list[str]) -> dict:
+        return {
+            "ids": [self.ranked_ids[:n_results]],
+            "distances": [self.distances[:n_results]],
+        }
+
+
+class _FakeImageFile:
+    def __init__(self, image: Image.Image):
+        self.image = image
+
+
+class _FakeMediaBox:
+    width = 595
+    height = 842
+
+
+class _FakePage:
+    mediabox = _FakeMediaBox()
+
+    def __init__(self, images: list[_FakeImageFile]):
+        self.images = images
+
+
+class _FakeOcr:
+    def __init__(self):
+        self.calls = 0
+
+    def __call__(self, image):
+        self.calls += 1
+        return [
+            ([], "Ray F", 0.95),
+            ([], "uncertain", 0.2),
+            ([], "1064CH10", 0.98),
+            ([], "口口", 0.99),
+        ], None
+
+
+class _FakeCrossEncoder:
+    def predict(self, pairs: list[list[str]], show_progress_bar: bool = False) -> list[float]:
+        return [0.1, 0.9][:len(pairs)]
 
 
 def test_section_chunk_ids_are_stable() -> None:
@@ -27,6 +89,71 @@ A concave mirror can form real or virtual images.
     ]
     assert chunks[0].section_id == "9.1"
     assert "angle of incidence" in chunks[0].content
+
+
+def test_equation_metadata_uses_canonical_section_formulas() -> None:
+    optics = chunk_ncert_text(
+        "9.2.4 Mirror Formula and Magnification\n"
+        "The extracted formula appears as 1 1 1 v u f+ = (9.1).\n"
+        "9.3.7 Lens Formula and Magnification\n"
+        "The extracted formula appears as 1 1 1 v u f- = (9.8).",
+        "9",
+        "Light - Reflection and Refraction",
+    )
+    electricity = chunk_ncert_text(
+        "11.4 Ohm's Law\nThe potential difference is related to current and resistance.",
+        "11",
+        "Electricity",
+    )
+
+    mirror = next(chunk for chunk in optics if chunk.section_id == "9.2.4")
+    lens = next(chunk for chunk in optics if chunk.section_id == "9.3.7")
+    ohms_law = electricity[0]
+
+    assert mirror.equations == ["1/f = 1/v + 1/u", "m = h'/h = -v/u"]
+    assert lens.equations == ["1/f = 1/v - 1/u", "m = h'/h = v/u"]
+    assert ohms_law.equations == ["V = I*R", "R = V/I", "I = V/R"]
+    assert "1 1 1 v u f+ = (9.1)" in mirror.content
+
+
+def test_unmapped_section_has_no_guessed_equations() -> None:
+    chunks = chunk_ncert_text(
+        "9.1 Reflection of Light\nThe activity uses x = y as an example.",
+        "9",
+        "Light - Reflection and Refraction",
+    )
+
+    assert chunks[0].equations == []
+
+
+def test_ocr_adds_confident_text_from_embedded_figure() -> None:
+    image = Image.new("RGB", (200, 200), "white")
+    engine = _FakeOcr()
+
+    text = _ocr_page_images(_FakePage([_FakeImageFile(image)]), "Native page text", engine)
+
+    assert text == ["Ray F"]
+    assert engine.calls == 1
+
+
+def test_ocr_skips_full_page_image_when_native_text_is_present() -> None:
+    image = Image.new("RGB", (1200, 1700), "white")
+    engine = _FakeOcr()
+
+    text = _ocr_page_images(_FakePage([_FakeImageFile(image)]), "Readable native text" * 10, engine)
+
+    assert text == []
+    assert engine.calls == 0
+
+
+def test_ocr_uses_full_page_image_when_native_text_is_sparse() -> None:
+    image = Image.new("RGB", (1200, 1700), "white")
+    engine = _FakeOcr()
+
+    text = _ocr_page_images(_FakePage([_FakeImageFile(image)]), "", engine)
+
+    assert text == ["Ray F"]
+    assert engine.calls == 1
 
 
 def test_bm25_ranks_relevant_section_first() -> None:
@@ -50,3 +177,101 @@ def test_bm25_ranks_relevant_section_first() -> None:
 
     assert hits[0]["chunk_id"] == "parallel"
     assert hits[0]["rrf_score"] > 0
+
+
+def test_dense_search_syncs_chunk_text_and_returns_cosine_score() -> None:
+    chunks = [
+        {
+            "chunk_id": "refraction",
+            "chapter_title": "Light",
+            "section_title": "Refraction",
+            "content": "Light bends when it enters glass.",
+            "equations": ["n = c/v"],
+        },
+        {
+            "chunk_id": "reflection",
+            "chapter_title": "Light",
+            "section_title": "Reflection",
+            "content": "The angle of incidence equals the angle of reflection.",
+        },
+    ]
+    collection = _MemoryCollection(["refraction", "reflection"], [0.12, 0.4])
+    retriever = HybridRetriever(index=_MemoryIndex(chunks), dense_collection=collection)
+
+    hits = retriever.search_dense("Why does light bend in glass?", top_k=2)
+
+    assert [hit["chunk_id"] for hit in hits] == ["refraction", "reflection"]
+    assert hits[0]["dense_score"] == 0.88
+    assert "n = c/v" in collection.documents["refraction"]
+
+
+def test_dense_search_handles_empty_queries_without_indexing() -> None:
+    collection = _MemoryCollection([], [])
+    retriever = HybridRetriever(index=_MemoryIndex([]), dense_collection=collection)
+
+    assert retriever.search_dense("  ") == []
+    assert collection.documents == {}
+
+
+def test_hybrid_search_fuses_overlapping_and_unique_results() -> None:
+    shared = {"chunk_id": "shared", "content": "Found by both retrievers."}
+    lexical_only = {"chunk_id": "lexical", "content": "Found by BM25."}
+    dense_only = {"chunk_id": "semantic", "content": "Found by dense search."}
+    retriever = HybridRetriever(index=_MemoryIndex([]))
+    retriever.search_bm25 = lambda query, top_k: [
+        dict(lexical_only, bm25_score=2.5),
+        dict(shared, bm25_score=1.5),
+    ]
+    retriever.search_dense = lambda query, top_k: [
+        dict(dense_only, dense_score=0.9),
+        dict(shared, dense_score=0.8),
+    ]
+
+    hits = retriever.search_hybrid("student question", top_k=3, k=60)
+    by_id = {hit["chunk_id"]: hit for hit in hits}
+
+    assert set(by_id) == {"shared", "lexical", "semantic"}
+    assert hits[0]["chunk_id"] == "shared"
+    assert abs(by_id["shared"]["rrf_score"] - 2 / 62) < 1e-12
+    assert by_id["shared"]["bm25_score"] == 1.5
+    assert by_id["shared"]["dense_score"] == 0.8
+    assert by_id["shared"]["bm25_rank"] == 2
+    assert by_id["shared"]["dense_rank"] == 2
+    assert by_id["lexical"]["bm25_rank"] == 1
+    assert by_id["semantic"]["dense_rank"] == 1
+
+
+def test_hybrid_search_validates_top_k_and_rrf_constant() -> None:
+    retriever = HybridRetriever(index=_MemoryIndex([]))
+
+    assert retriever.search_hybrid("query", top_k=0) == []
+    try:
+        retriever.search_hybrid("query", k=0)
+    except ValueError as exc:
+        assert "positive" in str(exc)
+    else:
+        raise AssertionError("Expected non-positive RRF constant to be rejected")
+
+
+def test_query_rewriting_adds_textbook_terms_for_colloquial_wording() -> None:
+    query = "Why does a pencil look broken in glass?"
+
+    rewritten = HybridRetriever.rewrite_query(query)
+
+    assert rewritten.startswith(query)
+    assert "refraction" in rewritten
+    assert "interface" in rewritten
+
+
+def test_cross_encoder_reranks_candidates_and_attaches_scores() -> None:
+    retriever = HybridRetriever(index=_MemoryIndex([]))
+    retriever._reranker = _FakeCrossEncoder()
+    candidates = [
+        {"chunk_id": "first", "content": "lower model score"},
+        {"chunk_id": "second", "content": "higher model score"},
+    ]
+
+    hits = retriever.rerank("query", candidates, top_k=1)
+
+    assert [hit["chunk_id"] for hit in hits] == ["second"]
+    assert hits[0]["reranker_score"] == 0.9

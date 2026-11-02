@@ -56,11 +56,11 @@ Human-judge calibration, assessment-material approval, question-bank rejection c
   - `Socratic/socratic_tutor/index.py`
   - `Socratic/scripts/evaluate_dev.py`
 * **Tasks**:
-  1. Implement BM25 lexical indexing using `rank_bm25`.
-  2. Implement dense embedding similarity (`baai/bge-m3` or local `MiniLM`).
-  3. Implement RRF blending with constant $k=60$ and optional cross-encoder reranking.
-  4. Build query rewriting for colloquial student questions (e.g., *"why does pencil look broken in glass"* $\rightarrow$ *"refraction at air-water interface"*).
-* **Verification**: `python scripts/evaluate_dev.py --retrieval-only` measures Recall@5 on 30+ labelled queries.
+  1. [x] Implement BM25 lexical retrieval using `rank_bm25`.
+  2. [x] Implement dense embedding similarity with Chroma's local MiniLM ONNX embedding.
+  3. [x] Implement RRF blending with constant $k=60$ and optional cross-encoder reranking. Install `requirements-reranker.txt` for the CPU cross-encoder model.
+  4. [x] Add deterministic query rewrites for selected colloquial optics, vision, and circuit questions, including *"pencil looks broken in water"* $\rightarrow$ refraction/interface terms.
+* **Verification**: `scripts/evaluate_dev.py --retrieval-only --mode <bm25|dense|hybrid|hybrid-no-rewrite|hybrid-reranked>` measures Recall@5 on 30 development queries. In the recorded dev run, hybrid with rewrites scored 0.9500; the held-out 12 queries remain untouched.
 
 ---
 
