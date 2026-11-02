@@ -3,10 +3,13 @@
 import re
 from typing import Any
 from socratic_tutor import config
+from socratic_tutor.runtime_flags import defences_on
 
 
 def check_input_guardrails(text: str) -> dict[str, Any]:
     """Scan incoming student text for prompt injection, inappropriate content, and distress."""
+    if not defences_on():  # E2 "defences off" run: pass the text through untouched
+        return {"sanitized_query": text, "is_injection": False, "is_distress": False, "passed": True}
     # Pattern checks
     injection_patterns = [
         r"ignore (all )?previous instructions",
@@ -38,6 +41,8 @@ def check_input_guardrails(text: str) -> dict[str, Any]:
 
 def check_answer_leak(response: str, expected_answer: str | None) -> bool:
     """Return True if the response contains the direct numeric or final solution in practice mode."""
+    if not defences_on():  # E2 "defences off" run: the output guard is disabled
+        return False
     if not expected_answer:
         return False
     # If final answer string directly matches or appears prominently

@@ -1,0 +1,36 @@
+# One versioned config for every model ID, sampling setting, budget and prompt
+# version used by the app and the evaluation harness (L16 minimum bar).
+#
+# Change a value here, bump `config_version`, and commit. Every eval run copies
+# the resolved values into results/experiment_log.csv, so each number in the
+# report can be traced to the exact config it came from.
+#
+# Environment variables with the same UPPER_CASE name still override these
+# values (useful for a one-off run), and the override is logged too.
+
+config_version: "2026-11-02.1"
+
+models:
+  supervisor_model: openai/gpt-4.1-mini      # coordinator (gpt-4o-mini was unreliable here in the L11 lab)
+  specialist_model: openai/gpt-4o-mini       # diagnostician, tutor, grader, question setter
+  judge_model: google/gemini-2.5-flash       # different family from the agents, as the guide requires
+  simulated_student_model: meta-llama/llama-3.3-70b-instruct  # plays the hidden student cards; not the agent's family
+  embedding_model: baai/bge-m3
+
+sampling:
+  agent_temperature: 0.2
+  judge_temperature: 0.0
+  simulated_student_temperature: 0.7
+
+budgets:
+  max_llm_calls_per_turn: 12       # hook limit per student turn
+  max_session_turns: 6             # tutoring turns in one simulated session
+  case_timeout_seconds: 180        # an eval case that exceeds this is recorded as a timeout
+
+prompts:
+  # Prompt files live in prompts/. Bump the version when a prompt's text changes.
+  simulated_student: prompts/simulated_student.v1.md
+  judge: prompts/judge.v1.md
+  baseline_c0: prompts/baseline_c0.v1.md
+  baseline_c1: prompts/baseline_c1.v1.md
+  baseline_direct: prompts/baseline_direct.v1.md

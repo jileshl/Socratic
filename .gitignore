@@ -224,3 +224,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Evaluation outputs and traces (keep the folder, not the contents)
+results/*
+!results/.gitkeep
+# NCERT PDFs are fetched, never committed (data/ncert/ is covered by *.pdf above)
+!data/ncert/.gitkeep

@@ -3,7 +3,7 @@
 # "Could not find a version that satisfies the requirement gradio>=5.0".
 # Run `python scripts/check_env.py` first — it tells you exactly what to fix.
 #
-#   conda create -n hw2 python=3.11 -y && conda activate hw2
+#   python -m venv .venv && source .venv/bin/activate
 #   pip install -r requirements.txt
 #
 # Everything here is CPU-only. Chroma's default embedder is a MiniLM running on
@@ -33,3 +33,10 @@ pytest>=8.0
 
 #langChain text splitters
 langchain-text-splitters>=1.1.2
+
+# web service, metrics and config (R6)
+fastapi>=0.110
+uvicorn[standard]>=0.29
+prometheus-client>=0.20
+pyyaml>=6.0
+httpx>=0.27              # FastAPI TestClient in tests

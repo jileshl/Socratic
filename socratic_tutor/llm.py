@@ -16,7 +16,10 @@ def get_llm(model: str = config.SPECIALIST_MODEL, temperature: float = 0.2) -> C
         model=model,
         temperature=temperature,
         api_key=api_key,
-        base_url=base_url
+        base_url=base_url,
+        # Ask OpenRouter to return each call's cost so the dashboard and the
+        # eval log can report cost per session from real numbers.
+        extra_body={"usage": {"include": True}},
     )
 
 
