@@ -3,7 +3,7 @@
   "corpus": {
     "chapters": 3,
     "section_chunks": 35,
-    "source_revision": "c6bec7b77e30ffc22c6997600f2157f0cd6d3d0e"
+    "source": "NCERT PDFs supplied through DOCUMENT_PATH"
   },
   "evaluation": {
     "split": "dev",
@@ -20,7 +20,7 @@
     {"id": "RQ_032", "recall_at_5": 0.67}
   ],
   "reproduce": [
-    "python scripts/build_index.py --git-revision HEAD --force",
+    "python scripts/build_index.py --force",
     "python scripts/map_retrieval_chunks.py",
     "python scripts/evaluate_dev.py --retrieval-only"
   ]
