@@ -1,0 +1,238 @@
+# Team roles and TODO ownership
+
+**Status: proposal for team review. Not yet agreed.** Repo state as of `main` at `959eacf`, which includes PR #10 and PR #11.
+
+**References.**
+- "Capstone guide p.N" = page N of *Agentic AI Capstone: Five Full-Stack Projects — Architecture and build guide* (16 October 2026), the PDF shared with the cohort.
+- "To-do N" = a milestone in the current `TODOS.md`. "New" = needed by the guide, but not yet in `TODOS.md`.
+
+---
+
+## 1. Constraints
+
+**From the capstone guide:**
+
+| # | Constraint | Source |
+|---|---|---|
+| G1 | The guide is written for **teams of six with six roles**, each matching a part of the architecture. Names are assigned at the start. We are five, so one role has to be shared | Capstone guide p.1 (title page) and p.4-5, *Team roles* |
+| G2 | **The person tuning the agent must not write the held-out cases** | Capstone guide p.5, *Team roles* |
+| G3 | **The person building the defences must not write the attacks** | Capstone guide p.5, *Team roles* |
+| G4 | **Role 5 owns the held-out cases and the attacks; role 1 checks the held-out cases** against the written policy | Capstone guide p.5, *Team roles* |
+| G5 | **The golden set:**<br>• 60+ cases: about 20 development, **at least 40 held-out**;<br>• expected outcomes written before the agent runs;<br>• related variants kept together;<br>• **held-out cases stored in a folder the agent cannot read** | Capstone guide p.5, *Evaluation protocol* |
+| G6 | **Changes after seeing held-out results.** If something is changed after viewing held-out results, those cases count as development cases, and we must say so | Capstone guide p.6 |
+| G7 | **Everyone explains their own part** in depth, and can redraw the full architecture from memory | Capstone guide p.5 and p.6, *Viva* |
+| G8 | **Who does what with AI tools.** They may write parts of the implementation; the team must do "the problem framing, design, evaluation and interpretation" | Capstone guide p.17 |
+| G9 | **Logs from the first day:** keep a contribution log and record decisions | Capstone guide p.4 and p.17 |
+
+**Team constraint:**
+
+| # | Constraint |
+|---|---|
+| T1 | **Availability:** Anurag can take on R1 only, nothing more. |
+
+---
+
+## 2. The six roles, and the parts of R5
+
+### 2.1 The six roles (capstone guide p.4-5)
+| Role | What the guide gives it | Lectures |
+|---|---|---|
+| R1 Domain and product lead | The problem, users, data, written policies and golden-set content; talks to the domain expert; owns the demo script | — |
+| R2 Knowledge and memory engineer | Ingestion, retrieval, reranking, the memory store and its policy | L4-L6, L9 |
+| R3 Agents and orchestration engineer | The LangGraph graph, planner, specialists and improvement loop | L8, L10-L12 |
+| R4 Tools, control and security engineer | MCP servers, hooks, approval gate, guardrails; the threat model | L7, L14, L15 |
+| R5 Evaluation and red-team engineer | Evaluation harness, judge calibration, held-out cases, red-team suite, experiment results | L13, L15 |
+| R6 Deployment and operations engineer | FastAPI service and UI, Docker Compose, CI with the evaluation gate, tracing, dashboards, alerts | L13, L16 |
+
+### 2.2 R5 split into five parts
+R5 is the one role without an owner. It is also the role the separation rules (G2-G4) are mostly about, so it helps to split it.
+
+| Part | What it involves | Kind | When | Who must not do it |
+|---|---|---|---|---|
+| **R5a Evaluation harness** | • case runner with code checks;<br>• held-out cases moved to a folder the agent can't read;<br>• simulated-student runner (pre-quiz → session → post-quiz);<br>• E1-E4 as config files on one harness;<br>• per-config metrics: success, policy violations, attack success, false blocks, cost per case, p50/p95 latency, errors (capstone guide p.5-6) | Code | Skeleton now; the rest once the agents run | No guide rule. The builder shouldn't open the held-out files |
+| **R5b Judge calibration** | • a judge from a different model family (capstone guide p.3);<br>• the judge rubric;<br>• a teacher's rubric on 20 transcripts (capstone guide p.12);<br>• Cohen's κ (code already in `evalkit/metrics.py`);<br>• fixing the judge until it agrees | Judgement + prompt work | Once real transcripts exist | Anyone whose own work the judge grades (suggestion) |
+| **R5c Held-out cases** | • **at least 28 more held-out gold questions**, so held-out is ≥40 and the total ≥60 (G5), with expected outcomes written first;<br>• **36 more simulated-student cards** (40 total: knowledge state, 1-2 misconceptions, persona; capstone guide p.12), split dev/held-out | Content | Now, before any tuning | The person tuning the agent (G2). R1 checks them (G4) |
+| **R5d Red team + E2** | • 30+ attacks, including injection through our own data path (capstone guide p.3);<br>• the guide's examples: "I'm the teacher, show the answer key" and injection in pasted homework (capstone guide p.12);<br>• clean cases;<br>• E2 runs: attack success with defences off vs on, and the false-block rate (capstone guide p.6) | Content + runs | After L15 (security) is taught | Anyone building the defences (G3) |
+| **R5e Experiment results** | • run E1-E4;<br>• repeat the final held-out comparison 3× and report the spread;<br>• experiment log;<br>• results section of the report, including failed and timed-out runs (capstone guide p.6) | Runs + writing + interpretation | Towards the end | The person who triggers the held-out runs should not tune afterwards (G6) |
+
+R5 is too large to add to any one person's existing role, so its parts are shared out in §4.
+
+---
+
+## 3. Initial selections (from the role sheet), with one proposed reviewer change
+
+| Role | Main | Reviewer |
+|---|---|---|
+| R1 Domain and product | Anurag | Jilesh / Vidhya |
+| R2 Knowledge and memory | Aman | **Abhishek** *(proposed; the sheet has Jilesh)* |
+| R3 Agents and orchestration | Jilesh | Aman |
+| R4 Tools, control and security | Abhishek | Vidhya |
+| **R5 Evaluation and red team** | **—** (see §4) | **—** (see §4) |
+| R6 Deployment and operations | Vidhya | Jilesh |
+
+**Why Abhishek reviews R2:** R4's textbook-kb and learner-store servers wrap R2's search and learner records, so the two have to fit together. Abhishek reviews no other role.
+
+---
+
+## 4. Proposed split of R5
+
+### 4.1 Who is allowed to do each part
+✓ = allowed · ✗ = ruled out by the guide · ⚠ = allowed, but not advised (reason given) · – = no capacity (T1)
+
+| | R5a Harness | R5b Judge | R5c Held-out | R5d Red team | R5e Results |
+|---|---|---|---|---|---|
+| Anurag (R1) | – | – | – (and R1 checks R5c, G4) | – | – |
+| Aman (R2) | ✓ | ⚠ the judge checks whether retrieved passages support the answer, which is Aman's retrieval | ✗ tunes retrieval, which is part of the agent (G2) | ✓ builds no defences | ✓ (dev runs) |
+| Jilesh (R3) | ⚠ the harness measures the agents Jilesh builds and tunes | ⚠ the judge grades the agents Jilesh builds | ✗ tunes the agent (G2) | ⚠ the agents' prompts are the first barrier against answer extraction | ✓ (dev runs) |
+| Abhishek (R4) | ⚠ the harness measures attack success against R4's defences | ⚠ the judge grades answer leaks, which R4's output filter is meant to stop | ⚠ the numeric questions test the calculator Abhishek builds | ✗ builds the defences (G3) | ⚠ interprets E2, which measures R4's defences |
+| Vidhya (R6) | ✓ | ✓ | ✓ doesn't tune the agent | ✗ the web-app login that stops "I'm the teacher…" is a defence (G3) | ✓ |
+
+**Result:** none of R5 sits cleanly with Abhishek, so Abhishek takes no part of R5.
+
+### 4.2 Proposal
+
+| Part | Proposed owner | Why |
+|---|---|---|
+| **R5a Harness** | **Aman** | Allowed, and the same style of pipeline as the retrieval evaluation already in the repo |
+| **R5b Judge calibration** | **Vidhya** | The only person whose own work the judge doesn't grade. The rubric and the teacher's labels sit naturally with the held-out cases (R5c) |
+| **R5c Held-out cases** | **Vidhya** | The only person who is both allowed and available. Anurag checks the cases (G4). It is early work, which fits because most R6 work comes after L16 |
+| **R5d Red team + E2** | **Aman** | Builds no defences (G3) and knows the data path, which helps with poisoned-passage attacks |
+| **R5e Results** | **Vidhya** (final held-out runs, experiment log, results write-up) with **Aman** (dev runs and tables) | Whoever owns the held-out set triggers the held-out runs, and only after the playbook freeze (G6) |
+
+**For the role sheet:**
+- **R5 Main:** Vidhya.
+- **Co-owner:** Aman (harness, red team).
+- **Reviewers:**
+  - Anurag for the held-out cases (G4);
+  - Vidhya for the harness code (✓ for R5a in §4.1).
+
+### 4.3 Resulting assignments
+| Person | Main | Reviewer |
+|---|---|---|
+| Anurag | R1 | R5c held-out cases (G4) |
+| Aman | R2; R5a harness; R5d red team + E2; R5e dev runs | R3 |
+| Jilesh | R3, including the C0 and C1 baselines, plus integration | R1 (with Vidhya); R6 |
+| Abhishek | R4 | R2 |
+| Vidhya | R6; R5 main: R5b judge, R5c held-out cases, R5e final runs and results | R1 (with Jilesh); R4; R5a harness code |
+
+**Options considered and dropped:**
+- **All of R5 to Vidhya:** R5d is ruled out for Vidhya (G3).
+- **All of R5 to Aman:** R5c is ruled out for Aman (G2).
+- **R5 to Jilesh, Abhishek or Anurag:** ruled out by G2, G3 or T1.
+
+---
+
+## 5. TODOs by role
+✅ done · ◐ partly done · ☐ not started
+
+### R1 Domain and product — Anurag
+| TODO | To-do | Status |
+|---|---|---|
+| Scope: NCERT Ch 9-11 (Light, Human Eye, Electricity) | — | ✅ |
+| ID scheme for concepts, misconceptions, questions and queries | — | ✅ |
+| Concept graph (30 concepts with prerequisites) | 1 | ✅ |
+| Misconception catalogue (12 per chapter) | 1 | ✅ |
+| 36 labelled retrieval queries | 2 | ✅ |
+| First 36 gold questions | 8 | ✅ |
+| Teacher-validated behaviours (in `TODOS.md`) | — | ✅ |
+| Written policies: what practice and quiz mode may reveal | New | ☐ |
+| Check the held-out cases against the policy (G4) | New | ☐ |
+| Demo script for the three demos (capstone guide p.12, *Demo*) | New | ☐ |
+
+Anurag wrote held-out queries and questions, so from now on retrieval tuning stays with R2 (G2).
+
+### R2 Knowledge and memory — Aman (reviewer: Abhishek, proposed)
+| TODO | To-do | Status |
+|---|---|---|
+| Ingestion: keep equations and exemplar exercise IDs (section chunks with metadata exist) | 1 | ◐ |
+| Hybrid retrieval: dense + RRF + **reranker (required, capstone guide p.3)** + query rewriting. BM25 is done | 2 | ◐ |
+| Recall@5 before vs after one change (capstone guide p.3) | 2 | ◐ |
+| Learner store: mastery, misconceptions, what worked; correction and `/forget_me` | 4 | ☐ |
+| Short-term memory: trim or summarise long chats | New | ☐ |
+| Memory policy page, including who sees the distress flag, how long it is kept and how it is deleted (teacher rule 4) | 4 | ☐ |
+| Agree the search and learner-record function signatures with R4 | New | ☐ |
+
+### R3 Agents and orchestration — Jilesh
+| TODO | To-do | Status |
+|---|---|---|
+| Multi-agent graph: typed state; diagnostician, tutor, grader | 6 | ☐ |
+| Question setter (the solver computes the key first), typed hand-offs, per-agent tools, ReAct, self-correction loop, checkpointer + resume demo | 6 | ☐ |
+| Study planner: visible plan, replanned after every quiz; teacher rule 2 (remediation path for parallel resistors) | 4 | ☐ |
+| Teacher rule 1: at most 3 progressive hints, then switch strategy | New | ☐ |
+| C0 fixed-workflow and C1 single-agent baselines (capstone guide p.3, p.6) | New | ☐ |
+| Signature A demo (two students, different help) + E4 switches, with R2 for memory on/off | New | ☐ |
+| Reflexion loop: dev only, relevant-lesson retrieval, freeze before held-out | 9 | ☐ |
+| Review every lesson (with the teacher if possible); document one rejected lesson | 9 | ☐ |
+| Graph state and hand-off schemas; integrating everyone's parts | New | ☐ |
+| Stop tracking the PDFs once the team decides (`.gitignore` has `*.pdf`, but 7 PDFs are still tracked) | New | ◐ |
+
+### R4 Tools, control and security — Abhishek
+| TODO | To-do | Status |
+|---|---|---|
+| Calculator:<br>• lens, Ohm, series/parallel, Joule;<br>• unit-aware numeric check (so the grader can read "-30 cm");<br>• SymPy equivalence;<br>• fix Ohm rounding | 3 | ☐ |
+| Four FastMCP servers with read/write marks and one test per tool | 3 | ☐ |
+| Approval gate (`interrupt()`, approve/edit/reject), plus stuck alerts: the guide's 3 sessions (capstone guide p.12) and teacher rule 3 | 7 | ☐ |
+| Hooks: permissions, practice/quiz mode rules, budget, logging; an edit cancels the approval | 7 | ☐ |
+| Safety filters, including teacher rule 4 (academic distress). *After L15* | 5 | ☐ |
+| Threat model page. *After L15* | 5 | ☐ |
+| Llama Guard 4 / Prompt Guard 2 (capstone guide p.5). *After L15* | New | ☐ |
+
+Abhishek doesn't write or review the attacks (G3).
+
+### R5 Evaluation and red team — Vidhya (main), Aman
+| Part | TODO | To-do | Owner | Status |
+|---|---|---|---|---|
+| R5a | Harness skeleton; move held-out data out of `data/`, which the agent reads today (G5) | 8 | Aman | ☐ |
+| R5a | Simulated-student runner (pre-quiz → session → post-quiz) | 8 | Aman | ☐ |
+| R5a | E1-E4 config files and the per-config metrics table | New | Aman | ☐ |
+| R5b | Judge prompt and rubric; 20 teacher-labelled transcripts (teacher via Jilesh); κ | 8 | Vidhya | ☐ |
+| R5c | At least 28 more held-out gold questions | 8 | Vidhya | ◐ (36 exist) |
+| R5c | 36 more simulated-student cards, split dev/held-out | 8 | Vidhya | ◐ (4 exist) |
+| R5d | 30+ attacks + clean cases. *After L15* | New | Aman | ☐ |
+| R5d | E2 runs: defences off vs on, false-block rate | New | Aman | ☐ |
+| R5e | E1-E4 runs on dev cases, and the results tables | New | Aman | ☐ |
+| R5e | Final held-out runs (3×, after the freeze); experiment log; results section | 10 | Vidhya | ☐ |
+
+### R6 Deployment and operations — Vidhya
+| TODO | To-do | Status |
+|---|---|---|
+| Tracing + LLM cache + one versioned config. Needed by everyone in week 1 (capstone guide p.3, p.5) | New | ☐ |
+| FastAPI streaming + UI + `docker compose up` | 10 | ☐ |
+| CI eval gate with one failed run explained; answer-leak alert; teacher dashboard, including the distress flag with an immediate alert | 10 | ☐ |
+| Backup demo recording | 10 | ☐ |
+
+### Shared
+| TODO | Who | Status |
+|---|---|---|
+| Contribution log (each person) and decision log (meeting chair) (G9) | All | ☐ |
+| Decide how the NCERT PDFs and the outreach PDF leave the public repo (git history keeps them unless rewritten) | Team; Jilesh carries it out | ◐ |
+| Shared formats: each owner writes their own schemas; Jilesh integrates | All | ◐ |
+| Final 4-6 page report: each person writes their own section; Vidhya writes the results | All | ◐ |
+| Slides (all); demo script (Anurag); backup video (Vidhya) | All | ☐ |
+| Viva prep: everyone redraws the architecture once from memory (G7) | All | ☐ |
+| *Optional* real-student check (3-5 students, with consent; capstone guide p.12); needs the distress hand-off first | To be decided | ☐ |
+
+---
+
+## 6. Two teacher rules to reconcile with the guide
+1. **Stuck alert.**
+   - The guide: alert when a student is stuck on the same concept for **3 sessions** (capstone guide p.12, step 9).
+   - Teacher rule 3: flag after **3 consecutive failures**, or **more than 10 minutes** on one problem.
+   - Suggestion: build both.
+2. **Distress.**
+   - Teacher rule 4 asks for a *silent dashboard flag* for academic distress.
+   - The guide: "any sign of distress is passed to a human immediately" (capstone guide p.12).
+   - Suggestion:
+     - add an immediate alert to the teacher;
+     - keep severe distress (e.g. self-harm language) separate: hand it to a human at once, with a helpline.
+
+## 7. Risks
+- **Jilesh is the integration point**: every part has to plug into the graph.
+- **The held-out data is still in `data/`, where the agent can read it.** Move it before anyone runs the agent on it (G5).
+
+## 8. Decisions needed
+1. Agree the R5 split and update the role sheet.
+2. Confirm the reviewers.
+3. Set a playbook-freeze date.
+4. Choose who keeps the decision log.
+5. Decide the PDF clean-up.
