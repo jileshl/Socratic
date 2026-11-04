@@ -498,3 +498,123 @@ def test_series_and_parallel_name_the_bad_resistor() -> None:
     assert "Resistor 2" in with_a_zero["error"]
     assert with_a_negative["ok"] is False
     assert "Resistor 2" in with_a_negative["error"]
+
+
+# ---------------------------------------------------------------------------
+# A11: electric power P = I^2 x R, and the cost of energy (NCERT section 11.8)
+# ---------------------------------------------------------------------------
+
+
+def test_power_from_current_and_resistance_ncert_exercise_17() -> None:
+    """NCERT Exercise 17: a heater of 44 ohm draws 5 A, so heat is produced at P = 5^2 x 44 = 1100 W."""
+    result = math_tools.solve_power_current_resistance(i=5, r=44)
+    assert result["ok"] is True
+    assert result["solved_for"] == "P"
+    assert result["value"] == pytest.approx(1100.0)
+    assert result["unit"] == "W"
+    assert result["formula"] == "P = I^2 x R"
+
+
+def test_power_finds_the_current_with_a_square_root() -> None:
+    """NCERT Example 11.11: 100 J each second (100 W) in a 4 ohm resistor gives I = sqrt(100 / 4) = 5 A."""
+    result = math_tools.solve_power_current_resistance(p=100, r=4)
+    assert result["ok"] is True
+    assert result["solved_for"] == "I"
+    assert result["value"] == pytest.approx(5.0)
+    assert result["unit"] == "A"
+    assert result["formula"] == "I = sqrt(P / R)"
+
+
+def test_power_finds_the_resistance() -> None:
+    """NCERT Exercise 17 the other way round: 1100 W at 5 A means R = 1100 / 5^2 = 44 ohm."""
+    result = math_tools.solve_power_current_resistance(p=1100, i=5)
+    assert result["ok"] is True
+    assert result["solved_for"] == "R"
+    assert result["value"] == pytest.approx(44.0)
+    assert result["unit"] == "ohm"
+    assert result["formula"] == "R = P / I^2"
+
+
+def test_power_in_one_resistor_ncert_exercise_14_chain() -> None:
+    """NCERT Exercise 14(i): 6 V across 1 ohm and 2 ohm in series. The power used in the 2 ohm resistor is 8 W.
+
+    This runs the calls in the order the agent would make them: series, then Ohm's law, then power.
+    """
+    total = math_tools.solve_series_resistance([1, 2])
+    current = math_tools.solve_ohms_law(v=6, r=total["value"])
+    power = math_tools.solve_power_current_resistance(i=current["value"], r=2)
+    assert total["value"] == pytest.approx(3.0)
+    assert current["value"] == pytest.approx(2.0)
+    assert power["value"] == pytest.approx(8.0)
+
+
+def test_power_needs_exactly_two_values() -> None:
+    """One value, or all three, cannot be solved."""
+    only_one = math_tools.solve_power_current_resistance(i=5)
+    all_three = math_tools.solve_power_current_resistance(p=1100, i=5, r=44)
+    assert only_one["ok"] is False
+    assert all_three["ok"] is False
+    assert "exactly two" in only_one["error"]
+
+
+def test_power_refuses_a_negative_or_zero_before_the_square_root() -> None:
+    """A negative or zero resistance gets an error instead of crashing math.sqrt or dividing by zero."""
+    negative = math_tools.solve_power_current_resistance(p=100, r=-4)
+    zero = math_tools.solve_power_current_resistance(p=100, r=0)
+    assert negative["ok"] is False
+    assert "Resistance R" in negative["error"]
+    assert zero["ok"] is False
+    assert "Resistance R" in zero["error"]
+
+
+def test_energy_cost_ncert_example_11_13() -> None:
+    """NCERT Example 11.13: the fridge uses 96 kW h; at Rs 3.00 per kW h that costs Rs 288.
+
+    The agent first converts 96 kW h to joules (SI), then asks for the cost.
+    """
+    energy = math_tools.convert_to_si(96, "kWh")
+    result = math_tools.solve_energy_cost(energy=energy["value"], rate=3.00)
+    assert energy["value"] == pytest.approx(3.456e8)
+    assert result["ok"] is True
+    assert result["solved_for"] == "cost"
+    assert result["value"] == pytest.approx(288.0)
+    assert result["unit"] == "Rs"
+    assert result["formula"] == "cost = (energy / 3.6e6 J per kW h) x rate"
+
+
+def test_energy_cost_finds_the_energy() -> None:
+    """Rs 288 paid at Rs 3.00 per kW h means 96 kW h were used, which is 3.456 x 10^8 J (the SI unit)."""
+    result = math_tools.solve_energy_cost(rate=3.00, cost=288)
+    assert result["ok"] is True
+    assert result["solved_for"] == "energy"
+    assert result["value"] == pytest.approx(3.456e8)
+    assert result["unit"] == "J"
+
+
+def test_energy_cost_finds_the_rate() -> None:
+    """Rs 288 for 3.456 x 10^8 J (96 kW h) means the rate was Rs 3.00 per kW h."""
+    result = math_tools.solve_energy_cost(energy=3.456e8, cost=288)
+    assert result["ok"] is True
+    assert result["solved_for"] == "rate"
+    assert result["value"] == pytest.approx(3.0)
+    assert result["unit"] == "Rs per kW h"
+
+
+def test_energy_cost_one_unit_costs_the_rate() -> None:
+    """1 kW h (3.6 x 10^6 J) costs exactly the rate. This checks the joules-to-kW h factor."""
+    result = math_tools.solve_energy_cost(energy=3.6e6, rate=5.0)
+    assert result["value"] == pytest.approx(5.0)
+
+
+def test_energy_cost_needs_exactly_two_values() -> None:
+    """One value alone cannot be solved."""
+    only_one = math_tools.solve_energy_cost(rate=3.00)
+    assert only_one["ok"] is False
+    assert "exactly two" in only_one["error"]
+
+
+def test_energy_cost_refuses_a_zero_rate() -> None:
+    """A zero rate is refused, because finding the energy would divide by it."""
+    result = math_tools.solve_energy_cost(rate=0, cost=288)
+    assert result["ok"] is False
+    assert "Rate" in result["error"]

@@ -602,3 +602,121 @@ def solve_parallel_resistance(resistors: list[float]) -> dict[str, Any]:
     # [R]
     return make_result("Rp", rp, "ohm", "1/Rp = 1/R1 + 1/R2 + ...")
 
+
+def solve_power_current_resistance(p: float | None = None, i: float | None = None, r: float | None = None) -> dict[str, Any]:
+    """Electric power from current and resistance: P = I^2 x R (NCERT Class 10 Science, Ch 11, Eq. 11.22).
+
+    Give exactly two of the three values and leave the third as None; the missing one is calculated.
+    Units are SI: p in watt (W), i in ampere (A), r in ohm.
+    P is also the rate at which heat is produced in the resistor (joule per second).
+    For one resistor inside a circuit, first find the current through that resistor (for example with solve_ohms_law).
+    Every given value must be greater than 0.
+    Returns the shared result shape, or the error shape if the inputs cannot be used.
+    """
+    # Flowchart (each [box] matches a comment in the code below):
+    #
+    #   [S1] exactly two of p, i, r given?     no -> [E] error
+    #          | yes
+    #          v
+    #   [S2] every given value greater than 0? no -> [E] error
+    #          | yes
+    #          v
+    #   [S3] which one is missing?
+    #          |                    |                      |
+    #          | p missing          | i missing            | r missing
+    #          v                    v                      v
+    #   [B-P] p = i * i * r  [B-I] i = sqrt(p / r)  [B-R] r = p / (i * i)
+    #          |                    |                      |
+    #          v                    v                      v
+    #   [R] make_result(quantity, exact value, unit, formula)
+
+    # [S1] exactly two of the three values must be given.
+    if count_given([p, i, r]) != 2:
+        return make_error("Give exactly two of P (watt), I (ampere) and R (ohm), and leave the third empty.")
+
+    # [S2] every given value must be greater than 0.
+    # This one check also rules out dividing by zero and taking the square root of a negative number
+    # (math.sqrt of a negative number crashes), so the branches below need no checks of their own.
+    bad_name = find_zero_or_negative(["Power P", "Current I", "Resistance R"], [p, i, r])
+    if bad_name is not None:
+        return make_error(bad_name + " must be greater than 0.")
+
+    # [S3] calculate whichever value is missing, exactly (no rounding).
+    if p is None:
+        # [B-P] P is missing: square the current, then multiply by the resistance.
+        power = i * i * r
+        return make_result("P", power, "W", "P = I^2 x R")
+
+    if i is None:
+        # [B-I] I is missing: I^2 = P / R, so I is the square root of P / R.
+        # Only the positive root is kept, because the current here is a size (magnitude).
+        current = math.sqrt(p / r)
+        return make_result("I", current, "A", "I = sqrt(P / R)")
+
+    # [B-R] The only case left is that R is missing.
+    resistance = p / (i * i)
+    return make_result("R", resistance, "ohm", "R = P / I^2")
+
+
+def solve_energy_cost(energy: float | None = None, rate: float | None = None, cost: float | None = None) -> dict[str, Any]:
+    """Cost of electric energy: cost = energy in kW h x rate (NCERT Class 10 Science, Ch 11, section 11.8, Example 11.13).
+
+    Give exactly two of the three values and leave the third as None; the missing one is calculated.
+    energy is in joule (J), the SI unit. If it is given in kW h ("units" on an electricity bill),
+    convert it first with convert_to_si(value, "kWh").
+    rate is the price of 1 kW h, in rupees (Rs per kW h). cost is in rupees (Rs).
+    1 kW h = 3.6 x 10^6 J.
+    Every given value must be greater than 0.
+    Returns the shared result shape, or the error shape if the inputs cannot be used.
+    """
+    # Flowchart (each [box] matches a comment in the code below):
+    #
+    #   [S1] exactly two of energy, rate, cost given?   no -> [E] error
+    #          | yes
+    #          v
+    #   [S2] every given value greater than 0?          no -> [E] error
+    #          | yes
+    #          v
+    #   [K] joules_per_kwh = 3.6e6, read from the unit table
+    #          |
+    #          v
+    #   [S3] which one is missing?
+    #          |
+    #          +-- cost missing   -> [B-C]    kwh = energy / joules_per_kwh, then cost = kwh * rate
+    #          +-- rate missing   -> [B-RATE] kwh = energy / joules_per_kwh, then rate = cost / kwh
+    #          +-- energy missing -> [B-E]    kwh = cost / rate, then energy = kwh * joules_per_kwh
+    #          |
+    #          v
+    #   [R] make_result(quantity, exact value, unit, formula)
+
+    # [S1] exactly two of the three values must be given.
+    if count_given([energy, rate, cost]) != 2:
+        return make_error("Give exactly two of energy (joule), rate (Rs per kW h) and cost (Rs), and leave the third empty.")
+
+    # [S2] every given value must be greater than 0 (this also rules out dividing by zero below).
+    bad_name = find_zero_or_negative(["Energy", "Rate", "Cost"], [energy, rate, cost])
+    if bad_name is not None:
+        return make_error(bad_name + " must be greater than 0.")
+
+    # [K] how many joules make 1 kW h, read from the unit table so the number is written in one place only.
+    # UNIT_SYMBOLS["kWh"] is ("energy", "J", 3600000.0); position 2 is the factor.
+    joules_per_kwh: float = UNIT_SYMBOLS["kWh"][2]
+
+    # [S3] calculate whichever value is missing, exactly (no rounding).
+    if cost is None:
+        # [B-C] cost is missing: turn the energy into kW h, then multiply by the price of 1 kW h.
+        kwh = energy / joules_per_kwh
+        total_cost = kwh * rate
+        return make_result("cost", total_cost, "Rs", "cost = (energy / 3.6e6 J per kW h) x rate")
+
+    if rate is None:
+        # [B-RATE] rate is missing: turn the energy into kW h, then share the cost over those kW h.
+        kwh = energy / joules_per_kwh
+        price_per_kwh = cost / kwh
+        return make_result("rate", price_per_kwh, "Rs per kW h", "rate = cost / (energy / 3.6e6 J per kW h)")
+
+    # [B-E] The only case left is that energy is missing: kW h bought = cost / rate, then turn kW h into joules.
+    kwh = cost / rate
+    energy_used = kwh * joules_per_kwh
+    return make_result("energy", energy_used, "J", "energy = (cost / rate) x 3.6e6 J per kW h")
+
