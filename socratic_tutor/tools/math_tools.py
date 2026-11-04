@@ -117,28 +117,99 @@ def solve_charge_current(q: float | None = None, i: float | None = None, t: floa
     Every given value must be greater than 0.
     Returns the shared result shape, or the error shape if the inputs cannot be used.
     """
-    # Step 1: exactly two of the three values must be given.
+    # Flowchart (each [box] matches a comment in the code below):
+    #
+    #   [S1] exactly two of q, i, t given?     no -> [E] error
+    #          | yes
+    #          v
+    #   [S2] every given value greater than 0? no -> [E] error
+    #          | yes
+    #          v
+    #   [S3] which one is missing?
+    #          |                  |                  |
+    #          | q missing        | i missing        | t missing
+    #          v                  v                  v
+    #   [B-Q] q = i * t    [B-I] i = q / t    [B-t] t = q / i
+    #          |                  |                  |
+    #          v                  v                  v
+    #   [R] make_result(quantity, exact value, unit, formula)
+
+    # [S1] exactly two of the three values must be given.
     if count_given([q, i, t]) != 2:
         return make_error("Give exactly two of Q (coulomb), I (ampere) and t (second), and leave the third empty.")
 
-    # Step 2: every given value must be greater than 0.
+    # [S2] every given value must be greater than 0.
     # This one check also rules out dividing by zero, so the branches below need no checks of their own.
     bad_name = find_zero_or_negative(["Charge Q", "Current I", "Time t"], [q, i, t])
     if bad_name is not None:
         return make_error(bad_name + " must be greater than 0.")
 
-    # Step 3: calculate whichever value is missing, exactly (no rounding).
+    # [S3] calculate whichever value is missing, exactly (no rounding).
     if q is None:
+        # [B-Q] Q is missing.
         charge = i * t
         return make_result("Q", charge, "C", "Q = I x t")
 
     if i is None:
+        # [B-I] I is missing.
         current = q / t
         return make_result("I", current, "A", "I = Q / t")
 
-    # The only case left is that t is missing.
+    # [B-t] The only case left is that t is missing.
     time_taken = q / i
     return make_result("t", time_taken, "s", "t = Q / I")
+
+
+def solve_voltage_work_charge(v: float | None = None, w: float | None = None, q: float | None = None) -> dict[str, Any]:
+    """Potential difference: V = W / Q (NCERT Class 10 Science, Ch 11, Eq. 11.2).
+
+    Give exactly two of the three values and leave the third as None; the missing one is calculated.
+    Units are SI: v in volt (V), w (work done) in joule (J), q (charge) in coulomb (C).
+    1 volt means 1 joule of work done to move 1 coulomb of charge.
+    Every given value must be greater than 0.
+    Returns the shared result shape, or the error shape if the inputs cannot be used.
+    """
+    # Flowchart (each [box] matches a comment in the code below):
+    #
+    #   [S1] exactly two of v, w, q given?     no -> [E] error
+    #          | yes
+    #          v
+    #   [S2] every given value greater than 0? no -> [E] error
+    #          | yes
+    #          v
+    #   [S3] which one is missing?
+    #          |                  |                  |
+    #          | v missing        | w missing        | q missing
+    #          v                  v                  v
+    #   [B-V] v = w / q    [B-W] w = v * q    [B-Q] q = w / v
+    #          |                  |                  |
+    #          v                  v                  v
+    #   [R] make_result(quantity, exact value, unit, formula)
+
+    # [S1] exactly two of the three values must be given.
+    if count_given([v, w, q]) != 2:
+        return make_error("Give exactly two of V (volt), W (joule) and Q (coulomb), and leave the third empty.")
+
+    # [S2] every given value must be greater than 0.
+    # This one check also rules out dividing by zero, so the branches below need no checks of their own.
+    bad_name = find_zero_or_negative(["Potential difference V", "Work done W", "Charge Q"], [v, w, q])
+    if bad_name is not None:
+        return make_error(bad_name + " must be greater than 0.")
+
+    # [S3] calculate whichever value is missing, exactly (no rounding).
+    if v is None:
+        # [B-V] V is missing.
+        voltage = w / q
+        return make_result("V", voltage, "V", "V = W / Q")
+
+    if w is None:
+        # [B-W] W is missing.
+        work_done = v * q
+        return make_result("W", work_done, "J", "W = V x Q")
+
+    # [B-Q] The only case left is that Q is missing.
+    charge = w / v
+    return make_result("Q", charge, "C", "Q = W / V")
 
 
 def solve_ohms_law(v: float | None = None, i: float | None = None, r: float | None = None) -> dict[str, Any]:
@@ -150,26 +221,45 @@ def solve_ohms_law(v: float | None = None, i: float | None = None, r: float | No
     Every given value must be greater than 0.
     Returns the shared result shape, or the error shape if the inputs cannot be used.
     """
-    # Step 1: exactly two of the three values must be given.
+    # Flowchart (each [box] matches a comment in the code below):
+    #
+    #   [S1] exactly two of v, i, r given?     no -> [E] error
+    #          | yes
+    #          v
+    #   [S2] every given value greater than 0? no -> [E] error
+    #          | yes
+    #          v
+    #   [S3] which one is missing?
+    #          |                  |                  |
+    #          | v missing        | i missing        | r missing
+    #          v                  v                  v
+    #   [B-V] v = i * r    [B-I] i = v / r    [B-R] r = v / i
+    #          |                  |                  |
+    #          v                  v                  v
+    #   [R] make_result(quantity, exact value, unit, formula)
+
+    # [S1] exactly two of the three values must be given.
     if count_given([v, i, r]) != 2:
         return make_error("Give exactly two of V (volt), I (ampere) and R (ohm), and leave the third empty.")
 
-    # Step 2: every given value must be greater than 0.
+    # [S2] every given value must be greater than 0.
     # This one check also rules out dividing by zero, so the branches below need no checks of their own.
     bad_name = find_zero_or_negative(["Potential difference V", "Current I", "Resistance R"], [v, i, r])
     if bad_name is not None:
         return make_error(bad_name + " must be greater than 0.")
 
-    # Step 3: calculate whichever value is missing, exactly (no rounding).
+    # [S3] calculate whichever value is missing, exactly (no rounding).
     if v is None:
+        # [B-V] V is missing.
         voltage = i * r
         return make_result("V", voltage, "V", "V = I x R")
 
     if i is None:
+        # [B-I] I is missing.
         current = v / r
         return make_result("I", current, "A", "I = V / R")
 
-    # The only case left is that R is missing.
+    # [B-R] The only case left is that R is missing.
     resistance = v / i
     return make_result("R", resistance, "ohm", "R = V / I")
 
