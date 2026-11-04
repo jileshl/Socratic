@@ -515,17 +515,90 @@ def wire_area(diameter: float | None = None, radius: float | None = None) -> dic
     return make_result("area", area, "m^2", "A = pi x r^2")
 
 
-# TODO (Milestone 3.4 / L7): Solve Equivalent Resistance in Series and Parallel
-def solve_equivalent_resistance(resistors: list[float], mode: str = "series") -> dict[str, Any]:
-    """Compute equivalent resistance for resistors in 'series' or 'parallel'."""
-    if not resistors:
-        return {"error": "Resistor list cannot be empty"}
-    if mode == "series":
-        return {"req": round(sum(resistors), 2)}
-    elif mode == "parallel":
-        if any(r <= 0 for r in resistors):
-            return {"error": "Resistances must be positive"}
-        inv_sum = sum(1.0 / r for r in resistors)
-        return {"req": round(1.0 / inv_sum, 2)}
-    return {"error": f"Unknown mode: {mode}"}
+def resistor_names(count: int) -> list[str]:
+    """Build the names "Resistor 1", "Resistor 2", ... so an error can say which resistor is wrong."""
+    names: list[str] = []
+    for number in range(1, count + 1):
+        names.append("Resistor " + str(number))
+    return names
+
+
+def solve_series_resistance(resistors: list[float]) -> dict[str, Any]:
+    """Resistors joined end to end (in series): Rs = R1 + R2 + ... (NCERT Class 10 Science, Ch 11, section 11.6.1).
+
+    resistors is a list of at least 2 resistances, each in ohm and greater than 0.
+    In series the same current flows through every resistor, and Rs is bigger than any one of them.
+    For a mixed circuit, work out each group first, then pass the group results in here.
+    Returns the shared result shape, or the error shape if the inputs cannot be used.
+    """
+    # Flowchart (each [box] matches a comment in the code below):
+    #
+    #   [S1] at least 2 resistors in the list?     no -> [E] error
+    #          | yes
+    #          v
+    #   [S2] every resistor greater than 0?        no -> [E] error
+    #          | yes
+    #          v
+    #   [B-S] add them up one by one: total = R1 + R2 + ...
+    #          |
+    #          v
+    #   [R] make_result("Rs", total, "ohm", "Rs = R1 + R2 + ...")
+
+    # [S1] a combination needs at least 2 resistors.
+    if len(resistors) < 2:
+        return make_error("Give at least 2 resistances (in ohm) to combine in series.")
+
+    # [S2] every resistor must be greater than 0.
+    bad_name = find_zero_or_negative(resistor_names(len(resistors)), resistors)
+    if bad_name is not None:
+        return make_error(bad_name + " must be greater than 0.")
+
+    # [B-S] add the resistances one by one.
+    total = 0.0
+    for resistance in resistors:
+        total = total + resistance
+
+    # [R]
+    return make_result("Rs", total, "ohm", "Rs = R1 + R2 + ...")
+
+
+def solve_parallel_resistance(resistors: list[float]) -> dict[str, Any]:
+    """Resistors joined side by side (in parallel): 1/Rp = 1/R1 + 1/R2 + ... (NCERT Class 10 Science, Ch 11, section 11.6.2).
+
+    resistors is a list of at least 2 resistances, each in ohm and greater than 0.
+    In parallel every resistor has the same potential difference, and Rp is smaller than the smallest one.
+    For a mixed circuit, work out each group first, then combine the group results.
+    Returns the shared result shape, or the error shape if the inputs cannot be used.
+    """
+    # Flowchart (each [box] matches a comment in the code below):
+    #
+    #   [S1] at least 2 resistors in the list?     no -> [E] error
+    #          | yes
+    #          v
+    #   [S2] every resistor greater than 0?        no -> [E] error
+    #          | yes
+    #          v
+    #   [B-P] add up 1/R for every resistor, then flip the sum: rp = 1 / sum
+    #          |
+    #          v
+    #   [R] make_result("Rp", rp, "ohm", "1/Rp = 1/R1 + 1/R2 + ...")
+
+    # [S1] a combination needs at least 2 resistors.
+    if len(resistors) < 2:
+        return make_error("Give at least 2 resistances (in ohm) to combine in parallel.")
+
+    # [S2] every resistor must be greater than 0 (this also rules out dividing by zero below).
+    bad_name = find_zero_or_negative(resistor_names(len(resistors)), resistors)
+    if bad_name is not None:
+        return make_error(bad_name + " must be greater than 0.")
+
+    # [B-P] add up 1/R for every resistor...
+    reciprocal_sum = 0.0
+    for resistance in resistors:
+        reciprocal_sum = reciprocal_sum + 1 / resistance
+    # ...then flip the sum, because the formula gives 1/Rp, not Rp.
+    rp = 1 / reciprocal_sum
+
+    # [R]
+    return make_result("Rp", rp, "ohm", "1/Rp = 1/R1 + 1/R2 + ...")
 

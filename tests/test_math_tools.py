@@ -419,3 +419,82 @@ def test_resistivity_rejects_a_zero_length() -> None:
     result = math_tools.solve_resistivity(r=26, rho=1e-6, length=0)
     assert result["ok"] is False
     assert "Length" in result["error"]
+
+
+# ---------------------------------------------------------------------------
+# A9: resistors in series and in parallel (NCERT sections 11.6.1 and 11.6.2)
+# ---------------------------------------------------------------------------
+
+
+def test_resistor_names_count_from_one() -> None:
+    """Error messages name resistors the way people do: Resistor 1, Resistor 2, ..."""
+    assert math_tools.resistor_names(3) == ["Resistor 1", "Resistor 2", "Resistor 3"]
+
+
+def test_series_ncert_example_11_7() -> None:
+    """NCERT Example 11.7: a 20 ohm lamp and a 4 ohm conductor in series give 24 ohm."""
+    result = math_tools.solve_series_resistance([20, 4])
+    assert result["ok"] is True
+    assert result["solved_for"] == "Rs"
+    assert result["value"] == pytest.approx(24.0)
+    assert result["unit"] == "ohm"
+    assert result["formula"] == "Rs = R1 + R2 + ..."
+
+
+def test_series_is_bigger_than_every_resistor() -> None:
+    """5, 10 and 30 ohm in series give 45 ohm, which is bigger than the biggest one (30 ohm)."""
+    result = math_tools.solve_series_resistance([5, 10, 30])
+    assert result["value"] == pytest.approx(45.0)
+    assert result["value"] > 30
+
+
+def test_parallel_ncert_example_11_8() -> None:
+    """NCERT Example 11.8: 5, 10 and 30 ohm in parallel give 3 ohm, smaller than the smallest one (5 ohm).
+
+    The computer returns 2.9999999999999996, because 1/30 cannot be stored exactly as a float,
+    so the value is compared with pytest.approx, never with ==.
+    """
+    result = math_tools.solve_parallel_resistance([5, 10, 30])
+    assert result["ok"] is True
+    assert result["solved_for"] == "Rp"
+    assert result["value"] == pytest.approx(3.0)
+    assert result["value"] < 5
+    assert result["formula"] == "1/Rp = 1/R1 + 1/R2 + ..."
+
+
+def test_parallel_of_two_equal_resistors_is_half() -> None:
+    """Two equal resistors in parallel give half of one: 4 and 4 give 2 ohm, 6 and 6 give 3 ohm."""
+    assert math_tools.solve_parallel_resistance([4, 4])["value"] == pytest.approx(2.0)
+    assert math_tools.solve_parallel_resistance([6, 6])["value"] == pytest.approx(3.0)
+
+
+def test_mixed_circuit_ncert_example_11_9() -> None:
+    """NCERT Example 11.9: (10 || 40) in series with (30 || 20 || 60) is 8 + 10 = 18 ohm; on 12 V, I = 0.67 A.
+
+    This runs the calls in the order the agent would make them.
+    """
+    group_1 = math_tools.solve_parallel_resistance([10, 40])
+    group_2 = math_tools.solve_parallel_resistance([30, 20, 60])
+    total = math_tools.solve_series_resistance([group_1["value"], group_2["value"]])
+    current = math_tools.solve_ohms_law(v=12, r=total["value"])
+    assert group_1["value"] == pytest.approx(8.0)
+    assert group_2["value"] == pytest.approx(10.0)
+    assert total["value"] == pytest.approx(18.0)
+    assert current["value"] == pytest.approx(0.67, rel=0.01)
+
+
+def test_series_and_parallel_need_at_least_two_resistors() -> None:
+    """One resistor, or an empty list, is not a combination, so it is refused."""
+    assert math_tools.solve_series_resistance([5])["ok"] is False
+    assert math_tools.solve_parallel_resistance([])["ok"] is False
+    assert "at least 2" in math_tools.solve_series_resistance([5])["error"]
+
+
+def test_series_and_parallel_name_the_bad_resistor() -> None:
+    """A zero or negative resistor is refused, and the error says which one it is."""
+    with_a_zero = math_tools.solve_parallel_resistance([5, 0, 10])
+    with_a_negative = math_tools.solve_series_resistance([5, -2])
+    assert with_a_zero["ok"] is False
+    assert "Resistor 2" in with_a_zero["error"]
+    assert with_a_negative["ok"] is False
+    assert "Resistor 2" in with_a_negative["error"]
