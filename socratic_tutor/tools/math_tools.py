@@ -603,6 +603,129 @@ def solve_parallel_resistance(resistors: list[float]) -> dict[str, Any]:
     return make_result("Rp", rp, "ohm", "1/Rp = 1/R1 + 1/R2 + ...")
 
 
+def solve_joule_heating(
+    h: float | None = None,
+    i: float | None = None,
+    r: float | None = None,
+    t: float | None = None,
+) -> dict[str, Any]:
+    """Joule's law of heating: H = I^2 x R x t (NCERT Class 10 Science, Ch 11, Eq. 11.21).
+
+    Give exactly three of the four values and leave the fourth as None; the missing one is calculated.
+    Units are SI: h (heat produced) in joule (J), i in ampere (A), r in ohm, t in second (s).
+    Convert minutes or hours to seconds first with convert_to_si.
+    All the energy becomes heat only in a purely resistive circuit (resistors only, no motor or fan).
+    If V and R are known instead of I, find I first with solve_ohms_law.
+    If the charge Q is given instead of I, the heat is V x Q: use solve_voltage_work_charge.
+    Every given value must be greater than 0.
+    Returns the shared result shape, or the error shape if the inputs cannot be used.
+    """
+    # Flowchart (each [box] matches a comment in the code below):
+    #
+    #   [S1] exactly three of h, i, r, t given?   no -> [E] error
+    #          | yes
+    #          v
+    #   [S2] every given value greater than 0?    no -> [E] error
+    #          | yes
+    #          v
+    #   [S3] which one is missing?
+    #          |                  |                   |                   |
+    #          | h missing        | i missing         | r missing         | t missing
+    #          v                  v                   v                   v
+    #   [B-H] h = i * i    [B-I] i = sqrt(     [B-R] r = h /       [B-T] t = h /
+    #         * r * t            h / (r * t))        (i * i * t)         (i * i * r)
+    #          |                  |                   |                   |
+    #          v                  v                   v                   v
+    #   [R] make_result(quantity, exact value, unit, formula)
+
+    # [S1] exactly three of the four values must be given.
+    if count_given([h, i, r, t]) != 3:
+        return make_error(
+            "Give exactly three of H (joule), I (ampere), R (ohm) and t (second), and leave the fourth empty."
+        )
+
+    # [S2] every given value must be greater than 0.
+    # This one check also rules out dividing by zero and taking the square root of a negative number
+    # (math.sqrt of a negative number crashes), so the branches below need no checks of their own.
+    bad_name = find_zero_or_negative(["Heat H", "Current I", "Resistance R", "Time t"], [h, i, r, t])
+    if bad_name is not None:
+        return make_error(bad_name + " must be greater than 0.")
+
+    # [S3] calculate whichever value is missing, exactly (no rounding).
+    if h is None:
+        # [B-H] H is missing: square the current, then multiply by the resistance and the time.
+        heat = i * i * r * t
+        return make_result("H", heat, "J", "H = I^2 x R x t")
+
+    if i is None:
+        # [B-I] I is missing: I^2 = H / (R x t), so I is the square root of that.
+        # Only the positive root is kept, because the current here is a size (magnitude).
+        current = math.sqrt(h / (r * t))
+        return make_result("I", current, "A", "I = sqrt(H / (R x t))")
+
+    if r is None:
+        # [B-R] R is missing.
+        resistance = h / (i * i * t)
+        return make_result("R", resistance, "ohm", "R = H / (I^2 x t)")
+
+    # [B-T] The only case left is that t is missing.
+    time_taken = h / (i * i * r)
+    return make_result("t", time_taken, "s", "t = H / (I^2 x R)")
+
+
+def solve_power_voltage_current(p: float | None = None, v: float | None = None, i: float | None = None) -> dict[str, Any]:
+    """Electric power from potential difference and current: P = V x I (NCERT Class 10 Science, Ch 11, Eq. 11.19, 11.22).
+
+    Give exactly two of the three values and leave the third as None; the missing one is calculated.
+    Units are SI: p in watt (W), v in volt (V), i in ampere (A). 1 W = 1 V x 1 A (Eq. 11.23).
+    Convert kW to W first with convert_to_si.
+    A rating such as "220 V, 1000 W" gives the current the device draws: I = P / V.
+    Every given value must be greater than 0.
+    Returns the shared result shape, or the error shape if the inputs cannot be used.
+    """
+    # Flowchart (each [box] matches a comment in the code below):
+    #
+    #   [S1] exactly two of p, v, i given?     no -> [E] error
+    #          | yes
+    #          v
+    #   [S2] every given value greater than 0? no -> [E] error
+    #          | yes
+    #          v
+    #   [S3] which one is missing?
+    #          |                  |                  |
+    #          | p missing        | v missing        | i missing
+    #          v                  v                  v
+    #   [B-P] p = v * i    [B-V] v = p / i    [B-I] i = p / v
+    #          |                  |                  |
+    #          v                  v                  v
+    #   [R] make_result(quantity, exact value, unit, formula)
+
+    # [S1] exactly two of the three values must be given.
+    if count_given([p, v, i]) != 2:
+        return make_error("Give exactly two of P (watt), V (volt) and I (ampere), and leave the third empty.")
+
+    # [S2] every given value must be greater than 0.
+    # This one check also rules out dividing by zero, so the branches below need no checks of their own.
+    bad_name = find_zero_or_negative(["Power P", "Potential difference V", "Current I"], [p, v, i])
+    if bad_name is not None:
+        return make_error(bad_name + " must be greater than 0.")
+
+    # [S3] calculate whichever value is missing, exactly (no rounding).
+    if p is None:
+        # [B-P] P is missing.
+        power = v * i
+        return make_result("P", power, "W", "P = V x I")
+
+    if v is None:
+        # [B-V] V is missing.
+        voltage = p / i
+        return make_result("V", voltage, "V", "V = P / I")
+
+    # [B-I] The only case left is that I is missing.
+    current = p / v
+    return make_result("I", current, "A", "I = P / V")
+
+
 def solve_power_current_resistance(p: float | None = None, i: float | None = None, r: float | None = None) -> dict[str, Any]:
     """Electric power from current and resistance: P = I^2 x R (NCERT Class 10 Science, Ch 11, Eq. 11.22).
 
@@ -610,6 +733,7 @@ def solve_power_current_resistance(p: float | None = None, i: float | None = Non
     Units are SI: p in watt (W), i in ampere (A), r in ohm.
     P is also the rate at which heat is produced in the resistor (joule per second).
     For one resistor inside a circuit, first find the current through that resistor (for example with solve_ohms_law).
+    If V is known instead of I, use solve_power_voltage_resistance (V and R) or solve_power_voltage_current (V and I).
     Every given value must be greater than 0.
     Returns the shared result shape, or the error shape if the inputs cannot be used.
     """
@@ -658,12 +782,123 @@ def solve_power_current_resistance(p: float | None = None, i: float | None = Non
     return make_result("R", resistance, "ohm", "R = P / I^2")
 
 
+def solve_power_voltage_resistance(p: float | None = None, v: float | None = None, r: float | None = None) -> dict[str, Any]:
+    """Electric power from potential difference and resistance: P = V^2 / R (NCERT Class 10 Science, Ch 11, Eq. 11.22).
+
+    Give exactly two of the three values and leave the third as None; the missing one is calculated.
+    Units are SI: p in watt (W), v in volt (V), r in ohm.
+    A rating such as "220 V, 100 W" gives the device's resistance: R = V^2 / P.
+    The resistance stays the same at another voltage, so use that resistance to find the power at the new voltage.
+    In a parallel circuit every resistor has the full voltage across it, so this needs no current.
+    Every given value must be greater than 0.
+    Returns the shared result shape, or the error shape if the inputs cannot be used.
+    """
+    # Flowchart (each [box] matches a comment in the code below):
+    #
+    #   [S1] exactly two of p, v, r given?     no -> [E] error
+    #          | yes
+    #          v
+    #   [S2] every given value greater than 0? no -> [E] error
+    #          | yes
+    #          v
+    #   [S3] which one is missing?
+    #          |                    |                      |
+    #          | p missing          | v missing            | r missing
+    #          v                    v                      v
+    #   [B-P] p = v * v / r  [B-V] v = sqrt(p * r)  [B-R] r = v * v / p
+    #          |                    |                      |
+    #          v                    v                      v
+    #   [R] make_result(quantity, exact value, unit, formula)
+
+    # [S1] exactly two of the three values must be given.
+    if count_given([p, v, r]) != 2:
+        return make_error("Give exactly two of P (watt), V (volt) and R (ohm), and leave the third empty.")
+
+    # [S2] every given value must be greater than 0.
+    # This one check also rules out dividing by zero and taking the square root of a negative number
+    # (math.sqrt of a negative number crashes), so the branches below need no checks of their own.
+    bad_name = find_zero_or_negative(["Power P", "Potential difference V", "Resistance R"], [p, v, r])
+    if bad_name is not None:
+        return make_error(bad_name + " must be greater than 0.")
+
+    # [S3] calculate whichever value is missing, exactly (no rounding).
+    if p is None:
+        # [B-P] P is missing: square the potential difference, then divide by the resistance.
+        power = v * v / r
+        return make_result("P", power, "W", "P = V^2 / R")
+
+    if v is None:
+        # [B-V] V is missing: V^2 = P x R, so V is the square root of P x R.
+        # Only the positive root is kept, because the potential difference here is a size (magnitude).
+        voltage = math.sqrt(p * r)
+        return make_result("V", voltage, "V", "V = sqrt(P x R)")
+
+    # [B-R] The only case left is that R is missing.
+    resistance = v * v / p
+    return make_result("R", resistance, "ohm", "R = V^2 / P")
+
+
+def solve_energy_power_time(energy: float | None = None, p: float | None = None, t: float | None = None) -> dict[str, Any]:
+    """Electric energy from power and time: energy = P x t (NCERT Class 10 Science, Ch 11, section 11.8).
+
+    Give exactly two of the three values and leave the third as None; the missing one is calculated.
+    Units are SI: energy in joule (J), p in watt (W), t in second (s).
+    Convert kW, hours or minutes first with convert_to_si.
+    In a purely resistive circuit (resistors only) this energy is also the heat produced.
+    For the cost on an electricity bill, pass the energy to solve_energy_cost.
+    Every given value must be greater than 0.
+    Returns the shared result shape, or the error shape if the inputs cannot be used.
+    """
+    # Flowchart (each [box] matches a comment in the code below):
+    #
+    #   [S1] exactly two of energy, p, t given?   no -> [E] error
+    #          | yes
+    #          v
+    #   [S2] every given value greater than 0?    no -> [E] error
+    #          | yes
+    #          v
+    #   [S3] which one is missing?
+    #          |                         |                       |
+    #          | energy missing          | p missing             | t missing
+    #          v                         v                       v
+    #   [B-E] energy = p * t      [B-P] p = energy / t    [B-T] t = energy / p
+    #          |                         |                       |
+    #          v                         v                       v
+    #   [R] make_result(quantity, exact value, unit, formula)
+
+    # [S1] exactly two of the three values must be given.
+    if count_given([energy, p, t]) != 2:
+        return make_error("Give exactly two of energy (joule), P (watt) and t (second), and leave the third empty.")
+
+    # [S2] every given value must be greater than 0.
+    # This one check also rules out dividing by zero, so the branches below need no checks of their own.
+    bad_name = find_zero_or_negative(["Energy", "Power P", "Time t"], [energy, p, t])
+    if bad_name is not None:
+        return make_error(bad_name + " must be greater than 0.")
+
+    # [S3] calculate whichever value is missing, exactly (no rounding).
+    if energy is None:
+        # [B-E] energy is missing.
+        energy_used = p * t
+        return make_result("energy", energy_used, "J", "energy = P x t")
+
+    if p is None:
+        # [B-P] P is missing.
+        power = energy / t
+        return make_result("P", power, "W", "P = energy / t")
+
+    # [B-T] The only case left is that t is missing.
+    time_taken = energy / p
+    return make_result("t", time_taken, "s", "t = energy / P")
+
+
 def solve_energy_cost(energy: float | None = None, rate: float | None = None, cost: float | None = None) -> dict[str, Any]:
     """Cost of electric energy: cost = energy in kW h x rate (NCERT Class 10 Science, Ch 11, section 11.8, Example 11.13).
 
     Give exactly two of the three values and leave the third as None; the missing one is calculated.
     energy is in joule (J), the SI unit. If it is given in kW h ("units" on an electricity bill),
     convert it first with convert_to_si(value, "kWh").
+    If the power and the time are known instead, find the energy first with solve_energy_power_time.
     rate is the price of 1 kW h, in rupees (Rs per kW h). cost is in rupees (Rs).
     1 kW h = 3.6 x 10^6 J.
     Every given value must be greater than 0.
