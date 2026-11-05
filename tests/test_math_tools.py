@@ -1,4 +1,4 @@
-"""Tests for the math-tools calculator: shared helpers, current and charge (I = Q / t), Ohm's law (V = I x R).
+"""Tests for the math-tools calculator: shared helpers, I = Q / t, V = W / Q and Ohm's law (V = I x R).
 
 Worked examples come from NCERT Class 10 Science, Chapter 11 "Electricity" (2026-27 reprint).
 """
@@ -108,6 +108,71 @@ def test_charge_current_needs_exactly_two_values() -> None:
     """Three values, or only one, is refused."""
     three_given = math_tools.solve_charge_current(q=1, i=1, t=1)
     one_given = math_tools.solve_charge_current(q=1)
+    assert three_given["ok"] is False
+    assert one_given["ok"] is False
+    assert "exactly two" in three_given["error"]
+
+
+# ---------------------------------------------------------------------------
+# A6: potential difference, V = W / Q (NCERT Eq. 11.2)
+# ---------------------------------------------------------------------------
+
+
+def test_work_from_voltage_and_charge_ncert_example_11_2() -> None:
+    """NCERT Example 11.2: moving 2 C across 12 V takes 24 J of work."""
+    result = math_tools.solve_voltage_work_charge(v=12, q=2)
+    assert result["ok"] is True
+    assert result["solved_for"] == "W"
+    assert result["value"] == pytest.approx(24.0)
+    assert result["unit"] == "J"
+    assert result["formula"] == "W = V x Q"
+
+
+def test_voltage_from_work_and_charge() -> None:
+    """24 J of work to move 2 C means a potential difference of 12 V."""
+    result = math_tools.solve_voltage_work_charge(w=24, q=2)
+    assert result["ok"] is True
+    assert result["solved_for"] == "V"
+    assert result["value"] == pytest.approx(12.0)
+    assert result["unit"] == "V"
+    assert result["formula"] == "V = W / Q"
+
+
+def test_charge_from_work_and_voltage() -> None:
+    """24 J of work across 12 V moves 2 C of charge."""
+    result = math_tools.solve_voltage_work_charge(w=24, v=12)
+    assert result["ok"] is True
+    assert result["solved_for"] == "Q"
+    assert result["value"] == pytest.approx(2.0)
+    assert result["unit"] == "C"
+    assert result["formula"] == "Q = W / V"
+
+
+def test_voltage_work_charge_rejects_zero_charge() -> None:
+    """Finding V = W / Q with Q = 0 would divide by zero, so it is refused."""
+    result = math_tools.solve_voltage_work_charge(w=24, q=0)
+    assert result["ok"] is False
+    assert "Charge Q" in result["error"]
+
+
+def test_voltage_work_charge_rejects_zero_voltage_when_finding_charge() -> None:
+    """Finding Q = W / V with V = 0 would divide by zero, so it is refused."""
+    result = math_tools.solve_voltage_work_charge(w=24, v=0)
+    assert result["ok"] is False
+    assert "Potential difference V" in result["error"]
+
+
+def test_voltage_work_charge_rejects_negative_work() -> None:
+    """A negative amount of work done is refused."""
+    result = math_tools.solve_voltage_work_charge(w=-5, q=1)
+    assert result["ok"] is False
+    assert "Work done W" in result["error"]
+
+
+def test_voltage_work_charge_needs_exactly_two_values() -> None:
+    """Three values, or only one, is refused."""
+    three_given = math_tools.solve_voltage_work_charge(v=1, w=1, q=1)
+    one_given = math_tools.solve_voltage_work_charge(v=1)
     assert three_given["ok"] is False
     assert one_given["ok"] is False
     assert "exactly two" in three_given["error"]
