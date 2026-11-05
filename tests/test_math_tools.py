@@ -1417,3 +1417,269 @@ def test_relative_index_from_absolute_refuses_impossible_indices() -> None:
     assert given_small["ok"] is False
     assert "less than 1" in given_small["error"]
     assert calculated_small["ok"] is False
+
+
+# ---------------------------------------------------------------------------
+# B1, B2, C1, D4: reading answers, the numeric check, the equivalence check, calculate, convert_from_si
+# ---------------------------------------------------------------------------
+
+
+def test_convert_from_si_ncert_example_11_13() -> None:
+    """NCERT Example 11.13: 3.456 x 10^8 J is 96 kW h ("units"), and -0.3 m is -30 cm."""
+    energy = math_tools.convert_from_si(3.456e8, "kWh")
+    distance = math_tools.convert_from_si(-0.3, "cm")
+    unknown = math_tools.convert_from_si(1, "furlong")
+    assert energy["ok"] is True
+    assert energy["value"] == pytest.approx(96.0)
+    assert energy["unit"] == "kWh"
+    assert distance["value"] == pytest.approx(-30.0)
+    assert unknown["ok"] is False
+
+
+def test_read_quantity_reads_signs_and_units() -> None:
+    """"-30 cm" and "−30 cm" (Unicode minus, as copied from a PDF) both read as -0.3 m, remembering -30 and cm."""
+    plain = math_tools.read_quantity("-30 cm")
+    unicode_minus = math_tools.read_quantity("−30 cm")
+    no_space = math_tools.read_quantity("30cm.")
+    assert plain["ok"] is True
+    assert plain["solved_for"] == "length"
+    assert plain["value"] == pytest.approx(-0.3)
+    assert plain["unit"] == "m"
+    assert plain["read_number"] == pytest.approx(-30.0)
+    assert plain["read_unit"] == "cm"
+    assert unicode_minus["value"] == pytest.approx(-0.3)
+    assert no_space["value"] == pytest.approx(0.3)
+
+
+def test_read_quantity_reads_powers_of_ten() -> None:
+    """The speed of light written four ways: "3 × 10^8 m/s", "3x10^8 m s^-1", "3 × 10⁸ m/s" and "3e8 m/s"."""
+    for text in ["3 × 10^8 m/s", "3x10^8 m s^-1", "3 × 10⁸ m/s", "3e8 m/s"]:
+        result = math_tools.read_quantity(text)
+        assert result["ok"] is True
+        assert result["value"] == pytest.approx(3e8)
+        assert result["unit"] == "m/s"
+
+
+def test_read_quantity_reads_dioptres_commas_and_rupees() -> None:
+    """"+1.25 D", "96,000 J", "Rs 288" and "₹288" are all read; a bare "57.6" has no unit."""
+    power = math_tools.read_quantity("+1.25 D")
+    energy = math_tools.read_quantity("96,000 J")
+    rupees = math_tools.read_quantity("Rs 288")
+    rupee_sign = math_tools.read_quantity("₹288")
+    bare = math_tools.read_quantity("57.6")
+    assert power["value"] == pytest.approx(1.25)
+    assert power["unit"] == "D"
+    assert energy["value"] == pytest.approx(96000.0)
+    assert rupees["value"] == pytest.approx(288.0)
+    assert rupees["unit"] == "Rs"
+    assert rupee_sign["value"] == pytest.approx(288.0)
+    assert bare["solved_for"] == "number"
+    assert bare["unit"] == "none"
+
+
+def test_read_quantity_refuses_text_it_cannot_read() -> None:
+    """No number at the start, or a unit the table doesn't know, gives an error."""
+    words = math_tools.read_quantity("about thirty")
+    strange_unit = math_tools.read_quantity("30 furlongs")
+    assert words["ok"] is False
+    assert "number" in words["error"]
+    assert strange_unit["ok"] is False
+    assert "Unknown unit" in strange_unit["error"]
+
+
+def test_numeric_answer_matches_in_any_length_unit() -> None:
+    """NCERT Example 9.2: the key is -37.5 cm. "-37.5 cm" and "-0.375 m" are both correct."""
+    same = math_tools.check_numeric_answer("-37.5 cm", "-37.5 cm")
+    metres = math_tools.check_numeric_answer("-0.375 m", "-37.5 cm")
+    assert same["ok"] is True
+    assert same["solved_for"] == "correct"
+    assert same["value"] is True
+    assert "Matches" in same["detail"]
+    assert metres["value"] is True
+
+
+def test_numeric_answer_accepts_ncert_rounding() -> None:
+    """NCERT's printed answers are close to, not equal to, the exact ones: 57.60 vs 57.62 ohm (Ex 11.10), 0.33 vs 1/3 (Ex 9.3)."""
+    resistance = math_tools.check_numeric_answer("57.60 ohm", "57.62 ohm")
+    magnification = math_tools.check_numeric_answer("0.33", "0.3333")
+    assert resistance["value"] is True
+    assert magnification["value"] is True
+
+
+def test_numeric_answer_wrong_sign_says_so() -> None:
+    """+37.5 cm against a key of -37.5 cm is wrong, and the detail points at the sign convention."""
+    result = math_tools.check_numeric_answer("37.5 cm", "-37.5 cm")
+    assert result["ok"] is True
+    assert result["value"] is False
+    assert "Wrong sign" in result["detail"]
+
+
+def test_numeric_answer_too_far_off_says_by_how_much() -> None:
+    """-40 cm against -37.5 cm is 6.7% off, more than the 2% allowed."""
+    result = math_tools.check_numeric_answer("-40 cm", "-37.5 cm")
+    assert result["value"] is False
+    assert "6.7%" in result["detail"]
+
+
+def test_numeric_answer_wrong_kind_of_unit() -> None:
+    """30 s is a time, so it cannot answer a question whose key is 30 cm."""
+    result = math_tools.check_numeric_answer("30 s", "30 cm")
+    assert result["value"] is False
+    assert "Wrong kind of unit" in result["detail"]
+
+
+def test_numeric_answer_missing_unit_is_correct_with_a_reminder() -> None:
+    """Decision Q3: "-37.5" against "-37.5 cm" counts as correct, but the detail says the unit is missing."""
+    result = math_tools.check_numeric_answer("-37.5", "-37.5 cm")
+    assert result["value"] is True
+    assert "unit is missing" in result["detail"]
+
+
+def test_numeric_answer_key_without_unit_compares_the_numbers() -> None:
+    """A key of "-30" (no unit) is compared with the number the student wrote, -30, not with -0.3 m."""
+    result = math_tools.check_numeric_answer("-30 cm", "-30")
+    assert result["value"] is True
+    assert "no unit" in result["detail"]
+
+
+def test_numeric_answer_unreadable_answer_and_key() -> None:
+    """An unreadable answer is simply not correct; an unreadable KEY is an error on our side."""
+    bad_answer = math_tools.check_numeric_answer("thirty", "-30 cm")
+    bad_key = math_tools.check_numeric_answer("-30 cm", "minus thirty")
+    assert bad_answer["ok"] is True
+    assert bad_answer["value"] is False
+    assert bad_key["ok"] is False
+
+
+def test_numeric_answer_tolerance_can_be_changed() -> None:
+    """With a very tight tolerance (0.01%), NCERT's rounded 57.60 no longer matches 57.62; a bad tolerance is refused."""
+    tight = math_tools.check_numeric_answer("57.60 ohm", "57.62 ohm", tolerance=0.0001)
+    bad = math_tools.check_numeric_answer("57.60 ohm", "57.62 ohm", tolerance=1.5)
+    assert tight["value"] is False
+    assert bad["ok"] is False
+
+
+def test_numeric_answer_zero_key() -> None:
+    """A key of 0 is checked directly, without dividing by it."""
+    zero = math_tools.check_numeric_answer("0 A", "0 A")
+    not_zero = math_tools.check_numeric_answer("2 A", "0 A")
+    assert zero["value"] is True
+    assert not_zero["value"] is False
+
+
+def test_equivalence_ohms_law_rearranged() -> None:
+    """V = IR, R = V/I and I = V/R are the same law (NCERT Eq. 11.5-11.7). "I" stays a current, not SymPy's imaginary unit."""
+    first = math_tools.check_equivalence("R = V/I", "V = IR")
+    second = math_tools.check_equivalence("I = V/R", "V = I*R")
+    assert first["ok"] is True
+    assert first["solved_for"] == "equivalent"
+    assert first["value"] is True
+    assert "Same relation" in first["detail"]
+    assert second["value"] is True
+
+
+def test_equivalence_mirror_formula_rearranged() -> None:
+    """The mirror formula 1/v + 1/u = 1/f (Eq. 9.1) is the same as f = uv / (u + v)."""
+    result = math_tools.check_equivalence("f = uv/(u+v)", "1/v + 1/u = 1/f")
+    assert result["value"] is True
+
+
+def test_equivalence_lens_is_not_mirror() -> None:
+    """The lens formula (Eq. 9.8) is NOT the mirror formula (Eq. 9.1): solving for f gives different results."""
+    result = math_tools.check_equivalence("1/v - 1/u = 1/f", "1/v + 1/u = 1/f")
+    assert result["value"] is False
+    assert "Different relation" in result["detail"]
+
+
+def test_equivalence_keeps_names_whole_and_letters_as_quantities() -> None:
+    """R = rho l / A (Eq. 11.10) rearranged; "rho" stays one name. E = P t: "E" is energy, not Euler's number."""
+    resistivity = math_tools.check_equivalence("rho = R A / l", "R = rho l / A")
+    energy = math_tools.check_equivalence("E = P t", "P = E/t")
+    assert resistivity["value"] is True
+    assert energy["value"] is True
+
+
+def test_equivalence_different_quantities_are_not_linked() -> None:
+    """P = VI and P = I^2 R are only equal given Ohm's law, which this check does not assume."""
+    result = math_tools.check_equivalence("P = VI", "P = I^2 R")
+    assert result["value"] is False
+    assert "different quantities" in result["detail"]
+
+
+def test_equivalence_of_expressions_ncert_exercise_2() -> None:
+    """NCERT Ch 11, Exercise 2: I^2 R is a form of power; I R^2 is not. R I I is the same as I^2 R."""
+    same = math_tools.check_equivalence("R I I", "I^2 R")
+    different = math_tools.check_equivalence("I R^2", "I^2 R")
+    mixed = math_tools.check_equivalence("V = IR", "IR")
+    assert same["value"] is True
+    assert different["value"] is False
+    assert mixed["value"] is False
+
+
+def test_equivalence_refuses_unsafe_text_before_sympy() -> None:
+    """Text that could be code is refused before SymPy (which uses eval) ever sees it: an unsafe answer is not correct."""
+    code = math_tools.check_equivalence("__import__('os').system('dir')", "V = IR")
+    too_long = math_tools.check_equivalence("V = " + "I*R + " * 30 + "0", "V = IR")
+    unsafe_key = math_tools.check_equivalence("V = IR", "open('x')")
+    assert code["ok"] is True
+    assert code["value"] is False
+    assert "not allowed" in code["detail"]
+    assert too_long["value"] is False
+    assert unsafe_key["ok"] is False
+
+
+def test_is_safe_formula_text() -> None:
+    """Letters, digits, spaces and + - * / ^ ( ) = . are allowed; quotes, underscores and a second "=" are not."""
+    assert math_tools.is_safe_formula_text("1/v + 1/u = 1/f") is True
+    assert math_tools.is_safe_formula_text("R = rho l / A") is True
+    assert math_tools.is_safe_formula_text("__import__") is False
+    assert math_tools.is_safe_formula_text("print('hi')") is False
+    assert math_tools.is_safe_formula_text("a = b = c") is False
+    assert math_tools.is_safe_formula_text("") is False
+
+
+def test_calculate_the_arithmetic_between_steps() -> None:
+    """Decision D4: 8 h a day for 30 days is 8 x 30 = 240 h (NCERT Example 11.13); 100 W + 60 W = 160 W (Exercise 15)."""
+    hours = math_tools.calculate("8 x 30")
+    watts = math_tools.calculate("100 + 60")
+    resistors = math_tools.calculate("176 / 44")
+    assert hours["ok"] is True
+    assert hours["solved_for"] == "value"
+    assert hours["value"] == pytest.approx(240.0)
+    assert hours["unit"] == "no unit"
+    assert watts["value"] == pytest.approx(160.0)
+    assert resistors["value"] == pytest.approx(4.0)
+
+
+def test_calculate_powers_and_brackets() -> None:
+    """3 × 10^8 / 1.5 = 2 x 10^8 (NCERT section 9.3.2 Q2), 2^10 = 1024, and (8 + 2) * 3 = 30."""
+    assert math_tools.calculate("3 × 10^8 / 1.5")["value"] == pytest.approx(2e8)
+    assert math_tools.calculate("2^10")["value"] == pytest.approx(1024.0)
+    assert math_tools.calculate("(8 + 2) * 3")["value"] == pytest.approx(30.0)
+
+
+def test_calculate_refuses_anything_but_arithmetic() -> None:
+    """Code, names, division by zero, a huge power and empty text are all refused with an error, never run."""
+    code = math_tools.calculate("__import__('os').system('dir')")
+    name = math_tools.calculate("abs(-5)")
+    divide_by_zero = math_tools.calculate("1/0")
+    huge_power = math_tools.calculate("2^1000")
+    empty = math_tools.calculate("")
+    assert code["ok"] is False
+    assert name["ok"] is False
+    assert divide_by_zero["ok"] is False
+    assert "division by zero" in divide_by_zero["error"]
+    assert huge_power["ok"] is False
+    assert "too large" in huge_power["error"]
+    assert empty["ok"] is False
+
+
+def test_energy_cost_chain_with_calculate_and_convert_from_si() -> None:
+    """NCERT Example 11.13, fully in code: calculate 8 x 30 h, convert to s, energy = P t, show it in kW h, then the cost."""
+    hours = math_tools.calculate("8 * 30")
+    seconds = math_tools.convert_to_si(hours["value"], "h")
+    energy = math_tools.solve_energy_power_time(p=400, t=seconds["value"])
+    units = math_tools.convert_from_si(energy["value"], "kWh")
+    cost = math_tools.solve_energy_cost(energy=energy["value"], rate=3.00)
+    assert units["value"] == pytest.approx(96.0)
+    assert cost["value"] == pytest.approx(288.0)
