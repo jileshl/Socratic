@@ -128,6 +128,14 @@ UNIT_SYMBOLS: dict[str, tuple[str, str, float]] = {
     # power
     "W": ("power", "W", 1.0),
     "kW": ("power", "W", 1000.0),
+    # speed (NCERT Ch 9 writes the speed of light as 3 x 10^8 m s^-1)
+    "m/s": ("speed", "m/s", 1.0),
+    "m s^-1": ("speed", "m/s", 1.0),
+    "km/s": ("speed", "m/s", 1000.0),
+    "cm/s": ("speed", "m/s", 0.01),
+    "km/h": ("speed", "m/s", 1000.0 / 3600.0),
+    # power of a lens (NCERT Ch 9, section 9.3.8: 1 D = 1 m^-1, already the SI unit)
+    "D": ("lens power", "D", 1.0),
 }
 
 # The same units written as WORDS. Words have no capital-letter meaning ("Minutes" = "minutes"),
@@ -159,6 +167,12 @@ UNIT_WORDS: dict[str, str] = {
     "kilowatt hour": "kWh", "kilowatt hours": "kWh", "kilowatt-hour": "kWh", "kilowatt-hours": "kWh",
     "watt": "W", "watts": "W",
     "kilowatt": "kW", "kilowatts": "kW",
+    "metre per second": "m/s", "metres per second": "m/s", "meter per second": "m/s", "meters per second": "m/s",
+    "kilometre per second": "km/s", "kilometres per second": "km/s",
+    "kilometer per second": "km/s", "kilometers per second": "km/s",
+    "kilometre per hour": "km/h", "kilometres per hour": "km/h",
+    "kilometer per hour": "km/h", "kilometers per hour": "km/h",
+    "dioptre": "D", "dioptres": "D", "diopter": "D", "diopters": "D",
 }
 
 
@@ -794,6 +808,331 @@ def describe_image(m: float) -> dict[str, Any]:
     # [R] the description is text, so "value" holds a string here.
     nature = kind_words + ", " + size_word
     return make_result("nature", nature, "no unit", "m < 0: real and inverted; m > 0: virtual and erect; |m| > 1: enlarged")
+
+
+def solve_lens_power(length_unit: str, p: float | None = None, f: float | None = None) -> dict[str, Any]:
+    """Power of a lens: P = 1 / f, with f in metres, gives P in dioptres (NCERT Class 10 Science, Ch 9, Eq. 9.11).
+
+    Give exactly one of p (power, in dioptres D) and f (focal length, in length_unit) and leave the other as None.
+    length_unit is the unit f is given in, or wanted in, for example "cm" or "m". The function converts f to
+    metres itself, so pass f exactly as the problem states it: f = 25 cm gives P = +4 D (not 0.04).
+    A convex (converging) lens has positive f and positive power; a concave (diverging) lens has negative f and power.
+    Spectacles (Ch 10, section 10.2): myopia is corrected by a concave lens (negative power), and hypermetropia
+    by a convex lens (positive power).
+    If only u and v are known, get f from solve_lens_formula first. For lenses in contact use combine_lens_powers.
+    Returns the shared result shape, or the error shape if the inputs cannot be used.
+    """
+    # Flowchart (each [box] matches a comment in the code below):
+    #
+    #   [S0] length_unit is a length unit (cm, m, mm, km)?   no -> [E] error
+    #          | yes
+    #          v
+    #   [S1] exactly one of p, f given?                      no -> [E] error
+    #          | yes
+    #          v
+    #   [S2] the given value is not 0?                       no -> [E] error
+    #          | yes
+    #          v
+    #   [K] metres in one length_unit, from the unit table (cm: 0.01)
+    #          |
+    #          v
+    #   [S3] which one is missing?
+    #          |                                  |
+    #          | p missing                        | f missing
+    #          v                                  v
+    #   [B-P] f in metres = f * factor     [B-F] f in metres = 1 / p
+    #         p = 1 / (f in metres)              f = (f in metres) / factor
+    #          |                                  |
+    #          v                                  v
+    #   [R] make_result(quantity, exact value, unit, formula)
+
+    # [S0] the unit of f must be a length unit from the unit table.
+    unit_symbol = find_length_unit(length_unit)
+    if unit_symbol is None:
+        return make_error("length_unit must be a length unit such as cm, m or mm, not '" + length_unit + "'.")
+
+    # [S1] exactly one of the two values must be given.
+    if count_given([p, f]) != 1:
+        return make_error("Give exactly one of p (dioptre) and f (in " + unit_symbol + "), and leave the other empty.")
+
+    # [S2] neither may be 0: P = 1 / f divides by f, and f = 1 / P divides by P.
+    zero_name = find_zero(["Power P", "Focal length f"], [p, f])
+    if zero_name is not None:
+        return make_error(zero_name + " cannot be 0.")
+
+    # [K] how many metres one length_unit is (cm -> 0.01), read from the unit table.
+    metres_per_unit: float = UNIT_SYMBOLS[unit_symbol][2]
+
+    # [S3] calculate whichever value is missing, exactly (no rounding).
+    if p is None:
+        # [B-P] p is missing: turn f into metres first, because a dioptre is 1 / metre.
+        focal_length_in_metres = f * metres_per_unit
+        power = 1 / focal_length_in_metres
+        return make_result("P", power, "D", "P = 1 / f (f in metres)")
+
+    # [B-F] The only case left is that f is missing: f = 1 / P gives metres, then turn it into length_unit.
+    focal_length_in_metres = 1 / p
+    focal_length = focal_length_in_metres / metres_per_unit
+    return make_result("f", focal_length, unit_symbol, "f = 1 / P (in metres), then converted to " + unit_symbol)
+
+
+def lens_names(count: int) -> list[str]:
+    """Names for a list of lenses, "Lens 1", "Lens 2", ..., used in error messages."""
+    names: list[str] = []
+    for number in range(1, count + 1):
+        names.append("Lens " + str(number))
+    return names
+
+
+def combine_lens_powers(powers: list[float]) -> dict[str, Any]:
+    """Lenses placed in contact: P = P1 + P2 + P3 + ... (NCERT Class 10 Science, Ch 9, section 9.3.8).
+
+    powers is a list of at least 2 lens powers, each in dioptres (D). Keep the signs: a convex lens is positive,
+    a concave lens is negative. The total is the "algebraic sum", so a concave lens lowers it.
+    If a lens is given by its focal length, get its power from solve_lens_power first.
+    Returns the shared result shape, or the error shape if the inputs cannot be used.
+    """
+    # Flowchart (each [box] matches a comment in the code below):
+    #
+    #   [S1] at least 2 powers in the list?          no -> [E] error
+    #          | yes
+    #          v
+    #   [S2] no power is 0 (negatives are fine)?     no -> [E] error
+    #          | yes
+    #          v
+    #   [B-SUM] add up every power, keeping its sign
+    #          |
+    #          v
+    #   [R] make_result("P", total, "D", "P = P1 + P2 + ...")
+
+    # [S1] a combination needs at least 2 lenses.
+    if len(powers) < 2:
+        return make_error("Give at least 2 lens powers (in dioptres) to combine.")
+
+    # [S2] a power of 0 is no lens at all; negative powers (concave lenses) are allowed.
+    zero_name = find_zero(lens_names(len(powers)), powers)
+    if zero_name is not None:
+        return make_error(zero_name + " cannot have a power of 0.")
+
+    # [B-SUM] add up the powers, signs included.
+    total = 0.0
+    for power in powers:
+        total = total + power
+
+    # [R]
+    return make_result("P", total, "D", "P = P1 + P2 + ...")
+
+
+# The speed of light in vacuum (or air), in m/s: NCERT's value, 3 x 10^8 m s^-1 (Ch 9, "What you have learnt").
+SPEED_OF_LIGHT_IN_VACUUM: float = 3.0e8
+
+
+def solve_absolute_refractive_index(n: float | None = None, v: float | None = None) -> dict[str, Any]:
+    """Absolute refractive index of a medium: n = c / v (NCERT Class 10 Science, Ch 9, Eq. 9.7, section 9.3.2).
+
+    Give exactly one of n and v (the speed of light in the medium, in m/s) and leave the other as None.
+    c is the speed of light in vacuum or air, 3 x 10^8 m/s (NCERT's value).
+    Convert other speed units, such as km/s, to m/s first with convert_to_si.
+    An absolute refractive index is never less than 1, because nothing travels faster than light in vacuum.
+    For one medium with respect to another, use solve_relative_refractive_index (from speeds) or
+    solve_relative_index_from_absolute (from the two absolute indices).
+    Returns the shared result shape, or the error shape if the inputs cannot be used.
+    """
+    # Flowchart (each [box] matches a comment in the code below):
+    #
+    #   [S1] exactly one of n, v given?                      no -> [E] error
+    #          | yes
+    #          v
+    #   [S2] the given value is greater than 0?              no -> [E] error
+    #          | yes
+    #          v
+    #   [S2] n >= 1 and v <= c (nothing beats light)?        no -> [E] error
+    #          | yes
+    #          v
+    #   [S3] which one is missing?
+    #          |                                  |
+    #          | n missing                        | v missing
+    #          v                                  v
+    #   [B-N] n = c / v                    [B-V] v = c / n
+    #          |                                  |
+    #          v                                  v
+    #   [R] make_result(quantity, exact value, unit, formula)
+
+    # [S1] exactly one of the two values must be given.
+    if count_given([n, v]) != 1:
+        return make_error("Give exactly one of n and v (in m/s), and leave the other empty.")
+
+    # [S2] both quantities are positive sizes.
+    bad_name = find_zero_or_negative(["Refractive index n", "Speed of light in the medium v"], [n, v])
+    if bad_name is not None:
+        return make_error(bad_name + " must be greater than 0.")
+
+    # [S2] nothing is faster than light in vacuum, so n is at least 1 and v is at most c.
+    if n is not None and n < 1:
+        return make_error(
+            "An absolute refractive index cannot be less than 1: light cannot travel faster than in vacuum. "
+            "(A relative index can be less than 1: use solve_relative_refractive_index.)"
+        )
+    if v is not None and v > SPEED_OF_LIGHT_IN_VACUUM:
+        return make_error("v = " + str(v) + " m/s is faster than light in vacuum (3 x 10^8 m/s), which is impossible.")
+
+    # [S3] calculate whichever value is missing, exactly (no rounding).
+    if n is None:
+        # [B-N] n is missing.
+        refractive_index = SPEED_OF_LIGHT_IN_VACUUM / v
+        return make_result("n", refractive_index, "no unit", "n = c / v, with c = 3 x 10^8 m/s")
+
+    # [B-V] The only case left is that v is missing.
+    speed = SPEED_OF_LIGHT_IN_VACUUM / n
+    return make_result("v", speed, "m/s", "v = c / n, with c = 3 x 10^8 m/s")
+
+
+def solve_relative_refractive_index(
+    n21: float | None = None,
+    v1: float | None = None,
+    v2: float | None = None,
+) -> dict[str, Any]:
+    """Refractive index of medium 2 with respect to medium 1: n21 = v1 / v2 (NCERT Class 10 Science, Ch 9, Eq. 9.5).
+
+    Light travels from medium 1 into medium 2; v1 and v2 are its speeds in them, in m/s.
+    Give exactly two of n21, v1, v2 and leave the third as None; the missing one is calculated.
+    For medium 1 with respect to medium 2 (n12 = v2 / v1, Eq. 9.6), swap the two media.
+    A relative index can be less than 1: that happens when light goes from an optically denser medium into a rarer one.
+    If the two absolute indices are known instead of the speeds, use solve_relative_index_from_absolute.
+    Returns the shared result shape, or the error shape if the inputs cannot be used.
+    """
+    # Flowchart (each [box] matches a comment in the code below):
+    #
+    #   [S1] exactly two of n21, v1, v2 given?               no -> [E] error
+    #          | yes
+    #          v
+    #   [S2] every given value greater than 0?               no -> [E] error
+    #          | yes
+    #          v
+    #   [S2] every given speed at most c?                    no -> [E] error
+    #          | yes
+    #          v
+    #   [S3] which one is missing?
+    #          |
+    #          +-- n21 missing -> [B-N]  n21 = v1 / v2
+    #          +-- v1 missing  -> [B-V1] v1 = n21 * v2,  then [C-V] v1 <= c?  no -> [E] error
+    #          +-- v2 missing  -> [B-V2] v2 = v1 / n21,  then [C-V] v2 <= c?  no -> [E] error
+    #          |
+    #          v
+    #   [R] make_result(quantity, exact value, unit, formula)
+
+    # [S1] exactly two of the three values must be given.
+    if count_given([n21, v1, v2]) != 2:
+        return make_error("Give exactly two of n21, v1 and v2 (speeds in m/s), and leave the third empty.")
+
+    # [S2] all three quantities are positive sizes.
+    bad_name = find_zero_or_negative(["Relative refractive index n21", "Speed v1", "Speed v2"], [n21, v1, v2])
+    if bad_name is not None:
+        return make_error(bad_name + " must be greater than 0.")
+
+    # [S2] a given speed cannot be faster than light in vacuum.
+    if v1 is not None and v1 > SPEED_OF_LIGHT_IN_VACUUM:
+        return make_error("v1 = " + str(v1) + " m/s is faster than light in vacuum (3 x 10^8 m/s), which is impossible.")
+    if v2 is not None and v2 > SPEED_OF_LIGHT_IN_VACUUM:
+        return make_error("v2 = " + str(v2) + " m/s is faster than light in vacuum (3 x 10^8 m/s), which is impossible.")
+
+    # [S3] calculate whichever value is missing, exactly (no rounding).
+    if n21 is None:
+        # [B-N] n21 is missing.
+        relative_index = v1 / v2
+        return make_result("n21", relative_index, "no unit", "n21 = v1 / v2")
+
+    if v1 is None:
+        # [B-V1] v1 is missing.
+        speed_in_medium_1 = n21 * v2
+        # [C-V] a calculated speed cannot be faster than light either.
+        if speed_in_medium_1 > SPEED_OF_LIGHT_IN_VACUUM:
+            return make_error(
+                "The calculated v1 = " + str(speed_in_medium_1) + " m/s is faster than light in vacuum, which is impossible. "
+                "Check n21 and v2."
+            )
+        return make_result("v1", speed_in_medium_1, "m/s", "v1 = n21 x v2")
+
+    # [B-V2] The only case left is that v2 is missing.
+    speed_in_medium_2 = v1 / n21
+    # [C-V] a calculated speed cannot be faster than light either.
+    if speed_in_medium_2 > SPEED_OF_LIGHT_IN_VACUUM:
+        return make_error(
+            "The calculated v2 = " + str(speed_in_medium_2) + " m/s is faster than light in vacuum, which is impossible. "
+            "Check n21 and v1."
+        )
+    return make_result("v2", speed_in_medium_2, "m/s", "v2 = v1 / n21")
+
+
+def solve_relative_index_from_absolute(
+    n21: float | None = None,
+    n1: float | None = None,
+    n2: float | None = None,
+) -> dict[str, Any]:
+    """Refractive index of medium 2 with respect to medium 1, from the two absolute indices: n21 = n2 / n1.
+
+    This follows from NCERT Class 10 Science, Ch 9, Eq. 9.5 and 9.7: v1 = c / n1 and v2 = c / n2,
+    so n21 = v1 / v2 = n2 / n1.
+    n1 and n2 are absolute refractive indices (for example from Table 9.3: water 1.33, crown glass 1.52),
+    so each is at least 1. Light travels from medium 1 into medium 2.
+    Give exactly two of n21, n1, n2 and leave the third as None; the missing one is calculated.
+    Returns the shared result shape, or the error shape if the inputs cannot be used.
+    """
+    # Flowchart (each [box] matches a comment in the code below):
+    #
+    #   [S1] exactly two of n21, n1, n2 given?               no -> [E] error
+    #          | yes
+    #          v
+    #   [S2] every given value greater than 0?               no -> [E] error
+    #          | yes
+    #          v
+    #   [S2] every given absolute index (n1, n2) at least 1? no -> [E] error
+    #          | yes
+    #          v
+    #   [S3] which one is missing?
+    #          |
+    #          +-- n21 missing -> [B-N21] n21 = n2 / n1
+    #          +-- n1 missing  -> [B-N1]  n1 = n2 / n21,  then [C-N] n1 >= 1?  no -> [E] error
+    #          +-- n2 missing  -> [B-N2]  n2 = n21 * n1,  then [C-N] n2 >= 1?  no -> [E] error
+    #          |
+    #          v
+    #   [R] make_result(quantity, exact value, "no unit", formula)
+
+    # [S1] exactly two of the three values must be given.
+    if count_given([n21, n1, n2]) != 2:
+        return make_error("Give exactly two of n21, n1 and n2, and leave the third empty.")
+
+    # [S2] all three are positive.
+    bad_name = find_zero_or_negative(["Relative refractive index n21", "Absolute index n1", "Absolute index n2"], [n21, n1, n2])
+    if bad_name is not None:
+        return make_error(bad_name + " must be greater than 0.")
+
+    # [S2] an absolute index is at least 1 (nothing beats light in vacuum).
+    if n1 is not None and n1 < 1:
+        return make_error("Absolute index n1 cannot be less than 1: light cannot travel faster than in vacuum.")
+    if n2 is not None and n2 < 1:
+        return make_error("Absolute index n2 cannot be less than 1: light cannot travel faster than in vacuum.")
+
+    # [S3] calculate whichever value is missing, exactly (no rounding).
+    if n21 is None:
+        # [B-N21] n21 is missing.
+        relative_index = n2 / n1
+        return make_result("n21", relative_index, "no unit", "n21 = n2 / n1")
+
+    if n1 is None:
+        # [B-N1] n1 is missing.
+        index_1 = n2 / n21
+        # [C-N] a calculated absolute index must be at least 1 too.
+        if index_1 < 1:
+            return make_error("The calculated n1 = " + str(index_1) + " is less than 1, which is impossible. Check n21 and n2.")
+        return make_result("n1", index_1, "no unit", "n1 = n2 / n21")
+
+    # [B-N2] The only case left is that n2 is missing.
+    index_2 = n21 * n1
+    # [C-N] a calculated absolute index must be at least 1 too.
+    if index_2 < 1:
+        return make_error("The calculated n2 = " + str(index_2) + " is less than 1, which is impossible. Check n21 and n1.")
+    return make_result("n2", index_2, "no unit", "n2 = n21 x n1")
 
 
 def numeric_check(student_val: float, gold_val: float, tolerance: float = 0.05) -> bool:

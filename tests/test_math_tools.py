@@ -1198,3 +1198,222 @@ def test_describe_image_refuses_zero() -> None:
     """A magnification of 0 describes no image, so it is refused."""
     result = math_tools.describe_image(0)
     assert result["ok"] is False
+
+
+# ---------------------------------------------------------------------------
+# A3 and A4: power of a lens, and refractive index (NCERT Ch 9, sections 9.3.8 and 9.3.2; Ch 10)
+# ---------------------------------------------------------------------------
+
+
+def test_convert_speeds_and_dioptres_to_si() -> None:
+    """The unit table now knows speeds and the dioptre: 72 km/h = 20 m/s, 3 km/s = 3000 m/s, 1.5 dioptres = 1.5 D."""
+    kmh = math_tools.convert_to_si(72, "km/h")
+    kms = math_tools.convert_to_si(3, "km/s")
+    word = math_tools.convert_to_si(3e8, "metres per second")
+    ncert_style = math_tools.convert_to_si(3e8, "m s^-1")
+    dioptre = math_tools.convert_to_si(1.5, "dioptres")
+    assert kmh["solved_for"] == "speed"
+    assert kmh["value"] == pytest.approx(20.0)
+    assert kmh["unit"] == "m/s"
+    assert kms["value"] == pytest.approx(3000.0)
+    assert word["value"] == pytest.approx(3e8)
+    assert ncert_style["value"] == pytest.approx(3e8)
+    assert dioptre["value"] == pytest.approx(1.5)
+    assert dioptre["unit"] == "D"
+
+
+def test_lens_power_ncert_section_9_3_8_question_2_chain() -> None:
+    """NCERT section 9.3.8, Question 2: a same-size real image 50 cm away gives f = +25 cm, so P = +4 D."""
+    focal = math_tools.solve_lens_formula("cm", u=-50, v=50)
+    power = math_tools.solve_lens_power("cm", f=focal["value"])
+    assert focal["value"] == pytest.approx(25.0)
+    assert power["ok"] is True
+    assert power["solved_for"] == "P"
+    assert power["value"] == pytest.approx(4.0)
+    assert power["unit"] == "D"
+    assert power["formula"] == "P = 1 / f (f in metres)"
+
+
+def test_lens_power_avoids_the_unit_trap() -> None:
+    """f = 25 cm and f = 0.25 m are the same lens: both give +4 D. The wrong answer 1/25 = 0.04 never appears."""
+    in_cm = math_tools.solve_lens_power("cm", f=25)
+    in_m = math_tools.solve_lens_power("m", f=0.25)
+    assert in_cm["value"] == pytest.approx(4.0)
+    assert in_m["value"] == pytest.approx(4.0)
+    assert in_cm["value"] != pytest.approx(0.04)
+
+
+def test_focal_length_from_power_ncert_examples() -> None:
+    """Section 9.3.8: +2.0 D means f = +0.50 m and -2.5 D means f = -0.40 m. Exercise 16: -2.0 D is f = -50 cm (concave)."""
+    convex = math_tools.solve_lens_power("m", p=2.0)
+    concave = math_tools.solve_lens_power("m", p=-2.5)
+    exercise_16 = math_tools.solve_lens_power("cm", p=-2.0)
+    assert convex["solved_for"] == "f"
+    assert convex["value"] == pytest.approx(0.50)
+    assert convex["unit"] == "m"
+    assert concave["value"] == pytest.approx(-0.40)
+    assert exercise_16["value"] == pytest.approx(-50.0)
+    assert exercise_16["unit"] == "cm"
+
+
+def test_lens_power_ncert_section_9_3_8_question_3_and_exercise_17() -> None:
+    """Question 3: a concave lens of f = 2 m has P = -0.5 D. Exercise 17: +1.5 D gives f = +0.67 m (converging)."""
+    concave = math_tools.solve_lens_power("m", f=-2)
+    exercise_17 = math_tools.solve_lens_power("m", p=1.5)
+    assert concave["value"] == pytest.approx(-0.5)
+    assert exercise_17["value"] == pytest.approx(2 / 3)
+
+
+def test_lens_power_ncert_chapter_10_exercise_7_chain() -> None:
+    """Ch 10, Exercise 7: a hypermetropic near point of 1 m, normal near point 25 cm.
+
+    The lens must form the image of an object at 25 cm at the near point: u = -25 cm, v = -100 cm,
+    so f = +33.3 cm and P = +3.0 D (a convex lens).
+    """
+    focal = math_tools.solve_lens_formula("cm", u=-25, v=-100)
+    power = math_tools.solve_lens_power("cm", f=focal["value"])
+    assert focal["value"] == pytest.approx(100 / 3)
+    assert power["value"] == pytest.approx(3.0)
+
+
+def test_lens_power_ncert_chapter_10_exercise_5() -> None:
+    """Ch 10, Exercise 5: -5.5 D for distant vision is f = -18.2 cm; +1.5 D for near vision is f = +66.7 cm."""
+    distant = math_tools.solve_lens_power("cm", p=-5.5)
+    near = math_tools.solve_lens_power("cm", p=1.5)
+    assert distant["value"] == pytest.approx(-100 / 5.5)
+    assert near["value"] == pytest.approx(100 / 1.5)
+
+
+def test_lens_power_refuses_bad_input() -> None:
+    """Both values or neither, a zero, or a unit that is not a length are all refused."""
+    both = math_tools.solve_lens_power("cm", p=4, f=25)
+    neither = math_tools.solve_lens_power("cm")
+    zero = math_tools.solve_lens_power("cm", f=0)
+    time_unit = math_tools.solve_lens_power("s", f=25)
+    assert both["ok"] is False
+    assert "exactly one" in both["error"]
+    assert neither["ok"] is False
+    assert zero["ok"] is False
+    assert "Focal length f" in zero["error"]
+    assert time_unit["ok"] is False
+
+
+def test_combine_lens_powers_ncert_section_9_3_8() -> None:
+    """Section 9.3.8: +2.0 D and +0.25 D in contact act as +2.25 D. A concave lens lowers the sum: +2.0 and -2.5 give -0.5 D."""
+    convex_pair = math_tools.combine_lens_powers([2.0, 0.25])
+    mixed = math_tools.combine_lens_powers([2.0, -2.5])
+    assert convex_pair["ok"] is True
+    assert convex_pair["solved_for"] == "P"
+    assert convex_pair["value"] == pytest.approx(2.25)
+    assert convex_pair["unit"] == "D"
+    assert convex_pair["formula"] == "P = P1 + P2 + ..."
+    assert mixed["value"] == pytest.approx(-0.5)
+
+
+def test_combine_lens_powers_refuses_bad_lists() -> None:
+    """One lens is not a combination, and a lens of power 0 is refused by its position."""
+    one = math_tools.combine_lens_powers([2.0])
+    with_zero = math_tools.combine_lens_powers([2.0, 0])
+    assert one["ok"] is False
+    assert "at least 2" in one["error"]
+    assert with_zero["ok"] is False
+    assert "Lens 2" in with_zero["error"]
+
+
+def test_absolute_refractive_index_ncert_section_9_3_2_question_2() -> None:
+    """NCERT section 9.3.2, Question 2: light enters glass of refractive index 1.50, so v = 3 x 10^8 / 1.50 = 2 x 10^8 m/s."""
+    result = math_tools.solve_absolute_refractive_index(n=1.50)
+    assert result["ok"] is True
+    assert result["solved_for"] == "v"
+    assert result["value"] == pytest.approx(2.0e8)
+    assert result["unit"] == "m/s"
+    assert result["formula"] == "v = c / n, with c = 3 x 10^8 m/s"
+
+
+def test_absolute_refractive_index_finds_n() -> None:
+    """Table 9.3: water has n = 1.33, so light in water travels at about 2.26 x 10^8 m/s, and back again."""
+    speed = math_tools.solve_absolute_refractive_index(n=1.33)
+    index = math_tools.solve_absolute_refractive_index(v=speed["value"])
+    assert speed["value"] == pytest.approx(2.26e8, rel=0.01)
+    assert index["solved_for"] == "n"
+    assert index["value"] == pytest.approx(1.33)
+    assert index["unit"] == "no unit"
+
+
+def test_absolute_refractive_index_refuses_faster_than_light() -> None:
+    """n below 1 or v above 3 x 10^8 m/s would mean light faster than in vacuum, so both are refused."""
+    small_n = math_tools.solve_absolute_refractive_index(n=0.9)
+    fast_v = math_tools.solve_absolute_refractive_index(v=4e8)
+    both = math_tools.solve_absolute_refractive_index(n=1.5, v=2e8)
+    negative = math_tools.solve_absolute_refractive_index(v=-2e8)
+    assert small_n["ok"] is False
+    assert "less than 1" in small_n["error"]
+    assert fast_v["ok"] is False
+    assert "faster than light" in fast_v["error"]
+    assert both["ok"] is False
+    assert negative["ok"] is False
+
+
+def test_relative_refractive_index_from_speeds() -> None:
+    """Eq. 9.5: from air (3 x 10^8 m/s) into glass (2 x 10^8 m/s), n21 = 1.5. Each speed can also be found from the other two."""
+    index = math_tools.solve_relative_refractive_index(v1=3e8, v2=2e8)
+    speed_2 = math_tools.solve_relative_refractive_index(n21=1.5, v1=3e8)
+    speed_1 = math_tools.solve_relative_refractive_index(n21=1.5, v2=2e8)
+    assert index["solved_for"] == "n21"
+    assert index["value"] == pytest.approx(1.5)
+    assert index["formula"] == "n21 = v1 / v2"
+    assert speed_2["value"] == pytest.approx(2e8)
+    assert speed_2["unit"] == "m/s"
+    assert speed_1["value"] == pytest.approx(3e8)
+
+
+def test_relative_refractive_index_can_be_less_than_one() -> None:
+    """From glass (n = 1.5) into water (n = 1.33), light speeds up, so the relative index is about 0.89: allowed."""
+    speed_in_glass = math_tools.solve_absolute_refractive_index(n=1.5)
+    speed_in_water = math_tools.solve_absolute_refractive_index(n=1.33)
+    result = math_tools.solve_relative_refractive_index(v1=speed_in_glass["value"], v2=speed_in_water["value"])
+    assert result["ok"] is True
+    assert result["value"] == pytest.approx(1.33 / 1.5)
+    assert result["value"] < 1
+
+
+def test_relative_refractive_index_refuses_faster_than_light() -> None:
+    """A given speed above c is refused, and so is a calculated one (n21 = 2 with v2 = 2 x 10^8 would make v1 = 4 x 10^8)."""
+    given_fast = math_tools.solve_relative_refractive_index(v1=4e8, v2=2e8)
+    calculated_fast = math_tools.solve_relative_refractive_index(n21=2, v2=2e8)
+    only_one = math_tools.solve_relative_refractive_index(v1=3e8)
+    assert given_fast["ok"] is False
+    assert calculated_fast["ok"] is False
+    assert "faster than light" in calculated_fast["error"]
+    assert only_one["ok"] is False
+
+
+def test_relative_index_from_absolute_table_9_3() -> None:
+    """Table 9.3: crown glass (1.52) with respect to water (1.33) is 1.52 / 1.33 = 1.14; water with respect to glass is 0.875."""
+    glass_wrt_water = math_tools.solve_relative_index_from_absolute(n1=1.33, n2=1.52)
+    water_wrt_glass = math_tools.solve_relative_index_from_absolute(n1=1.52, n2=1.33)
+    glass_index = math_tools.solve_relative_index_from_absolute(n21=1.52 / 1.33, n1=1.33)
+    assert glass_wrt_water["solved_for"] == "n21"
+    assert glass_wrt_water["value"] == pytest.approx(1.52 / 1.33)
+    assert glass_wrt_water["formula"] == "n21 = n2 / n1"
+    assert water_wrt_glass["value"] == pytest.approx(0.875)
+    assert glass_index["solved_for"] == "n2"
+    assert glass_index["value"] == pytest.approx(1.52)
+
+
+def test_relative_index_from_absolute_matches_the_speeds_route() -> None:
+    """Both routes give the same answer: n2 / n1 equals v1 / v2 when the speeds come from n = c / v."""
+    speed_in_water = math_tools.solve_absolute_refractive_index(n=1.33)
+    speed_in_glass = math_tools.solve_absolute_refractive_index(n=1.52)
+    from_speeds = math_tools.solve_relative_refractive_index(v1=speed_in_water["value"], v2=speed_in_glass["value"])
+    from_indices = math_tools.solve_relative_index_from_absolute(n1=1.33, n2=1.52)
+    assert from_speeds["value"] == pytest.approx(from_indices["value"])
+
+
+def test_relative_index_from_absolute_refuses_impossible_indices() -> None:
+    """A given absolute index below 1 is refused, and so is a calculated one (n21 = 2 with n2 = 1.5 would make n1 = 0.75)."""
+    given_small = math_tools.solve_relative_index_from_absolute(n1=0.9, n2=1.5)
+    calculated_small = math_tools.solve_relative_index_from_absolute(n21=2, n2=1.5)
+    assert given_small["ok"] is False
+    assert "less than 1" in given_small["error"]
+    assert calculated_small["ok"] is False
