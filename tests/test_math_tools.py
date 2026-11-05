@@ -1,7 +1,9 @@
-"""Tests for the math-tools calculator: shared helpers, I = Q / t, V = W / Q and Ohm's law (V = I x R).
+"""Tests for the math-tools calculator: shared helpers, unit conversion, I = Q / t, V = W / Q, Ohm's law and resistivity.
 
-Worked examples come from NCERT Class 10 Science, Chapter 11 "Electricity" (2026-27 reprint).
+Worked examples and exercises come from NCERT Class 10 Science, Chapter 11 "Electricity" (2026-27 reprint).
 """
+
+import math
 
 import pytest
 
@@ -48,6 +50,78 @@ def test_find_zero_or_negative_returns_none_when_every_given_value_is_positive()
     """Missing values (None) are skipped, and positive values pass."""
     names = ["Potential difference V", "Current I", "Resistance R"]
     assert math_tools.find_zero_or_negative(names, [2.0, None, 1000.0]) is None
+
+
+# ---------------------------------------------------------------------------
+# Unit conversion: convert_to_si
+# ---------------------------------------------------------------------------
+
+
+def test_convert_millimetres_to_metres() -> None:
+    """0.3 mm (the wire in NCERT Example 11.5) is 0.0003 m."""
+    result = math_tools.convert_to_si(0.3, "mm")
+    assert result["ok"] is True
+    assert result["solved_for"] == "length"
+    assert result["value"] == pytest.approx(0.0003)
+    assert result["unit"] == "m"
+
+
+def test_convert_keeps_negative_values() -> None:
+    """Optics uses signed distances, so -30 cm must become -0.3 m, not an error."""
+    result = math_tools.convert_to_si(-30, "cm")
+    assert result["ok"] is True
+    assert result["value"] == pytest.approx(-0.3)
+
+
+def test_convert_minutes_and_hours_to_seconds() -> None:
+    """10 min is 600 s (NCERT Example 11.1) and 2 h is 7200 s."""
+    assert math_tools.convert_to_si(10, "min")["value"] == pytest.approx(600.0)
+    assert math_tools.convert_to_si(2, "h")["value"] == pytest.approx(7200.0)
+    assert math_tools.convert_to_si(10, "min")["unit"] == "s"
+
+
+def test_convert_milliamps_and_microamps_to_amperes() -> None:
+    """1 mA = 0.001 A and 1 uA = 0.000001 A (NCERT section 11.1); both look-alike micro signs are accepted."""
+    assert math_tools.convert_to_si(2, "mA")["value"] == pytest.approx(0.002)
+    assert math_tools.convert_to_si(5, "uA")["value"] == pytest.approx(0.000005)
+    # "µ" is the micro sign and "μ" is the Greek letter mu: they look the same on screen.
+    assert math_tools.convert_to_si(5, "µA")["value"] == pytest.approx(0.000005)
+    assert math_tools.convert_to_si(5, "μA")["value"] == pytest.approx(0.000005)
+
+
+def test_convert_kilowatt_hours_to_joules() -> None:
+    """1 kW h = 3.6 x 10^6 J (NCERT section 11.8), written with or without the space."""
+    assert math_tools.convert_to_si(1, "kWh")["value"] == pytest.approx(3600000.0)
+    assert math_tools.convert_to_si(1, "kW h")["value"] == pytest.approx(3600000.0)
+    assert math_tools.convert_to_si(1, "kWh")["unit"] == "J"
+
+
+def test_convert_accepts_unit_words_with_any_capitals() -> None:
+    """Words have no capital-letter meaning, so 'Minutes', 'Ohms' and 'millimetre' are all accepted."""
+    assert math_tools.convert_to_si(10, "Minutes")["value"] == pytest.approx(600.0)
+    assert math_tools.convert_to_si(26, "Ohms")["value"] == pytest.approx(26.0)
+    assert math_tools.convert_to_si(0.3, "millimetre")["value"] == pytest.approx(0.0003)
+
+
+def test_convert_ignores_spaces_around_the_unit() -> None:
+    """' mA ' is read as 'mA'."""
+    assert math_tools.convert_to_si(2, " mA ")["value"] == pytest.approx(0.002)
+
+
+def test_convert_capital_letters_matter_for_symbols() -> None:
+    """'MA' (mega-ampere) and 'MV' are not silently read as 'mA' and 'mV': they are refused."""
+    mega_amp = math_tools.convert_to_si(2, "MA")
+    mega_volt = math_tools.convert_to_si(2, "MV")
+    assert mega_amp["ok"] is False
+    assert mega_volt["ok"] is False
+
+
+def test_convert_rejects_an_unknown_unit_and_lists_the_known_ones() -> None:
+    """An unknown unit is refused, and the message lists the accepted symbols so the caller can retry."""
+    result = math_tools.convert_to_si(3, "furlong")
+    assert result["ok"] is False
+    assert "furlong" in result["error"]
+    assert "mm" in result["error"]
 
 
 # ---------------------------------------------------------------------------
@@ -247,3 +321,101 @@ def test_ohms_law_needs_exactly_two_values() -> None:
     assert three_given["ok"] is False
     assert one_given["ok"] is False
     assert "exactly two" in three_given["error"]
+
+
+# ---------------------------------------------------------------------------
+# A8: wire area and resistivity, R = rho x length / area (NCERT Eq. 11.10)
+# ---------------------------------------------------------------------------
+
+
+def test_wire_area_from_diameter_ncert_example_11_5() -> None:
+    """A wire of diameter 0.3 mm (0.0003 m) has a cross-sectional area of pi x d^2 / 4."""
+    result = math_tools.wire_area(diameter=0.0003)
+    assert result["ok"] is True
+    assert result["solved_for"] == "area"
+    assert result["value"] == pytest.approx(math.pi * 0.0003 * 0.0003 / 4)
+    assert result["unit"] == "m^2"
+
+
+def test_wire_area_from_radius_matches_the_diameter() -> None:
+    """A radius of 0.00015 m is the same wire as a diameter of 0.0003 m, so the area is the same."""
+    from_radius = math_tools.wire_area(radius=0.00015)
+    from_diameter = math_tools.wire_area(diameter=0.0003)
+    assert from_radius["ok"] is True
+    assert from_radius["value"] == pytest.approx(from_diameter["value"])
+    assert from_radius["formula"] == "A = pi x r^2"
+
+
+def test_wire_area_needs_exactly_one_of_diameter_or_radius() -> None:
+    """Giving both, or neither, is refused."""
+    both_given = math_tools.wire_area(diameter=0.0003, radius=0.00015)
+    neither_given = math_tools.wire_area()
+    assert both_given["ok"] is False
+    assert neither_given["ok"] is False
+
+
+def test_wire_area_rejects_zero_or_negative() -> None:
+    """A diameter or radius must be greater than 0."""
+    assert math_tools.wire_area(radius=0)["ok"] is False
+    assert math_tools.wire_area(diameter=-1)["ok"] is False
+
+
+def test_resistivity_ncert_example_11_5() -> None:
+    """NCERT Example 11.5: a 1 m wire of 26 ohm and diameter 0.3 mm has resistivity 1.84 x 10^-6 ohm m."""
+    area = math_tools.wire_area(diameter=0.0003)["value"]
+    result = math_tools.solve_resistivity(r=26, length=1, area=area)
+    assert result["ok"] is True
+    assert result["solved_for"] == "rho"
+    # NCERT gives the answer to 3 significant figures, so allow a 1% difference.
+    assert result["value"] == pytest.approx(1.84e-6, rel=0.01)
+    assert result["unit"] == "ohm m"
+
+
+def test_resistivity_ncert_exercise_6_full_chain() -> None:
+    """NCERT Exercise 6: copper, d = 0.5 mm, rho = 1.6 x 10^-8 ohm m, R = 10 ohm -> a length of about 122.7 m.
+
+    This runs the three calls in the order the agent would make them.
+    """
+    diameter = math_tools.convert_to_si(0.5, "mm")
+    area = math_tools.wire_area(diameter=diameter["value"])
+    result = math_tools.solve_resistivity(r=10, rho=1.6e-8, area=area["value"])
+    assert result["ok"] is True
+    assert result["solved_for"] == "length"
+    assert result["value"] == pytest.approx(122.7, rel=0.001)
+    assert result["unit"] == "m"
+
+
+def test_resistivity_doubling_the_diameter_quarters_the_resistance() -> None:
+    """NCERT Exercise 6, second part: doubling the diameter makes the area 4 times bigger, so R becomes 10 / 4 = 2.5 ohm."""
+    thin_area = math_tools.wire_area(diameter=0.0005)["value"]
+    length = math_tools.solve_resistivity(r=10, rho=1.6e-8, area=thin_area)["value"]
+    thick_area = math_tools.wire_area(diameter=0.001)["value"]
+    result = math_tools.solve_resistivity(rho=1.6e-8, length=length, area=thick_area)
+    assert result["ok"] is True
+    assert result["solved_for"] == "R"
+    assert result["value"] == pytest.approx(2.5)
+
+
+def test_resistivity_finds_the_area() -> None:
+    """rho = 1.6 x 10^-8 ohm m, length = 1 m and R = 0.16 ohm need an area of 10^-7 m^2."""
+    result = math_tools.solve_resistivity(r=0.16, rho=1.6e-8, length=1)
+    assert result["ok"] is True
+    assert result["solved_for"] == "area"
+    assert result["value"] == pytest.approx(1e-7)
+    assert result["unit"] == "m^2"
+
+
+def test_resistivity_needs_exactly_three_values() -> None:
+    """Two values, or all four, is refused."""
+    two_given = math_tools.solve_resistivity(r=26, length=1)
+    four_given = math_tools.solve_resistivity(r=26, rho=1e-6, length=1, area=1e-7)
+    assert two_given["ok"] is False
+    assert four_given["ok"] is False
+    assert "exactly three" in two_given["error"]
+
+
+def test_resistivity_rejects_a_zero_length() -> None:
+    """A length of 0 is refused instead of dividing by zero."""
+    result = math_tools.solve_resistivity(r=26, rho=1e-6, length=0)
+    assert result["ok"] is False
+    assert "Length" in result["error"]
