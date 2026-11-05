@@ -501,8 +501,125 @@ def test_series_and_parallel_name_the_bad_resistor() -> None:
 
 
 # ---------------------------------------------------------------------------
-# A11: electric power P = I^2 x R, and the cost of energy (NCERT section 11.8)
+# A10: Joule's law of heating H = I^2 x R x t (NCERT section 11.7)
 # ---------------------------------------------------------------------------
+
+
+def test_joule_heating_ncert_section_11_7_question_3() -> None:
+    """NCERT section 11.7, Question 3: an iron of 20 ohm takes 5 A for 30 s, so H = 5^2 x 20 x 30 = 15 000 J."""
+    result = math_tools.solve_joule_heating(i=5, r=20, t=30)
+    assert result["ok"] is True
+    assert result["solved_for"] == "H"
+    assert result["value"] == pytest.approx(15000.0)
+    assert result["unit"] == "J"
+    assert result["formula"] == "H = I^2 x R x t"
+
+
+def test_joule_heating_ncert_example_11_11_chain() -> None:
+    """NCERT Example 11.11: 100 J each second in 4 ohm. I = sqrt(100 / (4 x 1)) = 5 A, then V = I x R = 20 V.
+
+    This runs the calls in the order NCERT's solution takes: Joule's law (square-root branch), then Ohm's law.
+    """
+    current = math_tools.solve_joule_heating(h=100, r=4, t=1)
+    voltage = math_tools.solve_ohms_law(i=current["value"], r=4)
+    assert current["ok"] is True
+    assert current["solved_for"] == "I"
+    assert current["value"] == pytest.approx(5.0)
+    assert current["formula"] == "I = sqrt(H / (R x t))"
+    assert voltage["value"] == pytest.approx(20.0)
+
+
+def test_joule_heating_finds_the_resistance_and_the_time() -> None:
+    """Section 11.7, Question 3 the other way round: 15 000 J at 5 A gives R = 20 ohm (in 30 s) and t = 30 s (in 20 ohm)."""
+    resistance = math_tools.solve_joule_heating(h=15000, i=5, t=30)
+    time_taken = math_tools.solve_joule_heating(h=15000, i=5, r=20)
+    assert resistance["solved_for"] == "R"
+    assert resistance["value"] == pytest.approx(20.0)
+    assert resistance["unit"] == "ohm"
+    assert time_taken["solved_for"] == "t"
+    assert time_taken["value"] == pytest.approx(30.0)
+    assert time_taken["unit"] == "s"
+
+
+def test_joule_heating_needs_exactly_three_values() -> None:
+    """Two values, or all four, cannot be solved."""
+    only_two = math_tools.solve_joule_heating(i=5, r=20)
+    all_four = math_tools.solve_joule_heating(h=15000, i=5, r=20, t=30)
+    assert only_two["ok"] is False
+    assert all_four["ok"] is False
+    assert "exactly three" in only_two["error"]
+
+
+def test_joule_heating_refuses_a_negative_or_zero_before_the_square_root() -> None:
+    """A negative resistance or a zero time gets an error instead of crashing math.sqrt or dividing by zero."""
+    negative = math_tools.solve_joule_heating(h=100, r=-4, t=1)
+    zero_time = math_tools.solve_joule_heating(h=100, r=4, t=0)
+    assert negative["ok"] is False
+    assert "Resistance R" in negative["error"]
+    assert zero_time["ok"] is False
+    assert "Time t" in zero_time["error"]
+
+
+# ---------------------------------------------------------------------------
+# A11: electric power, energy and its cost (NCERT section 11.8)
+# ---------------------------------------------------------------------------
+
+
+def test_power_from_voltage_and_current_ncert_example_11_12() -> None:
+    """NCERT Example 11.12: a bulb on 220 V takes 0.50 A, so P = 220 x 0.50 = 110 W."""
+    result = math_tools.solve_power_voltage_current(v=220, i=0.5)
+    assert result["ok"] is True
+    assert result["solved_for"] == "P"
+    assert result["value"] == pytest.approx(110.0)
+    assert result["unit"] == "W"
+    assert result["formula"] == "P = V x I"
+
+
+def test_power_finds_the_current_ncert_example_11_10() -> None:
+    """NCERT Example 11.10: an iron on 220 V uses 840 W at most and 360 W at least, so I = 3.82 A and 1.64 A."""
+    most = math_tools.solve_power_voltage_current(p=840, v=220)
+    least = math_tools.solve_power_voltage_current(p=360, v=220)
+    assert most["solved_for"] == "I"
+    assert most["unit"] == "A"
+    assert most["formula"] == "I = P / V"
+    assert most["value"] == pytest.approx(3.82, rel=0.01)
+    assert least["value"] == pytest.approx(1.64, rel=0.01)
+
+
+def test_power_finds_the_voltage() -> None:
+    """NCERT Example 11.12 the other way round: 110 W at 0.50 A means V = 220 V."""
+    result = math_tools.solve_power_voltage_current(p=110, i=0.5)
+    assert result["solved_for"] == "V"
+    assert result["value"] == pytest.approx(220.0)
+    assert result["unit"] == "V"
+
+
+def test_fuse_current_ncert_section_11_7_1() -> None:
+    """NCERT section 11.7.1: a 1 kW iron on 220 V draws 1000 / 220 = 4.54 A (so a 5 A fuse is used).
+
+    The agent first converts 1 kW to watts, then asks for the current.
+    """
+    power = math_tools.convert_to_si(1, "kW")
+    current = math_tools.solve_power_voltage_current(p=power["value"], v=220)
+    assert power["value"] == pytest.approx(1000.0)
+    assert current["value"] == pytest.approx(4.54, rel=0.01)
+    assert current["value"] < 5
+
+
+def test_power_voltage_current_needs_exactly_two_values() -> None:
+    """One value, or all three, cannot be solved."""
+    only_one = math_tools.solve_power_voltage_current(v=220)
+    all_three = math_tools.solve_power_voltage_current(p=110, v=220, i=0.5)
+    assert only_one["ok"] is False
+    assert all_three["ok"] is False
+    assert "exactly two" in only_one["error"]
+
+
+def test_power_voltage_current_refuses_a_zero_current() -> None:
+    """A zero current is refused, because finding V would divide by it."""
+    result = math_tools.solve_power_voltage_current(p=110, i=0)
+    assert result["ok"] is False
+    assert "Current I" in result["error"]
 
 
 def test_power_from_current_and_resistance_ncert_exercise_17() -> None:
@@ -565,6 +682,140 @@ def test_power_refuses_a_negative_or_zero_before_the_square_root() -> None:
     assert "Resistance R" in negative["error"]
     assert zero["ok"] is False
     assert "Resistance R" in zero["error"]
+
+
+def test_power_rating_gives_the_resistance_ncert_exercise_3_chain() -> None:
+    """NCERT Exercise 3: a bulb rated 220 V, 100 W has R = 220^2 / 100 = 484 ohm. On 110 V it uses 110^2 / 484 = 25 W.
+
+    The resistance stays the same, so half the voltage gives a quarter of the power, not half (50 W).
+    """
+    resistance = math_tools.solve_power_voltage_resistance(p=100, v=220)
+    power = math_tools.solve_power_voltage_resistance(v=110, r=resistance["value"])
+    assert resistance["solved_for"] == "R"
+    assert resistance["value"] == pytest.approx(484.0)
+    assert resistance["unit"] == "ohm"
+    assert resistance["formula"] == "R = V^2 / P"
+    assert power["solved_for"] == "P"
+    assert power["value"] == pytest.approx(25.0)
+    assert power["unit"] == "W"
+    assert power["formula"] == "P = V^2 / R"
+
+
+def test_power_finds_the_resistance_exactly_ncert_example_11_10() -> None:
+    """NCERT Example 11.10: the iron's resistance at 840 W and 360 W on 220 V.
+
+    NCERT rounds the current first and prints 57.60 ohm and 134.15 ohm. In one call, with no rounding,
+    the exact values are 220^2 / 840 = 57.62 ohm and 220^2 / 360 = 134.44 ohm. They are within 0.1 % and
+    0.5 % of NCERT's printed values, which is why the grader's numeric check needs a tolerance.
+    """
+    most = math_tools.solve_power_voltage_resistance(p=840, v=220)
+    least = math_tools.solve_power_voltage_resistance(p=360, v=220)
+    assert most["value"] == pytest.approx(48400 / 840)
+    assert most["value"] == pytest.approx(57.60, rel=0.001)
+    assert least["value"] == pytest.approx(48400 / 360)
+    assert least["value"] == pytest.approx(134.15, rel=0.005)
+
+
+def test_power_finds_the_voltage_with_a_square_root() -> None:
+    """NCERT Example 11.11 in one call: 100 J each second (100 W) in 4 ohm gives V = sqrt(100 x 4) = 20 V."""
+    result = math_tools.solve_power_voltage_resistance(p=100, r=4)
+    assert result["ok"] is True
+    assert result["solved_for"] == "V"
+    assert result["value"] == pytest.approx(20.0)
+    assert result["unit"] == "V"
+    assert result["formula"] == "V = sqrt(P x R)"
+
+
+def test_power_in_a_parallel_resistor_ncert_exercise_14_ii() -> None:
+    """NCERT Exercise 14(ii): 4 V across 12 ohm and 2 ohm in parallel. The 2 ohm resistor has the full 4 V, so P = 4^2 / 2 = 8 W."""
+    result = math_tools.solve_power_voltage_resistance(v=4, r=2)
+    assert result["value"] == pytest.approx(8.0)
+
+
+def test_power_voltage_resistance_needs_exactly_two_values() -> None:
+    """One value, or all three, cannot be solved."""
+    only_one = math_tools.solve_power_voltage_resistance(v=220)
+    all_three = math_tools.solve_power_voltage_resistance(p=100, v=220, r=484)
+    assert only_one["ok"] is False
+    assert all_three["ok"] is False
+    assert "exactly two" in only_one["error"]
+
+
+def test_power_voltage_resistance_refuses_a_negative_before_the_square_root() -> None:
+    """A negative resistance gets an error instead of crashing math.sqrt."""
+    result = math_tools.solve_power_voltage_resistance(p=100, r=-4)
+    assert result["ok"] is False
+    assert "Resistance R" in result["error"]
+
+
+def test_energy_ncert_section_11_8_question_2_chain() -> None:
+    """NCERT section 11.8, Question 2: a motor takes 5 A from 220 V, so P = 1100 W; in 2 h it uses 1100 x 7200 = 7.92 x 10^6 J.
+
+    This runs the calls in the order the agent would make them: power, convert 2 h to seconds, then energy.
+    """
+    power = math_tools.solve_power_voltage_current(v=220, i=5)
+    time_taken = math_tools.convert_to_si(2, "h")
+    energy = math_tools.solve_energy_power_time(p=power["value"], t=time_taken["value"])
+    assert power["value"] == pytest.approx(1100.0)
+    assert time_taken["value"] == pytest.approx(7200.0)
+    assert energy["ok"] is True
+    assert energy["solved_for"] == "energy"
+    assert energy["value"] == pytest.approx(7.92e6)
+    assert energy["unit"] == "J"
+    assert energy["formula"] == "energy = P x t"
+
+
+def test_energy_and_cost_ncert_example_11_13_full_chain() -> None:
+    """NCERT Example 11.13: a 400 W fridge, 8 h a day for 30 days, uses 96 kW h; at Rs 3.00 per kW h that is Rs 288.
+
+    "8 h a day for 30 days" is 8 x 30 = 240 h. That multiplication sits between calls; the test does it here
+    until a general calculate tool exists (decision D4, Batch 4).
+    """
+    time_taken = math_tools.convert_to_si(8 * 30, "h")
+    energy = math_tools.solve_energy_power_time(p=400, t=time_taken["value"])
+    cost = math_tools.solve_energy_cost(energy=energy["value"], rate=3.00)
+    assert time_taken["value"] == pytest.approx(864000.0)
+    assert energy["value"] == pytest.approx(3.456e8)
+    assert cost["value"] == pytest.approx(288.0)
+
+
+def test_energy_ncert_exercise_16() -> None:
+    """NCERT Exercise 16: a 250 W TV for 1 h uses 9.0 x 10^5 J; a 1200 W toaster for 10 min uses 7.2 x 10^5 J. The TV uses more."""
+    tv_time = math_tools.convert_to_si(1, "h")
+    toaster_time = math_tools.convert_to_si(10, "min")
+    tv = math_tools.solve_energy_power_time(p=250, t=tv_time["value"])
+    toaster = math_tools.solve_energy_power_time(p=1200, t=toaster_time["value"])
+    assert tv["value"] == pytest.approx(9.0e5)
+    assert toaster["value"] == pytest.approx(7.2e5)
+    assert tv["value"] > toaster["value"]
+
+
+def test_energy_finds_the_power_and_the_time() -> None:
+    """100 J each second is 100 W (NCERT Example 11.11); 7.92 x 10^6 J at 1100 W takes 7200 s (section 11.8, Question 2)."""
+    power = math_tools.solve_energy_power_time(energy=100, t=1)
+    time_taken = math_tools.solve_energy_power_time(energy=7.92e6, p=1100)
+    assert power["solved_for"] == "P"
+    assert power["value"] == pytest.approx(100.0)
+    assert power["unit"] == "W"
+    assert time_taken["solved_for"] == "t"
+    assert time_taken["value"] == pytest.approx(7200.0)
+    assert time_taken["unit"] == "s"
+
+
+def test_energy_power_time_needs_exactly_two_values() -> None:
+    """One value, or all three, cannot be solved."""
+    only_one = math_tools.solve_energy_power_time(p=400)
+    all_three = math_tools.solve_energy_power_time(energy=100, p=100, t=1)
+    assert only_one["ok"] is False
+    assert all_three["ok"] is False
+    assert "exactly two" in only_one["error"]
+
+
+def test_energy_power_time_refuses_a_zero_time() -> None:
+    """A zero time is refused, because finding P would divide by it."""
+    result = math_tools.solve_energy_power_time(energy=100, t=0)
+    assert result["ok"] is False
+    assert "Time t" in result["error"]
 
 
 def test_energy_cost_ncert_example_11_13() -> None:
