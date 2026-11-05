@@ -19,23 +19,22 @@ Scope. Cover one subject and three or four chapters, such as Class 10 Science (L
 
 ## Curriculum Data and Retrieval Baseline
 
-The canonical curriculum datasets are `data/concept_graph.json`, `data/misconceptions.json`, `data/gold_questions.jsonl`, and `data/retrieval_queries.jsonl`. The retrieval comparison uses 30 dev queries; 12 held-out queries are reserved. After installing `requirements.txt` in `.venv`, run:
-
-On the same rebuilt 35-chunk index and 30 development queries, BM25 and dense-only each scored **0.9000 Recall@5**; hybrid with query rewriting scored **0.9500**, versus **0.9167** without rewriting. The optional cross-encoder also scored **0.9500**; it did not increase aggregate recall in this run. To enable it, install `requirements-reranker.txt` and evaluate with `--mode hybrid-reranked`. Query-level gains and regressions are documented in [REPORT.md](REPORT.md). MRR and latency are not measured.
-python scripts/build_index.py --force
-python scripts/map_retrieval_chunks.py
-python scripts/evaluate_dev.py --retrieval-only
+The canonical curriculum datasets are `data/concept_graph.json`, `data/misconceptions.json`, `data/gold_questions.jsonl`, and `data/retrieval_queries.jsonl`. Source PDFs are read from `DOCUMENT_PATH` (or `--source-dir`). After installing `requirements.txt` in `.venv`, rebuild the index and compare retrieval modes on the 30-query dev split:
 
 ```bash
-PYTHONPATH=. .venv/bin/python
+PYTHONPATH=. .venv/bin/python scripts/build_index.py --force
 for mode in bm25 dense hybrid hybrid-no-rewrite; do
-	python scripts/evaluate_dev.py --retrieval-only --mode "$mode" --split dev --top-k 5
+	PYTHONPATH=. .venv/bin/python scripts/evaluate_dev.py --retrieval-only --mode "$mode" --split dev --top-k 5
 done
 ```
 
-`DATA_DIR` and `DOCUMENT_PATH` can be configured in `.env`. `DOCUMENT_PATH` must contain the three NCERT chapter PDFs; `DATA_DIR` contains the canonical JSON/JSONL datasets.
+On the same rebuilt 35-chunk index and 30 development queries, BM25 and dense-only each scored **0.9000 Recall@5**; hybrid with query rewriting scored **0.9500**, versus **0.9167** without rewriting. The optional cross-encoder also scored **0.9500**; it did not increase aggregate recall in this run. Install `requirements-reranker.txt` to run `--mode hybrid-reranked`. Query-level gains and regressions are documented in [REPORT.md](REPORT.md). MRR and latency are not measured. The 12 held-out queries remain reserved.
 
-The BM25 development baseline is Recall@5 = **0.9028** on 24 development queries (20/24 with full recall). The 12 held-out queries remain unused for tuning. Dense retrieval, RRF fusion with dense results, and reranking are not yet implemented.
+`DATA_DIR` and `DOCUMENT_PATH` can be configured in `.env`; `DOCUMENT_PATH` must contain the three NCERT chapter PDFs, and `DATA_DIR` contains the JSON/JSONL datasets.
+
+## Learner Memory Status
+
+`LearnerStore` can persist mastery, misconception/resolution records, effective lesson IDs, quiz history, and per-concept failure streaks. It also exposes a 90-day expiry purge and `forget_me()` for learner data plus explicitly registered LangGraph threads. These are storage APIs, not yet a complete product workflow: the graph does not register learner sessions, the app has no user-facing `/forget_me` route, and no scheduler invokes expiry cleanup. See [MEMORY_POLICY.md](MEMORY_POLICY.md) for the implemented/planned boundary.
 
 ---
 

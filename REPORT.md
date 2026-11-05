@@ -8,7 +8,7 @@
 
 | Metric | Target / Minimum Bar | Current System Result |
 | :--- | :--- | :--- |
-| **Recall@5 (Retrieval)** | $\ge 0.80$ on 30+ labelled queries | **0.9028 BM25 dev baseline** on 24 queries; final 30+ query protocol pending |
+| **Recall@5 (Retrieval)** | $\ge 0.80$ on 30+ labelled queries | **0.9500 hybrid dev result** on 30 queries; 12 held-out queries reserved |
 | **Answer Leak Rate (Practice Mode)** | $0.0\%$ (Strictly enforced) | *Pending measurement* |
 | **Misconception Diagnosis Accuracy** | $\ge 80\%$ on simulated students | *Pending measurement* |
 | **Quiz Score Gain ($\Delta$)** | Measurable positive shift post-hinting | *Pending measurement* |
@@ -203,7 +203,7 @@ Validation used a clean Python 3.12.16 environment with dependencies installed f
 
 | Check | Command / procedure | Result |
 | :--- | :--- | :--- |
-| Full automated suite | `PYTHONPATH=. python -m pytest -q` | **21 passed** |
+| Full automated suite | `PYTHONPATH=. python -m pytest -q` | **27 passed** |
 | Source-PDF index build | `PYTHONPATH=. python scripts/build_index.py --git-revision HEAD --force` | **35 chunks**: Chapter 9 = 15, Chapter 10 = 9, Chapter 11 = 11 |
 | Chunk integrity | Count IDs, empty content, and OCR supplements in `.index/chunks.json` | 35 unique IDs; 0 empty chunks; 0 OCR supplements for these source PDFs |
 | Canonical equation metadata | Inspect sections 9.2.4, 9.3.7, and 11.4 after rebuild | Mirror: `1/f = 1/v + 1/u`; lens: `1/f = 1/v - 1/u`; Ohm: `V = I*R`, `R = V/I`, `I = V/R` |
@@ -238,9 +238,16 @@ PYTHONPATH=. .venv/bin/python scripts/build_index.py --git-revision HEAD --force
 
 *Refer to [MEMORY_POLICY.md](MEMORY_POLICY.md) for full legal and privacy specifications.*
 
-* **Storage Scope**: Pseudonymous user ID $\rightarrow$ concept mastery vector, encountered misconception IDs, explanation effectiveness scores.
+* **Storage API implemented**: mastery scores, misconception IDs with first/last-seen timestamps and resolution status, effective lesson IDs, recent quiz attempts, and per-concept failure streaks. Scores and durations are validated.
+* **Stuck learner result**: `record_quiz_result()` reports an alert after three consecutive below-threshold attempts on a concept or a problem duration greater than ten minutes. Teacher-dashboard delivery is not wired.
 * **Strict Exclusions**: No student names, school names, location data, or raw conversational logs in long-term storage.
-* **Right to be Forgotten**: Implementation of the `/forget_me` command, which completely purges learner history from SQLite and vector stores.
+* **Retention API implemented**: `purge_expired_profiles()` can remove profiles inactive for 90 days. It requires a scheduled/application-level caller; automatic expiry is not running.
+* **Deletion API implemented**: `forget_me(student_id, checkpointer)` deletes learner profiles, quiz attempts, session links, and registered LangGraph threads. The caller must register each learner/thread pair and supply the saver.
+* **Integration still pending**: The current app/graph does not register sessions or expose a user-facing `/forget_me` command. No cryptographic erasure receipt is implemented, and no learner vector store exists to purge.
+
+### TODO 4 Validation
+
+The contract tests cover profile updates, score validation, misconception and lesson recording, quiz history, three-failure and ten-minute alerts, expiry, checkpoint deletion requirements, and concept prerequisite recommendations. The full suite passed **27 tests**. Checkpoint deletion is tested with a saver test double; end-to-end app/checkpointer integration remains pending.
 
 ---
 
