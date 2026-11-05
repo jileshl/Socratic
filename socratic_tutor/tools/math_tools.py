@@ -13,16 +13,20 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 
-def make_result(quantity_name: str, exact_value: float, si_unit: str, formula_used: str) -> dict[str, Any]:
-    """Build the success shape: the quantity found, its exact value, its SI unit and the formula used."""
+def make_result(quantity_name: str, exact_value: float | str, result_unit: str, formula_used: str) -> dict[str, Any]:
+    """Build the success shape: the quantity found, its exact value, its unit and the formula used.
+
+    The value is a number, except for describe_image, whose value is a description such as "real and inverted, enlarged".
+    The unit is SI, except in the optics functions, which answer in the length unit the caller chose (for example cm).
+    """
     # "ok" lets the caller check for success with one True/False test.
     result: dict[str, Any] = {"ok": True}
     # Which quantity was calculated, for example "I".
     result["solved_for"] = quantity_name
     # The exact value. It is never rounded here: rounding is only for display.
     result["value"] = exact_value
-    # The SI unit, so nobody has to guess, for example "A".
-    result["unit"] = si_unit
+    # The unit, so nobody has to guess, for example "A".
+    result["unit"] = result_unit
     # The rule that was used, so the model can explain the step to the student.
     result["formula"] = formula_used
     return result
@@ -47,8 +51,9 @@ def count_given(values: list[float | None]) -> int:
 def find_zero_or_negative(names: list[str], values: list[float | None]) -> str | None:
     """Return the name of the first given value that is 0 or negative, or None if every given value is positive.
 
-    In Class 10 numericals every given quantity is a positive size. A 0 would make the formula
+    In Class 10 electricity numericals every given quantity is a positive size. A 0 would make the formula
     meaningless or force a division by zero, so 0 is rejected together with negative values.
+    (Optics distances carry signs, so the optics functions use find_zero instead.)
     """
     # names[k] describes values[k], so walk both lists by position.
     for position in range(len(values)):
@@ -57,6 +62,22 @@ def find_zero_or_negative(names: list[str], values: list[float | None]) -> str |
         if value is not None and value <= 0:
             return names[position]
     # Every given value is greater than 0.
+    return None
+
+
+def find_zero(names: list[str], values: list[float | None]) -> str | None:
+    """Return the name of the first given value that is exactly 0, or None if no given value is 0.
+
+    Used by the optics functions, where negative values are normal (u = -25 cm) but 0 would
+    force a division by zero.
+    """
+    # names[k] describes values[k], so walk both lists by position.
+    for position in range(len(values)):
+        value = values[position]
+        # A missing value (None) is skipped: only given values are checked.
+        if value is not None and value == 0:
+            return names[position]
+    # No given value is 0.
     return None
 
 
@@ -199,25 +220,580 @@ def convert_to_si(value: float, unit: str) -> dict[str, Any]:
     return make_result(kind, si_value, si_unit, "1 " + symbol + " = " + str(factor) + " " + si_unit)
 
 
-def solve_mirror_formula(u: float, f: float) -> dict[str, Any]:
-    """Solve mirror formula 1/f = 1/v + 1/u -> 1/v = 1/f - 1/u.
-    
-    All quantities in centimeters with proper Cartesian signs.
+def find_length_unit(length_unit: str) -> str | None:
+    """Return the symbol of a length unit, such as "cm" or "m", or None if the text is not a length unit.
+
+    The same matching rules as convert_to_si: a symbol must match exactly (capital letters matter),
+    and a word such as "centimetres" matches in any capitals.
     """
-    try:
-        # 1/v = (u - f) / (f * u)
-        denominator = u - f
-        if abs(denominator) < 1e-9:
-            return {"error": "Object is at focal point; image forms at infinity."}
-        v = (f * u) / denominator
-        m = -v / u
-        return {
-            "v": round(v, 2),
-            "m": round(m, 2),
-            "nature": "real and inverted" if v < 0 else "virtual and erect"
-        }
-    except Exception as e:
-        return {"error": str(e)}
+    # Remove spaces around the unit, for example " cm " -> "cm".
+    cleaned_unit = length_unit.strip()
+    symbol: str | None = None
+
+    # A symbol must match exactly, capital letters included.
+    if cleaned_unit in UNIT_SYMBOLS:
+        symbol = cleaned_unit
+    else:
+        # A word is compared in lower case, then turned into its symbol.
+        lower_unit = cleaned_unit.lower()
+        if lower_unit in UNIT_WORDS:
+            symbol = UNIT_WORDS[lower_unit]
+
+    # Not a known unit at all.
+    if symbol is None:
+        return None
+
+    # A known unit, but it must measure a length (cm is fine, s or kg is not).
+    kind = UNIT_SYMBOLS[symbol][0]
+    if kind != "length":
+        return None
+    return symbol
+
+
+# ---------------------------------------------------------------------------
+# Optics (NCERT Ch 9): mirrors and lenses.
+# Distances carry signs (New Cartesian sign convention), so these functions do NOT use
+# find_zero_or_negative. Their checks are: u must be negative (the object is on the left),
+# and no value may be 0 (the formulas divide by every value).
+# They take a length_unit ("cm", "m", ...) because NCERT works optics in cm. All distances
+# are in that one unit, and so is the answer; the formulas give the same image in any length unit.
+# ---------------------------------------------------------------------------
+
+
+def solve_mirror_formula(
+    length_unit: str,
+    u: float | None = None,
+    v: float | None = None,
+    f: float | None = None,
+) -> dict[str, Any]:
+    """Mirror formula: 1/v + 1/u = 1/f (NCERT Class 10 Science, Ch 9, Eq. 9.1).
+
+    Give exactly two of u, v, f and leave the third as None; the missing one is calculated.
+    length_unit is the unit of u, v and f, for example "cm" or "m"; the answer is in the same unit.
+    Use the New Cartesian sign convention (section 9.2.3): distances are measured from the pole;
+    in front of the mirror (to the left) is negative, behind it (to the right) is positive.
+    The object is always in front, so u is negative. A concave mirror has f negative; a convex mirror has f positive.
+    The answer v is negative for an image in front of the mirror (real) and positive for one behind it (virtual).
+    If only the radius of curvature R is known, get f from focal_length_from_radius first.
+    For the magnification and the image's nature, use solve_mirror_magnification and describe_image.
+    Returns the shared result shape, or the error shape if the inputs cannot be used.
+    """
+    # Flowchart (each [box] matches a comment in the code below):
+    #
+    #   [S0] length_unit is a length unit (cm, m, mm, km)?   no -> [E] error
+    #          | yes
+    #          v
+    #   [S1] exactly two of u, v, f given?                   no -> [E] error
+    #          | yes
+    #          v
+    #   [S2] no given value is 0, and u (if given) < 0?      no -> [E] error
+    #          | yes
+    #          v
+    #   [S3] which one is missing?
+    #          |
+    #          +-- v missing -> [B-V] bracket = 1/f - 1/u
+    #          |                [Z] bracket == 0?  yes -> [INF] object at the focus: image at infinity
+    #          |                v = 1 / bracket
+    #          |
+    #          +-- u missing -> [B-U] bracket = 1/f - 1/v
+    #          |                [Z] bracket == 0?  yes -> [INF] image at the focus: object at infinity
+    #          |                u = 1 / bracket
+    #          |                [C-U] u < 0?       no  -> [E] no real object gives this image
+    #          |
+    #          +-- f missing -> [B-F] bracket = 1/v + 1/u
+    #          |                [Z] bracket == 0?  yes -> [INF] v = -u: a plane mirror, no focal length
+    #          |                f = 1 / bracket
+    #          v
+    #   [R] make_result(quantity, exact value, length unit, formula)
+
+    # [S0] the unit must be a length unit from the unit table.
+    unit_symbol = find_length_unit(length_unit)
+    if unit_symbol is None:
+        return make_error("length_unit must be a length unit such as cm, m or mm, not '" + length_unit + "'.")
+
+    # [S1] exactly two of the three values must be given.
+    if count_given([u, v, f]) != 2:
+        return make_error("Give exactly two of u, v and f (in " + unit_symbol + "), and leave the third empty.")
+
+    # [S2] no given value may be 0, because the formula divides by u, v and f.
+    zero_name = find_zero(["Object distance u", "Image distance v", "Focal length f"], [u, v, f])
+    if zero_name is not None:
+        return make_error(zero_name + " cannot be 0.")
+
+    # [S2] u must be negative: the object is always in front of the mirror (NCERT sign convention).
+    # A positive u is refused, not quietly flipped, so the caller notices the slip and fixes its call.
+    if u is not None and u > 0:
+        return make_error(
+            "Object distance u must be negative: the object is always in front of (to the left of) the mirror "
+            "(NCERT sign convention). Did you mean u = " + str(-u) + "?"
+        )
+
+    # [S3] calculate whichever value is missing, exactly (no rounding).
+    if v is None:
+        # [B-V] v is missing: 1/v = 1/f - 1/u.
+        bracket = 1 / f - 1 / u
+        # [Z] a bracket of 0 means 1/v = 0: the object is at the focus.
+        if bracket == 0:
+            # [INF] a real physical case, so the message says what happens.
+            return make_error("The object is at the focus (u = f), so the image forms at infinity: there is no finite v.")
+        image_distance = 1 / bracket
+        return make_result("v", image_distance, unit_symbol, "v = 1 / (1/f - 1/u)")
+
+    if u is None:
+        # [B-U] u is missing: 1/u = 1/f - 1/v.
+        bracket = 1 / f - 1 / v
+        # [Z] a bracket of 0 means 1/u = 0: the image is at the focus.
+        if bracket == 0:
+            # [INF]
+            return make_error("The image is at the focus (v = f), so the object is at infinity: there is no finite u.")
+        object_distance = 1 / bracket
+        # [C-U] a calculated u must be negative too, or no real object can give this image.
+        if object_distance > 0:
+            return make_error(
+                "No real object gives this image with this mirror: the calculated u = " + str(object_distance)
+                + " is positive, but a real object has u < 0. Check the signs of v and f."
+            )
+        return make_result("u", object_distance, unit_symbol, "u = 1 / (1/f - 1/v)")
+
+    # [B-F] The only case left is that f is missing: 1/f = 1/v + 1/u.
+    bracket = 1 / v + 1 / u
+    # [Z] a bracket of 0 means v = -u: the image is as far behind the mirror as the object is in front.
+    if bracket == 0:
+        # [INF]
+        return make_error("v = -u, so 1/f = 0: that is a plane mirror, which has no focal length.")
+    focal_length = 1 / bracket
+    return make_result("f", focal_length, unit_symbol, "f = 1 / (1/v + 1/u)")
+
+
+def solve_lens_formula(
+    length_unit: str,
+    u: float | None = None,
+    v: float | None = None,
+    f: float | None = None,
+) -> dict[str, Any]:
+    """Lens formula: 1/v - 1/u = 1/f (NCERT Class 10 Science, Ch 9, Eq. 9.8).
+
+    Give exactly two of u, v, f and leave the third as None; the missing one is calculated.
+    length_unit is the unit of u, v and f, for example "cm" or "m"; the answer is in the same unit.
+    Use the New Cartesian sign convention: distances are measured from the optical centre;
+    to the left is negative, to the right is positive. The object is always on the left, so u is negative.
+    A convex (converging) lens has f positive; a concave (diverging) lens has f negative (section 9.3.6).
+    The answer v is positive for an image on the other side of the lens (real) and negative for one on the
+    same side as the object (virtual). This is the opposite of a mirror, so never use the mirror formula here.
+    For the magnification and the image's nature, use solve_lens_magnification and describe_image.
+    Returns the shared result shape, or the error shape if the inputs cannot be used.
+    """
+    # Flowchart (each [box] matches a comment in the code below):
+    #
+    #   [S0] length_unit is a length unit (cm, m, mm, km)?   no -> [E] error
+    #          | yes
+    #          v
+    #   [S1] exactly two of u, v, f given?                   no -> [E] error
+    #          | yes
+    #          v
+    #   [S2] no given value is 0, and u (if given) < 0?      no -> [E] error
+    #          | yes
+    #          v
+    #   [S3] which one is missing?
+    #          |
+    #          +-- v missing -> [B-V] bracket = 1/f + 1/u
+    #          |                [Z] bracket == 0?  yes -> [INF] object at the focus: image at infinity
+    #          |                v = 1 / bracket
+    #          |
+    #          +-- u missing -> [B-U] bracket = 1/v - 1/f
+    #          |                [Z] bracket == 0?  yes -> [INF] image at the focus: object at infinity
+    #          |                u = 1 / bracket
+    #          |                [C-U] u < 0?       no  -> [E] no real object gives this image
+    #          |
+    #          +-- f missing -> [B-F] bracket = 1/v - 1/u
+    #          |                [Z] bracket == 0?  yes -> [INF] v = u: no lens, no focal length
+    #          |                f = 1 / bracket
+    #          v
+    #   [R] make_result(quantity, exact value, length unit, formula)
+
+    # [S0] the unit must be a length unit from the unit table.
+    unit_symbol = find_length_unit(length_unit)
+    if unit_symbol is None:
+        return make_error("length_unit must be a length unit such as cm, m or mm, not '" + length_unit + "'.")
+
+    # [S1] exactly two of the three values must be given.
+    if count_given([u, v, f]) != 2:
+        return make_error("Give exactly two of u, v and f (in " + unit_symbol + "), and leave the third empty.")
+
+    # [S2] no given value may be 0, because the formula divides by u, v and f.
+    zero_name = find_zero(["Object distance u", "Image distance v", "Focal length f"], [u, v, f])
+    if zero_name is not None:
+        return make_error(zero_name + " cannot be 0.")
+
+    # [S2] u must be negative: the object is always on the left of the lens (NCERT sign convention).
+    # A positive u is refused, not quietly flipped, so the caller notices the slip and fixes its call.
+    if u is not None and u > 0:
+        return make_error(
+            "Object distance u must be negative: the object is always on the left of the lens "
+            "(NCERT sign convention). Did you mean u = " + str(-u) + "?"
+        )
+
+    # [S3] calculate whichever value is missing, exactly (no rounding).
+    if v is None:
+        # [B-V] v is missing: 1/v = 1/f + 1/u.
+        bracket = 1 / f + 1 / u
+        # [Z] a bracket of 0 means 1/v = 0: the object is at the focus.
+        if bracket == 0:
+            # [INF] a real physical case, so the message says what happens.
+            return make_error("The object is at the focus (u = -f), so the image forms at infinity: there is no finite v.")
+        image_distance = 1 / bracket
+        return make_result("v", image_distance, unit_symbol, "v = 1 / (1/f + 1/u)")
+
+    if u is None:
+        # [B-U] u is missing: 1/u = 1/v - 1/f.
+        bracket = 1 / v - 1 / f
+        # [Z] a bracket of 0 means 1/u = 0: the image is at the focus.
+        if bracket == 0:
+            # [INF]
+            return make_error("The image is at the focus (v = f), so the object is at infinity: there is no finite u.")
+        object_distance = 1 / bracket
+        # [C-U] a calculated u must be negative too, or no real object can give this image.
+        if object_distance > 0:
+            return make_error(
+                "No real object gives this image with this lens: the calculated u = " + str(object_distance)
+                + " is positive, but a real object has u < 0. Check the signs of v and f."
+            )
+        return make_result("u", object_distance, unit_symbol, "u = 1 / (1/v - 1/f)")
+
+    # [B-F] The only case left is that f is missing: 1/f = 1/v - 1/u.
+    bracket = 1 / v - 1 / u
+    # [Z] a bracket of 0 means v = u: the image is exactly where the object is.
+    if bracket == 0:
+        # [INF]
+        return make_error("v = u, so 1/f = 0: the image is where the object is, so there is no lens (no focal length).")
+    focal_length = 1 / bracket
+    return make_result("f", focal_length, unit_symbol, "f = 1 / (1/v - 1/u)")
+
+
+def focal_length_from_radius(length_unit: str, radius_of_curvature: float) -> dict[str, Any]:
+    """Focal length of a spherical mirror from its radius of curvature: f = R / 2 (NCERT Class 10 Science, Ch 9, section 9.2).
+
+    radius_of_curvature (R) is in length_unit, for example "cm" or "m"; the answer f is in the same unit.
+    R is the radius of the sphere the mirror is a part of (from the pole to the centre of curvature).
+    It is NOT half the mirror's width: the mirror's diameter is its aperture, which does not give R or f.
+    Keep the sign: a concave mirror has R (and f) negative; a convex mirror has R (and f) positive.
+    Returns the shared result shape, or the error shape if the inputs cannot be used.
+    """
+    # Flowchart (each [box] matches a comment in the code below):
+    #
+    #   [S0] length_unit is a length unit?   no -> [E] error
+    #          | yes
+    #          v
+    #   [S2] R is not 0?                     no -> [E] error
+    #          | yes
+    #          v
+    #   [B-F] f = R / 2, keeping the sign of R
+    #          |
+    #          v
+    #   [R] make_result("f", f, length unit, "f = R / 2")
+
+    # [S0] the unit must be a length unit from the unit table.
+    unit_symbol = find_length_unit(length_unit)
+    if unit_symbol is None:
+        return make_error("length_unit must be a length unit such as cm, m or mm, not '" + length_unit + "'.")
+
+    # [S2] a radius of 0 is not a mirror.
+    if radius_of_curvature == 0:
+        return make_error("Radius of curvature R cannot be 0.")
+
+    # [B-F] halve R; the sign stays, so a concave mirror's f stays negative.
+    focal_length = radius_of_curvature / 2
+
+    # [R]
+    return make_result("f", focal_length, unit_symbol, "f = R / 2")
+
+
+def solve_mirror_magnification(
+    length_unit: str,
+    m: float | None = None,
+    v: float | None = None,
+    u: float | None = None,
+) -> dict[str, Any]:
+    """Magnification of a mirror from the distances: m = -v / u (NCERT Class 10 Science, Ch 9, Eq. 9.3).
+
+    Give exactly two of m, v, u and leave the third as None; the missing one is calculated.
+    length_unit is the unit of v and u (and of the answer when v or u is found); m has no unit.
+    Signs follow the New Cartesian sign convention, so u is negative.
+    m is negative for a real, inverted image and positive for a virtual, erect image.
+    So "a real image three times the size of the object" means m = -3.
+    For the image's height use solve_image_height; for its nature use describe_image.
+    Returns the shared result shape, or the error shape if the inputs cannot be used.
+    """
+    # Flowchart (each [box] matches a comment in the code below):
+    #
+    #   [S0] length_unit is a length unit?                   no -> [E] error
+    #          | yes
+    #          v
+    #   [S1] exactly two of m, v, u given?                   no -> [E] error
+    #          | yes
+    #          v
+    #   [S2] no given value is 0, and u (if given) < 0?      no -> [E] error
+    #          | yes
+    #          v
+    #   [S3] which one is missing?
+    #          |
+    #          +-- m missing -> [B-M] m = -v / u
+    #          +-- v missing -> [B-V] v = -m * u
+    #          +-- u missing -> [B-U] u = -v / m,  then [C-U] u < 0?  no -> [E] no real object fits
+    #          |
+    #          v
+    #   [R] make_result(quantity, exact value, unit, formula)
+
+    # [S0] the unit must be a length unit from the unit table.
+    unit_symbol = find_length_unit(length_unit)
+    if unit_symbol is None:
+        return make_error("length_unit must be a length unit such as cm, m or mm, not '" + length_unit + "'.")
+
+    # [S1] exactly two of the three values must be given.
+    if count_given([m, v, u]) != 2:
+        return make_error("Give exactly two of m, v and u (v and u in " + unit_symbol + "), and leave the third empty.")
+
+    # [S2] no given value may be 0 (m = 0 or v = 0 means no image; u = 0 would divide by zero).
+    zero_name = find_zero(["Magnification m", "Image distance v", "Object distance u"], [m, v, u])
+    if zero_name is not None:
+        return make_error(zero_name + " cannot be 0.")
+
+    # [S2] u must be negative: the object is always in front of the mirror (NCERT sign convention).
+    if u is not None and u > 0:
+        return make_error(
+            "Object distance u must be negative: the object is always in front of (to the left of) the mirror "
+            "(NCERT sign convention). Did you mean u = " + str(-u) + "?"
+        )
+
+    # [S3] calculate whichever value is missing, exactly (no rounding).
+    if m is None:
+        # [B-M] m is missing.
+        magnification = -v / u
+        return make_result("m", magnification, "no unit", "m = -v / u")
+
+    if v is None:
+        # [B-V] v is missing.
+        image_distance = -m * u
+        return make_result("v", image_distance, unit_symbol, "v = -m x u")
+
+    # [B-U] The only case left is that u is missing.
+    object_distance = -v / m
+    # [C-U] a calculated u must be negative too, or no real object fits these values.
+    if object_distance > 0:
+        return make_error(
+            "No real object fits: the calculated u = " + str(object_distance)
+            + " is positive, but a real object has u < 0. Check the sign of m (a real image has m < 0) and of v."
+        )
+    return make_result("u", object_distance, unit_symbol, "u = -v / m")
+
+
+def solve_lens_magnification(
+    length_unit: str,
+    m: float | None = None,
+    v: float | None = None,
+    u: float | None = None,
+) -> dict[str, Any]:
+    """Magnification of a lens from the distances: m = v / u (NCERT Class 10 Science, Ch 9, Eq. 9.10).
+
+    Give exactly two of m, v, u and leave the third as None; the missing one is calculated.
+    length_unit is the unit of v and u (and of the answer when v or u is found); m has no unit.
+    Signs follow the New Cartesian sign convention, so u is negative. There is no minus sign here,
+    unlike the mirror's m = -v / u.
+    m is negative for a real, inverted image and positive for a virtual, erect image.
+    For the image's height use solve_image_height; for its nature use describe_image.
+    Returns the shared result shape, or the error shape if the inputs cannot be used.
+    """
+    # Flowchart (each [box] matches a comment in the code below):
+    #
+    #   [S0] length_unit is a length unit?                   no -> [E] error
+    #          | yes
+    #          v
+    #   [S1] exactly two of m, v, u given?                   no -> [E] error
+    #          | yes
+    #          v
+    #   [S2] no given value is 0, and u (if given) < 0?      no -> [E] error
+    #          | yes
+    #          v
+    #   [S3] which one is missing?
+    #          |
+    #          +-- m missing -> [B-M] m = v / u
+    #          +-- v missing -> [B-V] v = m * u
+    #          +-- u missing -> [B-U] u = v / m,  then [C-U] u < 0?  no -> [E] no real object fits
+    #          |
+    #          v
+    #   [R] make_result(quantity, exact value, unit, formula)
+
+    # [S0] the unit must be a length unit from the unit table.
+    unit_symbol = find_length_unit(length_unit)
+    if unit_symbol is None:
+        return make_error("length_unit must be a length unit such as cm, m or mm, not '" + length_unit + "'.")
+
+    # [S1] exactly two of the three values must be given.
+    if count_given([m, v, u]) != 2:
+        return make_error("Give exactly two of m, v and u (v and u in " + unit_symbol + "), and leave the third empty.")
+
+    # [S2] no given value may be 0 (m = 0 or v = 0 means no image; u = 0 would divide by zero).
+    zero_name = find_zero(["Magnification m", "Image distance v", "Object distance u"], [m, v, u])
+    if zero_name is not None:
+        return make_error(zero_name + " cannot be 0.")
+
+    # [S2] u must be negative: the object is always on the left of the lens (NCERT sign convention).
+    if u is not None and u > 0:
+        return make_error(
+            "Object distance u must be negative: the object is always on the left of the lens "
+            "(NCERT sign convention). Did you mean u = " + str(-u) + "?"
+        )
+
+    # [S3] calculate whichever value is missing, exactly (no rounding).
+    if m is None:
+        # [B-M] m is missing.
+        magnification = v / u
+        return make_result("m", magnification, "no unit", "m = v / u")
+
+    if v is None:
+        # [B-V] v is missing.
+        image_distance = m * u
+        return make_result("v", image_distance, unit_symbol, "v = m x u")
+
+    # [B-U] The only case left is that u is missing.
+    object_distance = v / m
+    # [C-U] a calculated u must be negative too, or no real object fits these values.
+    if object_distance > 0:
+        return make_error(
+            "No real object fits: the calculated u = " + str(object_distance)
+            + " is positive, but a real object has u < 0. Check the signs: for a lens a real image has v > 0 and m < 0."
+        )
+    return make_result("u", object_distance, unit_symbol, "u = v / m")
+
+
+def solve_image_height(
+    length_unit: str,
+    m: float | None = None,
+    h_object: float | None = None,
+    h_image: float | None = None,
+) -> dict[str, Any]:
+    """Magnification from the heights: m = h' / h (NCERT Class 10 Science, Ch 9, Eq. 9.2 for mirrors, Eq. 9.9 for lenses).
+
+    The same formula works for mirrors and lenses. Give exactly two of m, h_object (h) and h_image (h'),
+    and leave the third as None; the missing one is calculated.
+    length_unit is the unit of the heights (and of the answer when a height is found); m has no unit.
+    The object's height is taken as positive (section 9.2.4). The image's height is negative for a real,
+    inverted image (below the axis) and positive for a virtual, erect image.
+    Get m first from solve_mirror_magnification or solve_lens_magnification.
+    Returns the shared result shape, or the error shape if the inputs cannot be used.
+    """
+    # Flowchart (each [box] matches a comment in the code below):
+    #
+    #   [S0] length_unit is a length unit?                        no -> [E] error
+    #          | yes
+    #          v
+    #   [S1] exactly two of m, h_object, h_image given?           no -> [E] error
+    #          | yes
+    #          v
+    #   [S2] no given value is 0, and h_object (if given) > 0?    no -> [E] error
+    #          | yes
+    #          v
+    #   [S3] which one is missing?
+    #          |
+    #          +-- m missing        -> [B-M]  m = h_image / h_object
+    #          +-- h_image missing  -> [B-HI] h_image = m * h_object
+    #          +-- h_object missing -> [B-HO] h_object = h_image / m,  then [C-HO] h_object > 0?  no -> [E] error
+    #          |
+    #          v
+    #   [R] make_result(quantity, exact value, unit, formula)
+
+    # [S0] the unit must be a length unit from the unit table.
+    unit_symbol = find_length_unit(length_unit)
+    if unit_symbol is None:
+        return make_error("length_unit must be a length unit such as cm, m or mm, not '" + length_unit + "'.")
+
+    # [S1] exactly two of the three values must be given.
+    if count_given([m, h_object, h_image]) != 2:
+        return make_error(
+            "Give exactly two of m, h_object and h_image (heights in " + unit_symbol + "), and leave the third empty."
+        )
+
+    # [S2] no given value may be 0 (a height of 0 is no object or no image).
+    zero_name = find_zero(["Magnification m", "Object height h", "Image height h'"], [m, h_object, h_image])
+    if zero_name is not None:
+        return make_error(zero_name + " cannot be 0.")
+
+    # [S2] the object's height is taken as positive (NCERT section 9.2.4).
+    if h_object is not None and h_object < 0:
+        return make_error("Object height h must be positive: the object stands above the principal axis (NCERT sign convention).")
+
+    # [S3] calculate whichever value is missing, exactly (no rounding).
+    if m is None:
+        # [B-M] m is missing.
+        magnification = h_image / h_object
+        return make_result("m", magnification, "no unit", "m = h' / h")
+
+    if h_image is None:
+        # [B-HI] the image height is missing.
+        image_height = m * h_object
+        return make_result("h_image", image_height, unit_symbol, "h' = m x h")
+
+    # [B-HO] The only case left is that the object height is missing.
+    object_height = h_image / m
+    # [C-HO] a calculated object height must be positive too.
+    if object_height < 0:
+        return make_error(
+            "The calculated object height h = " + str(object_height) + " is negative, but an object stands above "
+            "the axis (h > 0). Check the signs: a real image has m < 0 and h' < 0."
+        )
+    return make_result("h_object", object_height, unit_symbol, "h = h' / m")
+
+
+def describe_image(m: float) -> dict[str, Any]:
+    """The nature of the image from the magnification m, for mirrors and lenses alike (NCERT Class 10 Science, Ch 9, section 9.2.4).
+
+    m negative: real and inverted. m positive: virtual and erect.
+    Size from the value of m, ignoring its sign: more than 1 is enlarged, 1 is the same size, less than 1 is diminished.
+    Get m first from solve_mirror_magnification, solve_lens_magnification or solve_image_height.
+    Returns the shared result shape with the description as text in "value", or the error shape if m is 0.
+    """
+    # Flowchart (each [box] matches a comment in the code below):
+    #
+    #   [S2] m is not 0?                      no -> [E] error
+    #          | yes
+    #          v
+    #   [N1] which sign does m have?
+    #          |                         |
+    #          | m < 0                   | m > 0
+    #          v                         v
+    #   [N-REAL] real and inverted   [N-VIRT] virtual and erect
+    #          |                         |
+    #          v                         v
+    #   [N2] size from |m|: close to 1 -> same size; more than 1 -> enlarged; less than 1 -> diminished
+    #          |
+    #          v
+    #   [R] make_result("nature", sign words + size word, "no unit", rule)
+
+    # [S2] m = 0 would mean an image of no size at all.
+    if m == 0:
+        return make_error("Magnification m cannot be 0.")
+
+    # [N1] the sign of m says real or virtual.
+    if m < 0:
+        # [N-REAL] a negative m: the image is real and upside down.
+        kind_words = "real and inverted"
+    else:
+        # [N-VIRT] a positive m: the image is virtual and upright.
+        kind_words = "virtual and erect"
+
+    # [N2] the size of m, ignoring its sign, says bigger or smaller.
+    size = abs(m)
+    # "Close to 1" instead of "== 1", because a computed m can be 1.0000000000000002.
+    if math.isclose(size, 1.0):
+        size_word = "same size"
+    elif size > 1:
+        size_word = "enlarged"
+    else:
+        size_word = "diminished"
+
+    # [R] the description is text, so "value" holds a string here.
+    nature = kind_words + ", " + size_word
+    return make_result("nature", nature, "no unit", "m < 0: real and inverted; m > 0: virtual and erect; |m| > 1: enlarged")
 
 
 def numeric_check(student_val: float, gold_val: float, tolerance: float = 0.05) -> bool:
@@ -225,27 +801,6 @@ def numeric_check(student_val: float, gold_val: float, tolerance: float = 0.05) 
     if gold_val == 0:
         return abs(student_val) < 1e-6
     return abs(student_val - gold_val) / abs(gold_val) <= tolerance
-
-
-# TODO (Milestone 3.2 / L7): Solve Lens formula: 1/f = 1/v - 1/u and power P = 1/f
-def solve_lens_formula(u: float, f: float) -> dict[str, Any]:
-    """Solve lens formula 1/f = 1/v - 1/u -> 1/v = 1/f + 1/u.
-    
-    All quantities in centimeters with proper Cartesian signs.
-    """
-    try:
-        denominator = u + f
-        if abs(denominator) < 1e-9:
-            return {"error": "Object is at focal point; image forms at infinity."}
-        v = (f * u) / denominator
-        m = v / u
-        return {
-            "v": round(v, 2),
-            "m": round(m, 2),
-            "nature": "real and inverted" if v > 0 else "virtual and erect"
-        }
-    except Exception as e:
-        return {"error": str(e)}
 
 
 def solve_charge_current(q: float | None = None, i: float | None = None, t: float | None = None) -> dict[str, Any]:

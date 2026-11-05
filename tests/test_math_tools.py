@@ -869,3 +869,332 @@ def test_energy_cost_refuses_a_zero_rate() -> None:
     result = math_tools.solve_energy_cost(rate=0, cost=288)
     assert result["ok"] is False
     assert "Rate" in result["error"]
+
+
+# ---------------------------------------------------------------------------
+# A1 and A2: mirrors and lenses (NCERT Ch 9). Distances are signed and in the caller's length unit.
+# ---------------------------------------------------------------------------
+
+
+def test_find_length_unit_accepts_symbols_and_words() -> None:
+    """Length symbols match exactly; words match in any capitals, the same rules as convert_to_si."""
+    assert math_tools.find_length_unit("cm") == "cm"
+    assert math_tools.find_length_unit(" m ") == "m"
+    assert math_tools.find_length_unit("centimetres") == "cm"
+    assert math_tools.find_length_unit("Millimetre") == "mm"
+
+
+def test_find_length_unit_refuses_other_units() -> None:
+    """A time, an unknown unit, or a symbol with the wrong capitals is not a length unit."""
+    assert math_tools.find_length_unit("s") is None
+    assert math_tools.find_length_unit("kg") is None
+    assert math_tools.find_length_unit("CM") is None
+
+
+def test_find_zero_allows_negative_values() -> None:
+    """Negative distances are normal in optics; only an exact 0 is reported, by its name."""
+    assert math_tools.find_zero(["u", "f"], [-25, -15]) is None
+    assert math_tools.find_zero(["u", "v", "f"], [-25, None, 0]) == "f"
+
+
+def test_mirror_ncert_example_9_2() -> None:
+    """NCERT Example 9.2: concave mirror, u = -25.0 cm, f = -15.0 cm, so v = -37.5 cm (in front: real)."""
+    result = math_tools.solve_mirror_formula("cm", u=-25, f=-15)
+    assert result["ok"] is True
+    assert result["solved_for"] == "v"
+    assert result["value"] == pytest.approx(-37.5)
+    assert result["unit"] == "cm"
+    assert result["formula"] == "v = 1 / (1/f - 1/u)"
+
+
+def test_mirror_ncert_example_9_2_chain() -> None:
+    """NCERT Example 9.2 in full: v = -37.5 cm, m = -1.5, image height -6.0 cm (from 4.0 cm), real, inverted, enlarged.
+
+    This runs the calls in the order the agent would make them.
+    """
+    image = math_tools.solve_mirror_formula("cm", u=-25, f=-15)
+    magnification = math_tools.solve_mirror_magnification("cm", v=image["value"], u=-25)
+    height = math_tools.solve_image_height("cm", m=magnification["value"], h_object=4.0)
+    nature = math_tools.describe_image(magnification["value"])
+    assert magnification["value"] == pytest.approx(-1.5)
+    assert magnification["unit"] == "no unit"
+    assert magnification["formula"] == "m = -v / u"
+    assert height["solved_for"] == "h_image"
+    assert height["value"] == pytest.approx(-6.0)
+    assert height["formula"] == "h' = m x h"
+    assert nature["value"] == "real and inverted, enlarged"
+
+
+def test_mirror_ncert_example_9_1_chain_in_metres() -> None:
+    """NCERT Example 9.1: convex mirror, R = +3.00 m, bus at u = -5.00 m. f = 1.50 m, v = +1.15 m, m = +0.23.
+
+    The image is behind the mirror: virtual, erect and diminished. The whole chain works in metres.
+    """
+    focal = math_tools.focal_length_from_radius("m", 3.00)
+    image = math_tools.solve_mirror_formula("m", u=-5.00, f=focal["value"])
+    magnification = math_tools.solve_mirror_magnification("m", v=image["value"], u=-5.00)
+    nature = math_tools.describe_image(magnification["value"])
+    assert focal["value"] == pytest.approx(1.50)
+    assert image["value"] == pytest.approx(1.15, rel=0.01)
+    assert image["unit"] == "m"
+    assert magnification["value"] == pytest.approx(0.23, rel=0.01)
+    assert nature["value"] == "virtual and erect, diminished"
+
+
+def test_mirror_ncert_exercise_12_convex() -> None:
+    """NCERT Exercise 12: object 10 cm from a convex mirror of focal length 15 cm, so v = +6 cm (behind: virtual)."""
+    result = math_tools.solve_mirror_formula("cm", u=-10, f=15)
+    assert result["value"] == pytest.approx(6.0)
+
+
+def test_mirror_finds_u_and_f() -> None:
+    """Exercise 12 and Example 9.2 the other way round: v = +6, f = +15 gives u = -10; u = -25, v = -37.5 gives f = -15."""
+    object_distance = math_tools.solve_mirror_formula("cm", v=6, f=15)
+    focal = math_tools.solve_mirror_formula("cm", u=-25, v=-37.5)
+    assert object_distance["solved_for"] == "u"
+    assert object_distance["value"] == pytest.approx(-10.0)
+    assert object_distance["formula"] == "u = 1 / (1/f - 1/v)"
+    assert focal["solved_for"] == "f"
+    assert focal["value"] == pytest.approx(-15.0)
+    assert focal["formula"] == "f = 1 / (1/v + 1/u)"
+
+
+def test_mirror_gives_the_same_image_in_cm_and_in_m() -> None:
+    """Example 9.2 in metres (u = -0.25 m, f = -0.15 m) gives -0.375 m, which is the same -37.5 cm."""
+    in_cm = math_tools.solve_mirror_formula("cm", u=-25, f=-15)
+    in_m = math_tools.solve_mirror_formula("m", u=-0.25, f=-0.15)
+    assert in_m["value"] == pytest.approx(-0.375)
+    assert in_m["value"] * 100 == pytest.approx(in_cm["value"])
+
+
+def test_mirror_refuses_a_positive_u() -> None:
+    """Example 9.2 with the sign forgotten (u = +25) would quietly give v = -9.375 cm. It is refused instead."""
+    result = math_tools.solve_mirror_formula("cm", u=25, f=-15)
+    assert result["ok"] is False
+    assert "must be negative" in result["error"]
+    assert "u = -25" in result["error"]
+
+
+def test_mirror_infinity_cases_get_a_clear_message() -> None:
+    """Object at the focus: image at infinity. Image at the focus: object at infinity. v = -u: a plane mirror."""
+    object_at_focus = math_tools.solve_mirror_formula("cm", u=-15, f=-15)
+    image_at_focus = math_tools.solve_mirror_formula("cm", v=-15, f=-15)
+    plane_mirror = math_tools.solve_mirror_formula("cm", u=-20, v=20)
+    assert object_at_focus["ok"] is False
+    assert "image forms at infinity" in object_at_focus["error"]
+    assert image_at_focus["ok"] is False
+    assert "object is at infinity" in image_at_focus["error"]
+    assert plane_mirror["ok"] is False
+    assert "plane mirror" in plane_mirror["error"]
+
+
+def test_mirror_refuses_an_image_no_real_object_gives() -> None:
+    """A convex mirror (f = +15 cm) cannot give a real image in front of it (v = -10 cm): the calculated u is +6."""
+    result = math_tools.solve_mirror_formula("cm", v=-10, f=15)
+    assert result["ok"] is False
+    assert "No real object" in result["error"]
+
+
+def test_mirror_needs_exactly_two_values_and_no_zero() -> None:
+    """One value cannot be solved, and a focal length of 0 is refused by name."""
+    only_one = math_tools.solve_mirror_formula("cm", u=-25)
+    zero_focal = math_tools.solve_mirror_formula("cm", u=-25, f=0)
+    assert only_one["ok"] is False
+    assert "exactly two" in only_one["error"]
+    assert zero_focal["ok"] is False
+    assert "Focal length f" in zero_focal["error"]
+
+
+def test_optics_refuses_a_unit_that_is_not_a_length() -> None:
+    """length_unit must be a length: a time ("s") or an unknown unit ("kg") is refused."""
+    time_unit = math_tools.solve_mirror_formula("s", u=-25, f=-15)
+    unknown_unit = math_tools.solve_lens_formula("kg", u=-15, f=10)
+    assert time_unit["ok"] is False
+    assert "length unit" in time_unit["error"]
+    assert unknown_unit["ok"] is False
+
+
+def test_lens_ncert_example_9_4_chain() -> None:
+    """NCERT Example 9.4: convex lens, f = +10 cm, u = -15 cm, h = 2.0 cm. v = +30 cm, m = -2, h' = -4.0 cm.
+
+    The image is on the other side of the lens: real, inverted and enlarged.
+    """
+    image = math_tools.solve_lens_formula("cm", u=-15, f=10)
+    magnification = math_tools.solve_lens_magnification("cm", v=image["value"], u=-15)
+    height = math_tools.solve_image_height("cm", m=magnification["value"], h_object=2.0)
+    nature = math_tools.describe_image(magnification["value"])
+    assert image["solved_for"] == "v"
+    assert image["value"] == pytest.approx(30.0)
+    assert image["formula"] == "v = 1 / (1/f + 1/u)"
+    assert magnification["value"] == pytest.approx(-2.0)
+    assert magnification["formula"] == "m = v / u"
+    assert height["value"] == pytest.approx(-4.0)
+    assert nature["value"] == "real and inverted, enlarged"
+
+
+def test_lens_ncert_example_9_3_finds_u() -> None:
+    """NCERT Example 9.3: concave lens, f = -15 cm, image at v = -10 cm. u = -30 cm and m = +0.33: virtual, erect, diminished."""
+    object_distance = math_tools.solve_lens_formula("cm", v=-10, f=-15)
+    magnification = math_tools.solve_lens_magnification("cm", v=-10, u=object_distance["value"])
+    nature = math_tools.describe_image(magnification["value"])
+    assert object_distance["solved_for"] == "u"
+    assert object_distance["value"] == pytest.approx(-30.0)
+    assert object_distance["formula"] == "u = 1 / (1/v - 1/f)"
+    assert magnification["value"] == pytest.approx(1 / 3)
+    assert nature["value"] == "virtual and erect, diminished"
+
+
+def test_lens_ncert_exercise_10() -> None:
+    """NCERT Exercise 10: a 5 cm object 25 cm from a converging lens of f = 10 cm. v = +16.7 cm, m = -0.67, h' = -3.3 cm."""
+    image = math_tools.solve_lens_formula("cm", u=-25, f=10)
+    magnification = math_tools.solve_lens_magnification("cm", v=image["value"], u=-25)
+    height = math_tools.solve_image_height("cm", m=magnification["value"], h_object=5)
+    assert image["value"] == pytest.approx(50 / 3)
+    assert magnification["value"] == pytest.approx(-2 / 3)
+    assert height["value"] == pytest.approx(-10 / 3)
+
+
+def test_lens_finds_f_ncert_section_9_3_8_question_2() -> None:
+    """NCERT section 9.3.8, Question 2: a same-size real image 50 cm away means u = -50 cm, v = +50 cm, so f = +25 cm."""
+    result = math_tools.solve_lens_formula("cm", u=-50, v=50)
+    assert result["solved_for"] == "f"
+    assert result["value"] == pytest.approx(25.0)
+    assert result["formula"] == "f = 1 / (1/v - 1/u)"
+
+
+def test_lens_refuses_a_positive_u_and_explains_infinity() -> None:
+    """A positive u is refused; object at the focus, image at the focus and v = u each get a clear message."""
+    positive_u = math_tools.solve_lens_formula("cm", u=15, f=10)
+    object_at_focus = math_tools.solve_lens_formula("cm", u=-10, f=10)
+    image_at_focus = math_tools.solve_lens_formula("cm", v=10, f=10)
+    no_lens = math_tools.solve_lens_formula("cm", u=-20, v=-20)
+    assert positive_u["ok"] is False
+    assert "u = -15" in positive_u["error"]
+    assert "image forms at infinity" in object_at_focus["error"]
+    assert "object is at infinity" in image_at_focus["error"]
+    assert "no lens" in no_lens["error"]
+
+
+def test_lens_refuses_an_image_no_real_object_gives() -> None:
+    """A convex lens (f = +10 cm) cannot form a real image at v = +5 cm, closer than f: the calculated u is +10."""
+    result = math_tools.solve_lens_formula("cm", v=5, f=10)
+    assert result["ok"] is False
+    assert "No real object" in result["error"]
+
+
+def test_mirror_magnification_ncert_section_9_2_question_2() -> None:
+    """NCERT section 9.2, Question 2: a real image three times the size, object at 10 cm. m = -3, u = -10 cm, so v = -30 cm."""
+    result = math_tools.solve_mirror_magnification("cm", m=-3, u=-10)
+    assert result["solved_for"] == "v"
+    assert result["value"] == pytest.approx(-30.0)
+    assert result["unit"] == "cm"
+    assert result["formula"] == "v = -m x u"
+
+
+def test_mirror_magnification_finds_u_and_refuses_a_mismatch() -> None:
+    """m = -1.5 with v = -37.5 cm gives u = -25 cm (Example 9.2). A virtual m = +2 with v in front (-10 cm) fits no real object."""
+    object_distance = math_tools.solve_mirror_magnification("cm", m=-1.5, v=-37.5)
+    mismatch = math_tools.solve_mirror_magnification("cm", m=2, v=-10)
+    assert object_distance["value"] == pytest.approx(-25.0)
+    assert object_distance["formula"] == "u = -v / m"
+    assert mismatch["ok"] is False
+    assert "No real object" in mismatch["error"]
+
+
+def test_lens_magnification_finds_v_and_u() -> None:
+    """Example 9.4 the other ways round: m = -2, u = -15 gives v = +30; m = -2, v = +30 gives u = -15; v = -30 fits no real object."""
+    image_distance = math_tools.solve_lens_magnification("cm", m=-2, u=-15)
+    object_distance = math_tools.solve_lens_magnification("cm", m=-2, v=30)
+    mismatch = math_tools.solve_lens_magnification("cm", m=-2, v=-30)
+    assert image_distance["value"] == pytest.approx(30.0)
+    assert image_distance["formula"] == "v = m x u"
+    assert object_distance["value"] == pytest.approx(-15.0)
+    assert mismatch["ok"] is False
+
+
+def test_magnification_refuses_a_positive_u_and_a_zero() -> None:
+    """Both magnification functions refuse a positive u, and an m of 0."""
+    mirror_positive_u = math_tools.solve_mirror_magnification("cm", v=-30, u=10)
+    lens_zero_m = math_tools.solve_lens_magnification("cm", m=0, u=-15)
+    assert mirror_positive_u["ok"] is False
+    assert "must be negative" in mirror_positive_u["error"]
+    assert lens_zero_m["ok"] is False
+    assert "Magnification m" in lens_zero_m["error"]
+
+
+def test_image_height_finds_m_and_the_object_height() -> None:
+    """Example 9.2: h' = -6.0 cm from h = 4.0 cm gives m = -1.5. Example 9.4: m = -2 and h' = -4.0 cm give h = 2.0 cm."""
+    magnification = math_tools.solve_image_height("cm", h_object=4.0, h_image=-6.0)
+    object_height = math_tools.solve_image_height("cm", m=-2, h_image=-4.0)
+    assert magnification["solved_for"] == "m"
+    assert magnification["value"] == pytest.approx(-1.5)
+    assert magnification["formula"] == "m = h' / h"
+    assert object_height["solved_for"] == "h_object"
+    assert object_height["value"] == pytest.approx(2.0)
+    assert object_height["unit"] == "cm"
+
+
+def test_image_height_refuses_a_negative_object_height() -> None:
+    """The object stands above the axis (h > 0), whether h is given or calculated."""
+    given_negative = math_tools.solve_image_height("cm", m=-2, h_object=-4)
+    calculated_negative = math_tools.solve_image_height("cm", m=-2, h_image=4)
+    assert given_negative["ok"] is False
+    assert "positive" in given_negative["error"]
+    assert calculated_negative["ok"] is False
+
+
+def test_mirror_ncert_exercise_15_full_chain() -> None:
+    """NCERT Exercise 15: a 7.0 cm object 27 cm from a concave mirror of f = 18 cm. v = -54 cm, m = -2, h' = -14 cm."""
+    image = math_tools.solve_mirror_formula("cm", u=-27, f=-18)
+    magnification = math_tools.solve_mirror_magnification("cm", v=image["value"], u=-27)
+    height = math_tools.solve_image_height("cm", m=magnification["value"], h_object=7.0)
+    nature = math_tools.describe_image(magnification["value"])
+    assert image["value"] == pytest.approx(-54.0)
+    assert magnification["value"] == pytest.approx(-2.0)
+    assert height["value"] == pytest.approx(-14.0)
+    assert nature["value"] == "real and inverted, enlarged"
+
+
+def test_mirror_ncert_exercise_14_full_chain() -> None:
+    """NCERT Exercise 14: a 5.0 cm object 20 cm from a convex mirror with R = 30 cm.
+
+    f = +15 cm, v = +8.57 cm, m = +0.43, h' = +2.14 cm: virtual, erect and diminished.
+    """
+    focal = math_tools.focal_length_from_radius("cm", 30)
+    image = math_tools.solve_mirror_formula("cm", u=-20, f=focal["value"])
+    magnification = math_tools.solve_mirror_magnification("cm", v=image["value"], u=-20)
+    height = math_tools.solve_image_height("cm", m=magnification["value"], h_object=5.0)
+    nature = math_tools.describe_image(magnification["value"])
+    assert focal["value"] == pytest.approx(15.0)
+    assert image["value"] == pytest.approx(60 / 7)
+    assert magnification["value"] == pytest.approx(3 / 7)
+    assert height["value"] == pytest.approx(15 / 7)
+    assert nature["value"] == "virtual and erect, diminished"
+
+
+def test_focal_length_from_radius_keeps_the_sign() -> None:
+    """NCERT section 9.2, Question 1: a convex mirror with R = +32 cm has f = +16 cm. A concave R = -30 cm gives f = -15 cm."""
+    convex = math_tools.focal_length_from_radius("cm", 32)
+    concave = math_tools.focal_length_from_radius("cm", -30)
+    zero = math_tools.focal_length_from_radius("cm", 0)
+    assert convex["solved_for"] == "f"
+    assert convex["value"] == pytest.approx(16.0)
+    assert convex["formula"] == "f = R / 2"
+    assert concave["value"] == pytest.approx(-15.0)
+    assert zero["ok"] is False
+
+
+def test_describe_image_same_size_despite_float_noise() -> None:
+    """|m| = 1 is "same size" even when the computer gives 1.0000000000000002 (an object at 2F)."""
+    real = math_tools.describe_image(-1.0000000000000002)
+    virtual = math_tools.describe_image(1.0)
+    assert real["ok"] is True
+    assert real["solved_for"] == "nature"
+    assert real["value"] == "real and inverted, same size"
+    assert virtual["value"] == "virtual and erect, same size"
+
+
+def test_describe_image_refuses_zero() -> None:
+    """A magnification of 0 describes no image, so it is refused."""
+    result = math_tools.describe_image(0)
+    assert result["ok"] is False
