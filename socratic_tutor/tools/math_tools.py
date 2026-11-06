@@ -1,4 +1,4 @@
-"""FastMCP Tool Server: math-tools (solve, check equivalence, numeric check with tolerance)."""
+"""Calculator functions for the math-tools MCP server (served by math_tools_server.py): solve, check equivalence, numeric check with tolerance."""
 
 import ast
 import math
