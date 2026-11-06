@@ -16,7 +16,7 @@ docker compose -f docker/docker-compose.yml up --build      # or: make up
 
 Without Docker: `pip install -r requirements.txt`, `PYTHONPATH=. python scripts/build_index.py --force`, then `PYTHONPATH=. python -m socratic_tutor.app`. On Windows without `make`, run the commands from the Makefile directly.
 
-All Docker files are in `docker/`: `Dockerfile`, `docker-compose.yml`, `entrypoint.sh`, `prometheus/` and `grafana/`. The index is built on first start from the NCERT PDFs in `data/`. The MCP tool servers (R4) use stdio, so they run inside the app container.
+`docker/` holds three files: the `Dockerfile`, `docker-compose.yml` (which also contains the Prometheus and Grafana settings, written inline) and the Grafana dashboard. The index is built on first start from the NCERT PDFs in `data/`. The MCP tool servers (R4) use stdio, so they run inside the app container.
 
 ## Configuration
 
@@ -45,7 +45,7 @@ Prometheus scrapes `/metrics`. The main metrics are:
 - LLM cost and calls, mastery change
 - class misconceptions, errors
 
-Alerts (`docker/prometheus/alert_rules.yml`):
+Alerts (`alert_rules` in `docker/docker-compose.yml`):
 - `AnswerLeakSpike`: more than 2 leaks in 10 minutes. This is the required working alert.
 - `TutorErrors`
 - `DistressAlertWaiting`
@@ -56,14 +56,18 @@ Alert demo: set `OPS_DEMO=1`, sign in to the teacher view, then run `fetch('/api
 
 `socratic_tutor/trace.py` writes one JSON line per LLM call, tool call and turn to `.cache/traces/<date>.jsonl`, after removing phone numbers, e-mail addresses and "my name is …" names. The same file has the cost meter shared by the app and the eval harness. Optionally, LangSmith can also receive traces (`LANGSMITH_TRACING=true`).
 
-## CI (`.github/workflows/ci.yml`)
+## CI
 
-1. `tests`: pytest, offline.
-2. `eval-gate`:
-   - builds the index from the PDFs in `data/`
-   - `scripts/check_threshold.py` fails the build if dev Recall@5 (Aman's hybrid retrieval) drops below `CI_MIN_RECALL_AT_5` = 0.90, the BM25 level
-   - then a stub smoke run of every eval suite
-3. `docker`: validates the compose file and builds the image.
+All CI steps are in the Makefile, so the same checks run on a laptop and on GitHub:
+
+- `make ci`:
+  - runs the tests
+  - builds the index from the PDFs in `data/`
+  - runs `scripts/check_threshold.py`, which fails if dev Recall@5 (Aman's hybrid retrieval) drops below `CI_MIN_RECALL_AT_5` = 0.90 in `config.py`, the BM25 level
+  - smoke-runs every eval suite with the offline stand-in model
+- `make docker-check`: validates the compose file and builds the image.
+
+GitHub runs CI only from a file in `.github/workflows/`, so `ci.yml` there is a few lines that call these two targets and holds no settings of its own. Without that file there is no CI on GitHub, and no eval gate or failed-run evidence for L16.
 
 ### The failed CI run, explained
 

@@ -1,7 +1,7 @@
 VENV_PY := $(shell if [ -x ./.venv/bin/python ]; then echo ./.venv/bin/python; elif [ -x ./venv/bin/python ]; then echo ./venv/bin/python; else echo python; fi)
 PY ?= $(VENV_PY)
 
-.PHONY: help check setup index run dev test app reflexion clean eval eval-list report gate up seed-demo
+.PHONY: help check setup index run dev test app reflexion clean eval eval-list report gate up seed-demo ci docker-check
 
 help:
 	@grep -E '^[a-z-]+:.*?##' $(MAKEFILE_LIST) | sed 's/:.*##/\t/' | column -t -s "$$(printf '\t')"
@@ -50,6 +50,16 @@ report:  ## build the evaluation tables from evalkit/results/experiment_log.csv
 
 gate:    ## CI eval gate: fail if dev Recall@5 drops below CI_MIN_RECALL_AT_5 (config.py)
 	PYTHONPATH=. $(PY) scripts/check_threshold.py
+
+ci:      ## everything CI runs: tests, index from data/, Recall@5 gate, offline smoke run of every eval suite
+	PYTHONPATH=. $(PY) -m pytest -q tests
+	PYTHONPATH=. $(PY) scripts/build_index.py --force
+	PYTHONPATH=. $(PY) scripts/check_threshold.py
+	PYTHONPATH=. EVAL_STUB=1 $(PY) -m evalkit.runner smoke --split dev --limit 3
+
+docker-check: ## validate the compose file and build the image (CI runs this too)
+	docker compose -f docker/docker-compose.yml config --quiet
+	docker build -f docker/Dockerfile -t socratic-tutor:ci .
 
 up:      ## start everything with Docker (app, Prometheus, Grafana)
 	docker compose -f docker/docker-compose.yml up --build

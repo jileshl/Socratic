@@ -17,5 +17,5 @@ COPY . .
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=4)"
-ENTRYPOINT ["/app/docker/entrypoint.sh"]
-CMD ["python", "-m", "socratic_tutor.app"]
+# Build the NCERT index from the PDFs in data/ on first start, then serve.
+CMD ["sh", "-c", "[ -s .index/chunks.json ] || python scripts/build_index.py --force; exec python -m socratic_tutor.app"]

@@ -1,9 +1,0 @@
-# Used automatically for docker/Dockerfile (BuildKit). Keeps local state out of the image.
-.git/
-.venv/
-venv/
-.index/
-.cache/
-evalkit/results/
-**/__pycache__/
-.env

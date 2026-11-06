@@ -1,7 +1,7 @@
 """Prometheus metrics exposed at /metrics and drawn in Grafana.
 
 Names follow REPORT.md section 7. The alert rule AnswerLeakSpike
-(docker/prometheus/alert_rules.yml) watches socratic_answer_leaks_total.
+(alert_rules in docker/docker-compose.yml) watches socratic_answer_leaks_total.
 """
 
 from __future__ import annotations

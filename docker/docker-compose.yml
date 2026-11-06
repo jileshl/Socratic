@@ -9,8 +9,9 @@
 # Evaluation runs in its own container:
 #   docker compose -f docker/docker-compose.yml --profile eval run --rm eval e1_c2 --split dev
 #
-# The MCP tool servers (R4) use stdio, so they run as subprocesses inside the
-# app container rather than as separate services.
+# Prometheus and Grafana settings are written inline below (configs:), so this
+# file is the only Docker configuration. App settings live in socratic_tutor/config.py.
+# The MCP tool servers (R4) use stdio and run inside the app container.
 
 services:
   app:
@@ -29,16 +30,17 @@ services:
 
   prometheus:
     image: prom/prometheus:v2.55.1
-    command:
-      - --config.file=/etc/prometheus/prometheus.yml
-      - --storage.tsdb.retention.time=15d
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=15d"]
+    configs:
+      - source: prometheus
+        target: /etc/prometheus/prometheus.yml
+      - source: alert_rules
+        target: /etc/prometheus/alert_rules.yml
     volumes:
-      - ./prometheus:/etc/prometheus:ro
       - prometheus-data:/prometheus
     ports:
       - "9090:9090"
-    depends_on:
-      - app
+    depends_on: [app]
     restart: unless-stopped
 
   grafana:
@@ -48,14 +50,18 @@ services:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/socratic.json
+    configs:
+      - source: grafana_datasource
+        target: /etc/grafana/provisioning/datasources/prometheus.yml
+      - source: grafana_dashboards
+        target: /etc/grafana/provisioning/dashboards/socratic.yml
+      - source: grafana_dashboard
+        target: /var/lib/grafana/dashboards/socratic.json
     volumes:
-      - ./grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
     ports:
       - "3000:3000"
-    depends_on:
-      - prometheus
+    depends_on: [prometheus]
     restart: unless-stopped
 
   eval:
@@ -63,13 +69,67 @@ services:
       context: ..
       dockerfile: docker/Dockerfile
     profiles: ["eval"]
-    entrypoint: ["/app/docker/entrypoint.sh", "python", "-m", "evalkit.runner"]
+    entrypoint: ["sh", "-c", "[ -s .index/chunks.json ] || python scripts/build_index.py --force; exec python -m evalkit.runner \"$$@\"", "--"]
     env_file:
       - path: ../.env
         required: false
     volumes:
       - ../evalkit/results:/app/evalkit/results   # run logs and transcripts stay on your machine
       - eval-index:/app/.index
+
+configs:
+  prometheus:
+    content: |
+      global:
+        scrape_interval: 15s
+        evaluation_interval: 15s
+      rule_files: [/etc/prometheus/alert_rules.yml]
+      scrape_configs:
+        - job_name: socratic-app
+          metrics_path: /metrics
+          static_configs:
+            - targets: ["app:8000"]
+
+  alert_rules:
+    content: |
+      groups:
+        - name: socratic-tutor
+          rules:
+            # The required working alert (L16): a burst of practice-mode answer leaks.
+            # Demo: OPS_DEMO=1, sign in to the teacher view, then in the browser console
+            #   fetch('/api/ops/emit-test-leak?count=5', {method: 'POST'})
+            - alert: AnswerLeakSpike
+              expr: sum(increase(socratic_answer_leaks_total[10m])) > 2
+              for: 1m
+              labels: {severity: page}
+              annotations:
+                summary: "More than 2 answer leaks in practice mode in the last 10 minutes"
+            - alert: TutorErrors
+              expr: sum(increase(socratic_errors_total[10m])) > 5
+              for: 2m
+              labels: {severity: warn}
+              annotations:
+                summary: "The tutor raised more than 5 errors in 10 minutes"
+            - alert: DistressAlertWaiting
+              expr: increase(socratic_distress_alerts_total[5m]) > 0
+              labels: {severity: page}
+              annotations:
+                summary: "A student showed signs of distress; a teacher needs to check the teacher view now"
+
+  grafana_datasource:
+    content: |
+      apiVersion: 1
+      datasources:
+        - {name: Prometheus, uid: prometheus, type: prometheus, access: proxy, url: "http://prometheus:9090", isDefault: true}
+
+  grafana_dashboards:
+    content: |
+      apiVersion: 1
+      providers:
+        - {name: socratic, folder: "", type: file, options: {path: /var/lib/grafana/dashboards}}
+
+  grafana_dashboard:
+    file: ./grafana-dashboard.json
 
 volumes:
   app-index:
