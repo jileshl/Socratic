@@ -3,7 +3,18 @@
 import ast
 import math
 import re
+import string
 from typing import Any
+
+# SymPy reads formulas for check_equivalence. It is listed in requirements.txt, so it is imported here at the top.
+from sympy import Eq, Float, Integer, Rational, Symbol, simplify, solve, sqrt
+from sympy.parsing.sympy_parser import (
+    convert_xor,
+    implicit_multiplication,
+    parse_expr,
+    split_symbols_custom,
+    standard_transformations,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -1419,8 +1430,9 @@ def check_numeric_answer(student_text: str, gold_text: str, tolerance: float = 0
 # Formula names that stay whole when a formula is read: everything else such as "IR" is read as I * R.
 FORMULA_NAMES_KEPT_WHOLE: list[str] = ["rho", "pi", "Rs", "Rp"]
 
-# Characters allowed in a formula besides letters. Anything else is refused before SymPy sees the text.
-SAFE_FORMULA_CHARACTERS: str = "0123456789 +-*/^().="
+# The only characters allowed in a formula: English letters, digits, spaces and + - * / ^ ( ) = .
+# Anything else (including Greek or full-width letters) is refused before SymPy sees the text.
+SAFE_FORMULA_PATTERN: str = r"[A-Za-z0-9 +\-*/^().=]+"
 
 # The longest formula text accepted.
 MAX_FORMULA_LENGTH: int = 100
@@ -1429,18 +1441,16 @@ MAX_FORMULA_LENGTH: int = 100
 def is_safe_formula_text(text: str) -> bool:
     """True only if formula text is safe to hand to SymPy, whose parser runs Python's eval underneath.
 
-    Allowed: letters, digits, spaces and + - * / ^ ( ) = . only; at most 100 characters; at most one "=".
-    So no underscores, quotes, brackets [], commas or colons, which code would need.
+    Allowed: English letters, digits, spaces and + - * / ^ ( ) = . only; at most 100 characters; at most one "=".
+    So no underscores, quotes, brackets [], commas or colons, which code would need, and no Greek letters
+    (write "rho", not the Greek letter).
     """
     # Empty or too long text is refused.
     if len(text.strip()) == 0 or len(text) > MAX_FORMULA_LENGTH:
         return False
-    # Every character must be a letter or one of the allowed symbols.
-    for character in text:
-        if character.isalpha():
-            continue
-        if character not in SAFE_FORMULA_CHARACTERS:
-            return False
+    # Every character must be one of the allowed ones: the whole text must match the pattern.
+    if re.fullmatch(SAFE_FORMULA_PATTERN, text) is None:
+        return False
     # A formula has at most one "=".
     if text.count("=") > 1:
         return False
@@ -1461,23 +1471,14 @@ def can_split_name(name: str) -> bool:
 
 
 def parse_formula_side(text: str) -> Any:
-    """Turn one side of a formula (already checked by is_safe_formula_text) into a SymPy expression.
-
-    SymPy is imported here, so the rest of math_tools works even where SymPy is not installed.
-    """
-    from sympy import Float, Integer, Rational, Symbol, sqrt
-    from sympy.parsing.sympy_parser import (
-        convert_xor,
-        implicit_multiplication,
-        parse_expr,
-        split_symbols_custom,
-        standard_transformations,
-    )
-
+    """Turn one side of a formula (already checked by is_safe_formula_text) into a SymPy expression."""
     # Every single letter (and each kept-whole name) is a plain symbol, so "I" means current here,
     # not SymPy's imaginary unit, and "E" means energy, not Euler's number.
+    # This is a second layer: allowed_names below already leaves SymPy's constants out, and this loop keeps
+    # every letter a plain symbol even if someone adds one there later.
+    # string.ascii_letters is Python's built-in list of the 52 English letters, a-z then A-Z.
     local_names: dict[str, Any] = {}
-    for letter in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ":
+    for letter in string.ascii_letters:
         local_names[letter] = Symbol(letter)
     for name in FORMULA_NAMES_KEPT_WHOLE:
         local_names[name] = Symbol(name)
@@ -1499,8 +1500,6 @@ def parse_formula_side(text: str) -> Any:
 
 def solutions_match(first: list[Any], second: list[Any]) -> bool:
     """True if two lists of SymPy solutions contain the same values (in any order)."""
-    from sympy import simplify
-
     if len(first) != len(second):
         return False
     # Every solution in the first list must equal one in the second.
@@ -1540,19 +1539,17 @@ def check_equivalence(student_text: str, gold_text: str) -> dict[str, Any]:
     #          |                          |                           |
     #          v                          v                           v
     #   [R] make_check_result("equivalent", True/False, method, detail)
-    from sympy import Eq, simplify, solve
-
     method = "solve both for a shared quantity (equations), or simplify the difference (expressions)"
 
     # [Q0] the key must be safe text; an unsafe key is our error.
     if not is_safe_formula_text(gold_text):
-        return make_error("The answer key '" + gold_text + "' is not a safe formula (letters, digits and + - * / ^ ( ) = . only).")
+        return make_error("The answer key '" + gold_text + "' is not a safe formula (English letters, digits and + - * / ^ ( ) = . only).")
     # [Q0] an unsafe answer is never given to SymPy; it is simply not a formula we can check.
     if not is_safe_formula_text(student_text):
         return make_check_result(
             "equivalent", False, method,
             "The answer has characters that are not allowed in a formula, or is longer than "
-            + str(MAX_FORMULA_LENGTH) + " characters. Use letters, digits and + - * / ^ ( ) = only.",
+            + str(MAX_FORMULA_LENGTH) + " characters. Use English letters, digits and + - * / ^ ( ) = only, and write Greek letters as words (rho).",
         )
 
     # [Q1] read both with SymPy. Any reading error becomes a message, never a crash.

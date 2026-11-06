@@ -1638,6 +1638,33 @@ def test_is_safe_formula_text() -> None:
     assert math_tools.is_safe_formula_text("") is False
 
 
+def test_every_letter_is_a_quantity_not_a_sympy_constant() -> None:
+    """I is current, not the imaginary unit; E is energy, not Euler's number. The same for S, N, O and Q."""
+    # If I were the imaginary unit, I^2 R would simplify to -R and this would wrongly be True.
+    current_squared = math_tools.check_equivalence("I^2 R", "-R")
+    assert current_squared["value"] is False
+    # Each of these letters means something special to SymPy; here each must be a plain symbol.
+    for letter in ["I", "E", "S", "N", "O", "Q"]:
+        assert math_tools.parse_formula_side(letter).is_Symbol is True
+
+
+def test_formula_gate_allows_english_letters_only() -> None:
+    """Only English letters pass the gate: a Greek rho or full-width letters are refused with a clear message."""
+    # "ρ" is the Greek small letter rho; NCERT writes rho this way in Eq. 11.10.
+    greek_rho = "ρ = R A / l"
+    # "Ｖ = ＩＲ" are full-width letters that look like "V = IR" but are not English letters.
+    full_width = "Ｖ = ＩＲ"
+    assert math_tools.is_safe_formula_text(greek_rho) is False
+    assert math_tools.is_safe_formula_text(full_width) is False
+    # The same formula written with "rho" as a word still passes.
+    assert math_tools.is_safe_formula_text("rho = R A / l") is True
+    # A student who types the Greek letter is told how to write it.
+    result = math_tools.check_equivalence(greek_rho, "R = rho l / A")
+    assert result["ok"] is True
+    assert result["value"] is False
+    assert "write Greek letters as words (rho)" in result["detail"]
+
+
 def test_calculate_the_arithmetic_between_steps() -> None:
     """Decision D4: 8 h a day for 30 days is 8 x 30 = 240 h (NCERT Example 11.13); 100 W + 60 W = 160 W (Exercise 15)."""
     hours = math_tools.calculate("8 x 30")
