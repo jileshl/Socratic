@@ -1,7 +1,7 @@
 VENV_PY := $(shell if [ -x ./.venv/bin/python ]; then echo ./.venv/bin/python; elif [ -x ./venv/bin/python ]; then echo ./venv/bin/python; else echo python; fi)
 PY ?= $(VENV_PY)
 
-.PHONY: help check setup index run dev test app reflexion clean
+.PHONY: help check setup index run dev test app reflexion clean eval eval-list report gate up seed-demo
 
 help:
 	@grep -E '^[a-z-]+:.*?##' $(MAKEFILE_LIST) | sed 's/:.*##/\t/' | column -t -s "$$(printf '\t')"
@@ -37,3 +37,22 @@ test:    ## run contract tests, guardrails & tool validation
 
 clean:   ## remove index artifacts, caches, and run traces
 	rm -rf .index .cache dev_traces.jsonl traces.jsonl
+
+# --- evaluation (R5) and operations (R6) ---
+eval:    ## run one experiment: make eval E=e1_c2 SPLIT=dev REPEATS=1
+	PYTHONPATH=. $(PY) -m evalkit.runner $(E) --split $(or $(SPLIT),dev) --repeats $(or $(REPEATS),1)
+
+eval-list: ## list the evaluation experiments (evalkit/experiments.py)
+	PYTHONPATH=. $(PY) -m evalkit.runner --list
+
+report:  ## build the evaluation tables from evalkit/results/experiment_log.csv
+	PYTHONPATH=. $(PY) -m evalkit.report
+
+gate:    ## CI eval gate: fail if dev Recall@5 drops below CI_MIN_RECALL_AT_5 (config.py)
+	PYTHONPATH=. $(PY) scripts/check_threshold.py
+
+up:      ## start everything with Docker (app, Prometheus, Grafana)
+	docker compose -f docker/docker-compose.yml up --build
+
+seed-demo: ## add three [DEMO] questions waiting for teacher approval
+	PYTHONPATH=. $(PY) scripts/seed_demo.py

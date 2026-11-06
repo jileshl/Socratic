@@ -1,0 +1,79 @@
+# Everything with one command, from the repository root:
+#   docker compose -f docker/docker-compose.yml up --build      (or: make up)
+#
+#   http://localhost:8000          student view
+#   http://localhost:8000/teacher  teacher view (TEACHER_PIN in .env)
+#   http://localhost:3000          Grafana, dashboard "Socratic Tutor" (admin / admin to edit)
+#   http://localhost:9090          Prometheus (Alerts tab: AnswerLeakSpike)
+#
+# Evaluation runs in its own container:
+#   docker compose -f docker/docker-compose.yml --profile eval run --rm eval e1_c2 --split dev
+#
+# The MCP tool servers (R4) use stdio, so they run as subprocesses inside the
+# app container rather than as separate services.
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    env_file:
+      - path: ../.env
+        required: false
+    ports:
+      - "8000:8000"
+    volumes:
+      - app-index:/app/.index      # NCERT index, vector store, learner store, checkpoints, ops records
+      - app-cache:/app/.cache      # scrubbed traces
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+    volumes:
+      - ./prometheus:/etc/prometheus:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      - app
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/socratic.json
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+  eval:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    profiles: ["eval"]
+    entrypoint: ["/app/docker/entrypoint.sh", "python", "-m", "evalkit.runner"]
+    env_file:
+      - path: ../.env
+        required: false
+    volumes:
+      - ../evalkit/results:/app/evalkit/results   # run logs and transcripts stay on your machine
+      - eval-index:/app/.index
+
+volumes:
+  app-index:
+  app-cache:
+  eval-index:
+  prometheus-data:
+  grafana-data:
