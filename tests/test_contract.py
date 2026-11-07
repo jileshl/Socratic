@@ -78,7 +78,7 @@ def test_learner_store_records_mastery_misconceptions_lessons_and_quizzes(tmp_pa
     third = store.record_quiz_result("student-1", "concept-mirror", 0.4)
     profile = store.get_profile("student-1")
 
-    assert profile["mastery_map"]["concept-mirror"] == 0.4
+    assert profile["mastery_map"]["concept-mirror"] == 0.5
     assert profile["misconceptions"][0]["id"] == "MISCON_LIGHT_01"
     assert profile["misconceptions"][0]["resolved"] is True
     assert profile["effective_lessons"] == ["LESSON_MIRROR_RAYS"]
@@ -102,6 +102,35 @@ def test_learner_store_validates_scores_and_flags_long_problem_time(tmp_path):
     )
     assert result["teacher_alert_triggered"] is True
     assert result["failure_streak"] == 0
+
+
+def test_mastery_is_rolling_average_of_last_three_quiz_scores(tmp_path):
+    store = LearnerStore(tmp_path / "learner.sqlite")
+
+    store.record_quiz_result("student-1", "concept-mirror", 0.9)
+    store.record_quiz_result("student-1", "concept-mirror", 0.1)
+    result = store.record_quiz_result("student-1", "concept-mirror", 0.9)
+
+    assert result["mastery"] == 0.63
+    assert store.get_profile("student-1")["mastery_map"]["concept-mirror"] == 0.63
+
+
+def test_failure_streak_is_per_concept_and_resets_after_passing_result(tmp_path):
+    store = LearnerStore(tmp_path / "learner.sqlite")
+
+    store.record_quiz_result("student-1", "concept-mirror", 0.5)
+    store.record_quiz_result("student-1", "concept-ohms", 0.4)
+    second_mirror_failure = store.record_quiz_result("student-1", "concept-mirror", 0.6)
+    assert second_mirror_failure["failure_streak"] == 2
+    assert second_mirror_failure["teacher_alert_triggered"] is False
+
+    third_mirror_failure = store.record_quiz_result("student-1", "concept-mirror", 0.6)
+    assert third_mirror_failure["failure_streak"] == 3
+    assert third_mirror_failure["teacher_alert_triggered"] is True
+
+    passed = store.record_quiz_result("student-1", "concept-mirror", 0.9)
+    assert passed["failure_streak"] == 0
+    assert passed["teacher_alert_triggered"] is False
 
 
 def test_forget_me_deletes_profile_quizzes_and_registered_checkpoints(tmp_path):
@@ -150,6 +179,24 @@ def test_purge_expired_profiles_removes_only_inactive_learners(tmp_path):
     assert purged == 1
     assert store.get_profile("expired")["mastery_map"] == {}
     assert store.get_profile("active")["mastery_map"]["concept-mirror"] == 0.8
+
+
+def test_purge_expired_profiles_removes_session_only_learner_threads(tmp_path):
+    store = LearnerStore(tmp_path / "learner.sqlite")
+    store.register_session("chat-only", "chat-thread")
+    with sqlite3.connect(store.db_path) as conn:
+        conn.execute("UPDATE learners SET updated_at = '2025-01-01 00:00:00' WHERE student_id = 'chat-only'")
+    checkpointer = _MemoryCheckpointer({"chat-thread"})
+
+    purged = store.purge_expired_profiles(
+        inactive_days=90,
+        now=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        checkpointer=checkpointer,
+    )
+
+    assert purged == 1
+    assert checkpointer.thread_ids == set()
+    assert store.get_profile("chat-only")["mastery_map"] == {}
 
 
 def test_concept_graph_prerequisite_and_recommendation_rules(tmp_path):

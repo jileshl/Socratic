@@ -30,11 +30,13 @@ done
 
 On the same rebuilt 35-chunk index and 30 development queries, BM25 and dense-only each scored **0.9000 Recall@5**; hybrid with query rewriting scored **0.9500**, versus **0.9167** without rewriting. The optional cross-encoder also scored **0.9500**; it did not increase aggregate recall in this run. Install `requirements-reranker.txt` to run `--mode hybrid-reranked`. Query-level gains and regressions are documented in [REPORT.md](REPORT.md). MRR and latency are not measured. The 12 held-out queries remain reserved.
 
+Historical baseline: before adding six dev queries and switching to `rank_bm25`, BM25 scored **0.9028 Recall@5** on the original 24-query dev set. That result uses a different evaluation snapshot and should not be compared directly with the current 30-query results.
+
 `DATA_DIR` and `DOCUMENT_PATH` can be configured in `.env`; `DOCUMENT_PATH` must contain the three NCERT chapter PDFs, and `DATA_DIR` contains the JSON/JSONL datasets.
 
 ## Learner Memory Status
 
-`LearnerStore` can persist mastery, misconception/resolution records, effective lesson IDs, quiz history, and per-concept failure streaks. It also exposes a 90-day expiry purge and `forget_me()` for learner data plus explicitly registered LangGraph threads. These are storage APIs, not yet a complete product workflow: the graph does not register learner sessions, the app has no user-facing `/forget_me` route, and no scheduler invokes expiry cleanup. See [MEMORY_POLICY.md](MEMORY_POLICY.md) for the implemented/planned boundary.
+`LearnerStore` can persist mastery, misconception/resolution records, effective lesson IDs, quiz history, and per-concept failure streaks. Quiz-derived mastery is the average of up to the latest three quiz scores; the explicit `update_mastery()` method sets a supplied score. The stuck threshold counts consecutive below-threshold quiz results on a concept, not distinct sessions. Session registration creates a profile row so session-only learners can expire. `purge_expired_profiles()` and `forget_me()` are implemented APIs, but expiry has no scheduler and the graph/app does not register sessions or expose a user-facing `/forget_me` route yet. See [MEMORY_POLICY.md](MEMORY_POLICY.md) for the implemented/planned boundary.
 
 ---
 

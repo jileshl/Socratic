@@ -14,11 +14,11 @@ Data stored in the persistent `learner-store` is partitioned under a **Pseudonym
 
 | Category | Specific Attributes Stored | Purpose & Justification |
 | :--- | :--- | :--- |
-| **Concept Mastery** | Float score $[0.0, 1.0]$ per concept ID (e.g., `concept_mirror_formula: 0.75`) | Required by the Study Planner to navigate the concept prerequisite graph. |
+| **Concept Mastery** | Float score $[0.0, 1.0]$ per concept ID (e.g., `concept_mirror_formula: 0.75`). Quiz-derived mastery is the arithmetic mean of up to the latest three quiz scores; `update_mastery()` explicitly sets a supplied score. | Required by the Study Planner to navigate the concept prerequisite graph. |
 | **Misconception Log** | Catalogued misconception ID, first/last-seen timestamps, resolution status | Prevents repeating failed teaching tactics; informs diagnostician. |
 | **Scaffolding Lessons** | IDs of Reflexion lessons that successfully resolved a misconception | Adapts future hints to teaching strategies known to work for this student. |
 | **Quiz Performance** | Score, concept ID, duration, and timestamp for recent attempts | Measures progression and computes per-concept failure streaks and stuck thresholds. |
-| **Failure Streaks** | Consecutive below-threshold attempts per concept | Supports the teacher-validated stuck-learner alert rule. |
+| **Failure Streaks** | Consecutive below-threshold quiz results per concept; a passing result resets the streak. This counts quiz results, not distinct sessions. | Supports the teacher-validated three-consecutive-failures stuck-learner rule. |
 
 ---
 
@@ -38,7 +38,7 @@ Data stored in the persistent `learner-store` is partitioned under a **Pseudonym
 ---
 
 ## 5. Retention, Expiry, and Deletion ("Right to be Forgotten")
-* **Default Retention Window**: `LearnerStore.purge_expired_profiles()` can purge profiles after **90 days of inactivity**. A scheduled or application-level caller is still required; automatic expiry is not currently running.
+* **Default Retention Window**: `LearnerStore.purge_expired_profiles()` can purge profiles after **90 days of inactivity**. Session registration creates the learner row even before a quiz/mastery record exists, so session-only learners are included in expiry. A scheduled or application-level caller is still required; automatic expiry is not currently running.
 * **Immediate Deletion API (`forget_me`)**:
   * `LearnerStore.forget_me(student_id, checkpointer)` removes learner-store profile, quiz-attempt, and session-link rows and calls `delete_thread()` for registered LangGraph thread IDs.
   * Callers must register each learner/thread association and pass the active checkpointer. The graph/app does not currently register sessions or expose a `/forget_me` command or UI route, so user-facing deletion and checkpoint cascade are not wired into the product yet.

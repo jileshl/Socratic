@@ -34,7 +34,9 @@ RERANKER_MODEL = os.getenv("RERANKER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-
 # Socratic Policy Thresholds
 MAX_HINT_STEPS = 3                 # Teacher-validated limit before switching strategy
 PASSING_MASTERY_THRESHOLD = 0.70   # Required mastery to advance to dependent concept
-STUCK_SESSION_COUNT = 3            # Sessions without progress before triggering teacher alert
+MASTERY_WINDOW_SIZE = 3            # Rolling quiz-score window used for concept mastery
+STUCK_FAILURE_COUNT = 3            # Consecutive below-threshold quiz results on one concept
+STUCK_SESSION_COUNT = STUCK_FAILURE_COUNT  # Backward-compatible alias; counts failures, not sessions
 VERIFY_LEAK_THRESHOLD = 0.85       # Similarity threshold to flag potential answer leak
 RRF_K = 60                         # Reciprocal Rank Fusion parameter
 

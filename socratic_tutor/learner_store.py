@@ -191,7 +191,14 @@ class LearnerStore:
 
         profile = self.get_profile(student_id)
         score = round(score, 2)
-        profile["mastery_map"][concept_id] = score
+        with sqlite3.connect(self.db_path) as conn:
+            previous_scores = conn.execute(
+                "SELECT score FROM quiz_attempts WHERE student_id = ? AND concept_id = ? "
+                "ORDER BY attempt_id DESC LIMIT ?",
+                (student_id, concept_id, config.MASTERY_WINDOW_SIZE - 1),
+            ).fetchall()
+            window_scores = [row[0] for row in previous_scores] + [score]
+            profile["mastery_map"][concept_id] = round(sum(window_scores) / len(window_scores), 2)
         if score < config.PASSING_MASTERY_THRESHOLD:
             profile["failure_streaks"][concept_id] = profile["failure_streaks"].get(concept_id, 0) + 1
         else:
@@ -209,20 +216,19 @@ class LearnerStore:
         failure_streak = profile["failure_streaks"][concept_id]
         return {
             "score": score,
+            "mastery": profile["mastery_map"][concept_id],
             "failure_streak": failure_streak,
-            "teacher_alert_triggered": failure_streak >= config.STUCK_SESSION_COUNT or duration_seconds > 600,
+            "teacher_alert_triggered": failure_streak >= config.STUCK_FAILURE_COUNT or duration_seconds > 600,
         }
 
     def register_session(self, student_id: str, thread_id: str) -> None:
         self._validate_student_and_concept(student_id, thread_id)
+        profile = self.get_profile(student_id)
         with sqlite3.connect(self.db_path) as conn:
+            self._write_profile(conn, student_id, profile)
             conn.execute(
                 "INSERT OR IGNORE INTO learner_sessions (student_id, thread_id) VALUES (?, ?)",
                 (student_id, thread_id),
-            )
-            conn.execute(
-                "UPDATE learners SET updated_at = CURRENT_TIMESTAMP WHERE student_id = ?",
-                (student_id,),
             )
             conn.commit()
 

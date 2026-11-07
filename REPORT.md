@@ -239,15 +239,16 @@ PYTHONPATH=. .venv/bin/python scripts/build_index.py --git-revision HEAD --force
 *Refer to [MEMORY_POLICY.md](MEMORY_POLICY.md) for full legal and privacy specifications.*
 
 * **Storage API implemented**: mastery scores, misconception IDs with first/last-seen timestamps and resolution status, effective lesson IDs, recent quiz attempts, and per-concept failure streaks. Scores and durations are validated.
-* **Stuck learner result**: `record_quiz_result()` reports an alert after three consecutive below-threshold attempts on a concept or a problem duration greater than ten minutes. Teacher-dashboard delivery is not wired.
+* **Mastery rule**: quiz-derived mastery is the arithmetic mean of up to the latest three quiz scores for that concept. `update_mastery()` remains an explicit setter for imported or externally computed values.
+* **Stuck learner rule**: `record_quiz_result()` reports an alert after three consecutive below-threshold quiz results on the same concept (a passing result resets the streak), or a problem duration greater than ten minutes. This is based on quiz failures, not distinct sessions. Teacher-dashboard delivery is not wired.
 * **Strict Exclusions**: No student names, school names, location data, or raw conversational logs in long-term storage.
-* **Retention API implemented**: `purge_expired_profiles()` can remove profiles inactive for 90 days. It requires a scheduled/application-level caller; automatic expiry is not running.
+* **Retention API implemented**: `register_session()` creates a profile row even before the learner has quiz/mastery data, so `purge_expired_profiles()` can remove session-only learners after 90 days. A scheduled/application-level caller is still required; automatic expiry is not running.
 * **Deletion API implemented**: `forget_me(student_id, checkpointer)` deletes learner profiles, quiz attempts, session links, and registered LangGraph threads. The caller must register each learner/thread pair and supply the saver.
 * **Integration still pending**: The current app/graph does not register sessions or expose a user-facing `/forget_me` command. No cryptographic erasure receipt is implemented, and no learner vector store exists to purge.
 
 ### TODO 4 Validation
 
-The contract tests cover profile updates, score validation, misconception and lesson recording, quiz history, three-failure and ten-minute alerts, expiry, checkpoint deletion requirements, and concept prerequisite recommendations. The full suite passed **27 tests**. Checkpoint deletion is tested with a saver test double; end-to-end app/checkpointer integration remains pending.
+The contract tests cover profile updates, rolling mastery calculation, score validation, misconception and lesson recording, quiz history, per-concept failure streak/reset behavior, ten-minute alerts, expiry of session-only learners, checkpoint deletion requirements, and concept prerequisite recommendations. The full suite passed **201 tests** on 2026-11-08. Checkpoint deletion is tested with a saver test double; end-to-end app/checkpointer integration remains pending.
 
 ---
 
