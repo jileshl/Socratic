@@ -1,7 +1,20 @@
 """FastMCP Tool Server: math-tools (solve, check equivalence, numeric check with tolerance)."""
 
+import ast
 import math
+import re
+import string
 from typing import Any
+
+# SymPy reads formulas for check_equivalence. It is listed in requirements.txt, so it is imported here at the top.
+from sympy import Eq, Float, Integer, Rational, Symbol, simplify, solve, sqrt
+from sympy.parsing.sympy_parser import (
+    convert_xor,
+    implicit_multiplication,
+    parse_expr,
+    split_symbols_custom,
+    standard_transformations,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -13,10 +26,11 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 
-def make_result(quantity_name: str, exact_value: float | str, result_unit: str, formula_used: str) -> dict[str, Any]:
+def make_result(quantity_name: str, exact_value: float | str | bool, result_unit: str, formula_used: str) -> dict[str, Any]:
     """Build the success shape: the quantity found, its exact value, its unit and the formula used.
 
-    The value is a number, except for describe_image, whose value is a description such as "real and inverted, enlarged".
+    The value is a number, except for describe_image, whose value is a description such as "real and inverted, enlarged",
+    and for the answer checks, whose value is True or False.
     The unit is SI, except in the optics functions, which answer in the length unit the caller chose (for example cm).
     """
     # "ok" lets the caller check for success with one True/False test.
@@ -136,6 +150,10 @@ UNIT_SYMBOLS: dict[str, tuple[str, str, float]] = {
     "km/h": ("speed", "m/s", 1000.0 / 3600.0),
     # power of a lens (NCERT Ch 9, section 9.3.8: 1 D = 1 m^-1, already the SI unit)
     "D": ("lens power", "D", 1.0),
+    # money (NCERT Ch 11, Example 11.13: Rs 3.00 per kW h). Not an SI quantity; listed so answers such as
+    # "Rs 288" can be read by read_quantity.
+    "Rs": ("money", "Rs", 1.0),
+    "₹": ("money", "Rs", 1.0),
 }
 
 # The same units written as WORDS. Words have no capital-letter meaning ("Minutes" = "minutes"),
@@ -173,6 +191,7 @@ UNIT_WORDS: dict[str, str] = {
     "kilometre per hour": "km/h", "kilometres per hour": "km/h",
     "kilometer per hour": "km/h", "kilometers per hour": "km/h",
     "dioptre": "D", "dioptres": "D", "diopter": "D", "diopters": "D",
+    "rupee": "Rs", "rupees": "Rs",
 }
 
 
@@ -232,6 +251,55 @@ def convert_to_si(value: float, unit: str) -> dict[str, Any]:
 
     # [R]
     return make_result(kind, si_value, si_unit, "1 " + symbol + " = " + str(factor) + " " + si_unit)
+
+
+def find_unit_symbol(unit: str) -> str | None:
+    """Return the table symbol for a unit written as a symbol ("cm") or a word ("centimetres"), or None if unknown.
+
+    The same matching rules as convert_to_si: a symbol must match exactly, a word matches in any capitals.
+    """
+    # Remove spaces around the unit, for example " cm " -> "cm".
+    cleaned_unit = unit.strip()
+    # A symbol must match exactly, capital letters included.
+    if cleaned_unit in UNIT_SYMBOLS:
+        return cleaned_unit
+    # A word is compared in lower case, then turned into its symbol.
+    lower_unit = cleaned_unit.lower()
+    if lower_unit in UNIT_WORDS:
+        return UNIT_WORDS[lower_unit]
+    # Not a known unit.
+    return None
+
+
+def convert_from_si(si_value: float, unit: str) -> dict[str, Any]:
+    """Convert a value in SI units back into another unit: 3.456 x 10^8 J -> 96 kWh, or -0.3 m -> -30 cm.
+
+    The reverse of convert_to_si. si_value must already be in the SI unit of its kind (m, s, A, V, ohm, C, J, W, m/s).
+    unit is the unit wanted, written as a symbol ("kWh", "cm") or a word ("kilowatt hours").
+    Use it to show an SI answer in the unit a question asks for, for example energy on a bill in kW h.
+    Returns the shared result shape (solved_for is the kind of quantity), or the error shape.
+    """
+    # Flowchart (each [box] matches a comment in the code below):
+    #
+    #   [S1] is the unit a known symbol or word?    no -> [E] error
+    #          | yes
+    #          v
+    #   [B-C] look up kind, SI unit and factor; value = si_value / factor
+    #          |
+    #          v
+    #   [R] make_result(kind, value, symbol, "1 <symbol> = <factor> <SI unit>")
+
+    # [S1] find the unit in the table.
+    symbol = find_unit_symbol(unit)
+    if symbol is None:
+        return make_error("Unknown unit '" + unit + "'. Known unit symbols: " + known_units_text() + ".")
+
+    # [B-C] divide by the factor: the reverse of convert_to_si's multiply.
+    kind, si_unit, factor = UNIT_SYMBOLS[symbol]
+    value = si_value / factor
+
+    # [R]
+    return make_result(kind, value, symbol, "1 " + symbol + " = " + str(factor) + " " + si_unit)
 
 
 def find_length_unit(length_unit: str) -> str | None:
@@ -1142,6 +1210,519 @@ def numeric_check(student_val: float, gold_val: float, tolerance: float = 0.05) 
     return abs(student_val - gold_val) / abs(gold_val) <= tolerance
 
 
+# ---------------------------------------------------------------------------
+# Answer checks, for the grader (capstone guide p.11, step 6; p.12: "check equivalence,
+# numeric check with tolerance"). Student answers arrive as text, such as "-30 cm", so they are
+# read by code here; the model never judges the arithmetic.
+# ---------------------------------------------------------------------------
+
+# Superscript characters, as in "10⁸" or "m s⁻¹", and the plain characters they stand for.
+SUPERSCRIPT_CHARACTERS: dict[str, str] = {
+    "⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4", "⁵": "5", "⁶": "6", "⁷": "7", "⁸": "8", "⁹": "9",
+    "⁻": "-", "⁺": "+",
+}
+
+# A number at the start of a text: an optional sign, digits with an optional decimal point, and an
+# optional power of ten in e-notation. For example "-30", "+1.25", ".5", "3e8", "2.0E-3".
+NUMBER_AT_START = re.compile(r"^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?")
+
+
+def tidy_answer_text(text: str) -> str:
+    """Tidy typed answer text so a number can be read from it: "−30 cm" -> "-30 cm", "3 × 10⁸ m/s" -> "3e8 m/s"."""
+    # [P0a] remove spaces at both ends.
+    tidy = text.strip()
+    # [P0b] the Unicode minus (−) and the en dash (–), common in text copied from a PDF, become a plain "-".
+    tidy = tidy.replace("−", "-")
+    tidy = tidy.replace("–", "-")
+    # [P0c] thousands commas go: "96,000" -> "96000".
+    tidy = tidy.replace(",", "")
+    # [P0d] superscripts become "^" plus plain characters: "10⁸" -> "10^8", "s⁻¹" -> "s^-1".
+    rebuilt = ""
+    previous_was_superscript = False
+    for character in tidy:
+        if character in SUPERSCRIPT_CHARACTERS:
+            # Only the first superscript of a run needs a "^" in front of it.
+            if not previous_was_superscript:
+                rebuilt = rebuilt + "^"
+            rebuilt = rebuilt + SUPERSCRIPT_CHARACTERS[character]
+            previous_was_superscript = True
+        else:
+            rebuilt = rebuilt + character
+            previous_was_superscript = False
+    tidy = rebuilt
+    # [P0e] "× 10^8", "x10^8" or "*10^8" become e-notation: "3 × 10^8" -> "3e8".
+    tidy = re.sub(r"\s*[x×*]\s*10\s*\^\s*([+-]?\d+)", r"e\1", tidy)
+    # [P0f] a currency written first moves behind the number: "Rs 288" -> "288 Rs", "₹288" -> "288 ₹".
+    currency_match = re.match(r"^(Rs\.?|₹)\s*(.+)$", tidy)
+    if currency_match is not None:
+        currency = currency_match.group(1).replace(".", "")
+        tidy = currency_match.group(2) + " " + currency
+    # [P0g] a full stop or semicolon left at the very end ("30 cm.") is dropped.
+    tidy = tidy.rstrip(".;").strip()
+    return tidy
+
+
+def read_quantity(text: str) -> dict[str, Any]:
+    """Read an answer written as text, such as "-30 cm", "+1.25 D" or "3 x 10^8 m/s", into its SI value.
+
+    The number comes first, then its unit; a currency may come first ("Rs 288").
+    It understands the Unicode minus (−), thousands commas, "× 10^8", superscripts (10⁸), and every unit
+    that convert_to_si knows, as a symbol ("cm") or a word ("centimetres").
+    Returns the shared result shape with the SI value and SI unit, plus "read_number" and "read_unit"
+    (the number and unit symbol as written). With no unit, solved_for is "number" and the unit is "none".
+    Returns the error shape if there is no number at the start, or the unit is unknown.
+    """
+    # Flowchart (each [box] matches a comment in the code below):
+    #
+    #   [P0] tidy the text (tidy_answer_text)
+    #          |
+    #          v
+    #   [P1] a number at the start?                  no -> [E] error
+    #          | yes: number = it, rest = what follows
+    #          v
+    #   [P2] is anything left after the number?
+    #          |                                   |
+    #          | no                                | yes
+    #          v                                   v
+    #   [B-NONE] value = number, unit "none"   [B-UNIT] convert_to_si(number, rest)
+    #                                               unknown unit -> [E] error
+    #          |                                   |
+    #          v                                   v
+    #   [R] make_result(kind, SI value, SI unit, formula) + read_number, read_unit
+
+    # [P0] tidy the text first.
+    tidy = tidy_answer_text(text)
+
+    # [P1] the number must come first.
+    number_match = NUMBER_AT_START.match(tidy)
+    if number_match is None:
+        return make_error("Could not find a number at the start of '" + text + "'.")
+    number = float(number_match.group(0))
+    rest = tidy[number_match.end():].strip()
+
+    # [P2] is there a unit after the number?
+    if rest == "":
+        # [B-NONE] a bare number: nothing to convert.
+        result = make_result("number", number, "none", "a number with no unit")
+        result["read_number"] = number
+        result["read_unit"] = "none"
+        return result
+
+    # [B-UNIT] convert the number with its unit to SI; an unknown unit gives the converter's error.
+    converted = convert_to_si(number, rest)
+    if not converted["ok"]:
+        return converted
+
+    # [R] the SI value, plus what was written.
+    result = make_result(converted["solved_for"], converted["value"], converted["unit"], converted["formula"])
+    result["read_number"] = number
+    result["read_unit"] = find_unit_symbol(rest)
+    return result
+
+
+def make_check_result(check_name: str, passed: bool, rule: str, detail: str) -> dict[str, Any]:
+    """The shared result shape for a check: "value" is True or False, and "detail" says why, in plain words.
+
+    The detail is written by this code, never by the model, so the tutor can give the right hint.
+    """
+    result = make_result(check_name, passed, "no unit", rule)
+    result["detail"] = detail
+    return result
+
+
+def percent_text(fraction: float) -> str:
+    """Show a fraction as a percentage for a message, for example 0.0423 -> "4.2%". Rounded for display only."""
+    return str(round(fraction * 100, 1)) + "%"
+
+
+def check_numeric_answer(student_text: str, gold_text: str, tolerance: float = 0.02) -> dict[str, Any]:
+    """Check a student's numerical answer against the answer key, both written as text with units, such as "-30 cm".
+
+    Both are read with read_quantity and compared in SI units, so "-0.3 m" matches "-30 cm".
+    The answer is correct when the sign matches and |student - key| / |key| <= tolerance (default 0.02, that is 2%).
+    The default allows for rounding: NCERT's own printed answers differ from the exact values by up to 1%.
+    A different kind of unit (s instead of cm) is wrong. A missing unit is read in the key's unit and still counts as
+    correct, but "detail" says the unit is missing, so the tutor can remind the student.
+    Returns the shared shape with value True or False and a "detail" saying why. Returns the error shape only if
+    the answer key itself cannot be read, or the tolerance is not between 0 and 1.
+    """
+    # Flowchart (each [box] matches a comment in the code below):
+    #
+    #   [T]  tolerance between 0 and 1?                       no  -> [E] error
+    #   [C1] can the KEY be read?                             no  -> [E] error (our bug, not the student's)
+    #   [C2] can the STUDENT's answer be read?                no  -> [W] False, "could not read"
+    #   [C3] units: different kinds (cm vs s)?                yes -> [W] False, "wrong kind of unit"
+    #        key has a unit, the answer has none?             -> read the answer in the key's unit, note it
+    #        the key has no unit?                             -> compare the written numbers, note it
+    #   [C4] key is 0?                                        yes -> True if the answer is 0 too
+    #   [C5] signs differ?                                    yes -> [W] False, "wrong sign"
+    #   [C6] |student - key| / |key| <= tolerance?            yes -> [OK] True; no -> [W] False, "off by X%"
+    #   [R]  make_check_result("correct", True/False, rule, detail)
+
+    # [T] the tolerance must make sense.
+    if tolerance < 0 or tolerance >= 1:
+        return make_error("tolerance must be at least 0 and less than 1, for example 0.02 for 2%.")
+    rule = "same sign, and |student - key| / |key| <= " + percent_text(tolerance)
+
+    # [C1] the key comes from our side, so if it can't be read that is an error, not a wrong answer.
+    gold = read_quantity(gold_text)
+    if not gold["ok"]:
+        return make_error("The answer key '" + gold_text + "' could not be read: " + gold["error"])
+
+    # [C2] the student's answer.
+    student = read_quantity(student_text)
+    if not student["ok"]:
+        return make_check_result("correct", False, rule, "Could not read a number and unit from the answer. " + student["error"])
+
+    # [C3] decide which two numbers to compare.
+    unit_note = ""
+    key_has_unit = gold["unit"] != "none"
+    answer_has_unit = student["unit"] != "none"
+    if key_has_unit and answer_has_unit:
+        # Both have units: they must measure the same kind of quantity.
+        if student["solved_for"] != gold["solved_for"]:
+            return make_check_result(
+                "correct", False, rule,
+                "Wrong kind of unit: the answer is a " + student["solved_for"] + " (" + student["read_unit"]
+                + "), but the key is a " + gold["solved_for"] + " (" + gold["read_unit"] + ").",
+            )
+        answer_value = student["value"]
+        key_value = gold["value"]
+    elif key_has_unit:
+        # The answer has no unit: read its number in the key's unit, and say the unit is missing.
+        answer_value = convert_to_si(student["read_number"], gold["read_unit"])["value"]
+        key_value = gold["value"]
+        unit_note = " The unit is missing: write it (" + gold["read_unit"] + ")."
+    elif answer_has_unit:
+        # The key has no unit, so only the written numbers can be compared.
+        answer_value = student["read_number"]
+        key_value = gold["read_number"]
+        unit_note = " (The key has no unit, so only the numbers were compared.)"
+    else:
+        # Neither has a unit: compare the numbers.
+        answer_value = student["read_number"]
+        key_value = gold["read_number"]
+
+    # [C4] a key of 0 cannot be divided by, so check it directly.
+    if key_value == 0:
+        if answer_value == 0:
+            return make_check_result("correct", True, rule, "Matches the key (0)." + unit_note)
+        return make_check_result("correct", False, rule, "The key is 0, but the answer is not." + unit_note)
+
+    # [C5] the signs must match: -30 cm is not +30 cm.
+    if answer_value * key_value < 0:
+        if key_value < 0:
+            sign_words = "the key is negative, but the answer is positive"
+        else:
+            sign_words = "the key is positive, but the answer is negative"
+        return make_check_result("correct", False, rule, "Wrong sign: " + sign_words + ". Check the sign convention." + unit_note)
+
+    # [C6] close enough?
+    relative_difference = abs(answer_value - key_value) / abs(key_value)
+    if relative_difference <= tolerance:
+        return make_check_result("correct", True, rule, "Matches the key (within " + percent_text(tolerance) + ")." + unit_note)
+    return make_check_result(
+        "correct", False, rule,
+        "Off by " + percent_text(relative_difference) + " (allowed: " + percent_text(tolerance) + ")." + unit_note,
+    )
+
+
+# Formula names that stay whole when a formula is read: everything else such as "IR" is read as I * R.
+FORMULA_NAMES_KEPT_WHOLE: list[str] = ["rho", "pi", "Rs", "Rp"]
+
+# The only characters allowed in a formula: English letters, digits, spaces and + - * / ^ ( ) = .
+# Anything else (including Greek or full-width letters) is refused before SymPy sees the text.
+SAFE_FORMULA_PATTERN: str = r"[A-Za-z0-9 +\-*/^().=]+"
+
+# The longest formula text accepted.
+MAX_FORMULA_LENGTH: int = 100
+
+
+def is_safe_formula_text(text: str) -> bool:
+    """True only if formula text is safe to hand to SymPy, whose parser runs Python's eval underneath.
+
+    Allowed: English letters, digits, spaces and + - * / ^ ( ) = . only; at most 100 characters; at most one "=".
+    So no underscores, quotes, brackets [], commas or colons, which code would need, and no Greek letters
+    (write "rho", not the Greek letter).
+    """
+    # Empty or too long text is refused.
+    if len(text.strip()) == 0 or len(text) > MAX_FORMULA_LENGTH:
+        return False
+    # Every character must be one of the allowed ones: the whole text must match the pattern.
+    if re.fullmatch(SAFE_FORMULA_PATTERN, text) is None:
+        return False
+    # A formula has at most one "=".
+    if text.count("=") > 1:
+        return False
+    return True
+
+
+def can_split_name(name: str) -> bool:
+    """For SymPy's parser: may a run of letters such as "IR" be read as I * R? Names such as "rho" stay whole."""
+    # Known names are never split.
+    if name in FORMULA_NAMES_KEPT_WHOLE:
+        return False
+    # Names with digits, such as "R1", stay whole too.
+    for character in name:
+        if character.isdigit():
+            return False
+    # A single letter has nothing to split; longer runs are split into letters.
+    return len(name) > 1
+
+
+def parse_formula_side(text: str) -> Any:
+    """Turn one side of a formula (already checked by is_safe_formula_text) into a SymPy expression."""
+    # Every single letter (and each kept-whole name) is a plain symbol, so "I" means current here,
+    # not SymPy's imaginary unit, and "E" means energy, not Euler's number.
+    # This is a second layer: allowed_names below already leaves SymPy's constants out, and this loop keeps
+    # every letter a plain symbol even if someone adds one there later.
+    # string.ascii_letters is Python's built-in list of the 52 English letters, a-z then A-Z.
+    local_names: dict[str, Any] = {}
+    for letter in string.ascii_letters:
+        local_names[letter] = Symbol(letter)
+    for name in FORMULA_NAMES_KEPT_WHOLE:
+        local_names[name] = Symbol(name)
+
+    # Only the few SymPy names the parser needs; no Python built-ins at all.
+    allowed_names: dict[str, Any] = {
+        "__builtins__": {},
+        "Symbol": Symbol,
+        "Integer": Integer,
+        "Float": Float,
+        "Rational": Rational,
+        "sqrt": sqrt,
+    }
+
+    # "^" means power, "IR" means I * R, and "2u" means 2 * u.
+    reading_rules = standard_transformations + (convert_xor, split_symbols_custom(can_split_name), implicit_multiplication)
+    return parse_expr(text, local_dict=local_names, global_dict=allowed_names, transformations=reading_rules)
+
+
+def solutions_match(first: list[Any], second: list[Any]) -> bool:
+    """True if two lists of SymPy solutions contain the same values (in any order)."""
+    if len(first) != len(second):
+        return False
+    # Every solution in the first list must equal one in the second.
+    for solution in first:
+        found = False
+        for other in second:
+            if simplify(solution - other) == 0:
+                found = True
+        if not found:
+            return False
+    return True
+
+
+def check_equivalence(student_text: str, gold_text: str) -> dict[str, Any]:
+    """Check whether a student's formula is the same as the key's formula, for example "R = V/I" and "V = IR".
+
+    Both can be equations (with "=") or both plain expressions (such as "I^2 R"). Write powers with "^";
+    letters next to each other multiply ("IR" is I x R); "rho", "pi", "Rs" and "Rp" stay whole names.
+    Equations are the same when solving both for a shared quantity gives the same result; expressions are the
+    same when their difference simplifies to 0. A different set of quantities ("P = VI" vs "P = I^2 R") is
+    reported as different: linking them needs Ohm's law, which this check does not assume.
+    The text is checked for safe characters before SymPy reads it, because SymPy's parser runs Python's eval.
+    Returns the shared shape with value True or False and a "detail" saying why. Returns the error shape only if
+    the answer key itself is unsafe or cannot be read.
+    """
+    # Flowchart (each [box] matches a comment in the code below):
+    #
+    #   [Q0] key text safe?        no -> [E] error;   answer text safe?   no -> [W] False, "not allowed"
+    #   [Q1] both read by SymPy?   key fails -> [E] error;   answer fails -> [W] False, "could not read"
+    #   [Q2] which kind?
+    #          |                          |                           |
+    #          | both equations           | both expressions          | one of each
+    #          v                          v                           v
+    #   [B-EQ] same quantities?     [B-EXPR] student - key     [B-MIX] False
+    #          then solve both for       simplifies to 0?
+    #          a shared one; same?
+    #          |                          |                           |
+    #          v                          v                           v
+    #   [R] make_check_result("equivalent", True/False, method, detail)
+    method = "solve both for a shared quantity (equations), or simplify the difference (expressions)"
+
+    # [Q0] the key must be safe text; an unsafe key is our error.
+    if not is_safe_formula_text(gold_text):
+        return make_error("The answer key '" + gold_text + "' is not a safe formula (English letters, digits and + - * / ^ ( ) = . only).")
+    # [Q0] an unsafe answer is never given to SymPy; it is simply not a formula we can check.
+    if not is_safe_formula_text(student_text):
+        return make_check_result(
+            "equivalent", False, method,
+            "The answer has characters that are not allowed in a formula, or is longer than "
+            + str(MAX_FORMULA_LENGTH) + " characters. Use English letters, digits and + - * / ^ ( ) = only, and write Greek letters as words (rho).",
+        )
+
+    # [Q1] read both with SymPy. Any reading error becomes a message, never a crash.
+    student_is_equation = "=" in student_text
+    key_is_equation = "=" in gold_text
+    try:
+        if key_is_equation:
+            key_left, key_right = gold_text.split("=")
+            key_formula = Eq(parse_formula_side(key_left), parse_formula_side(key_right), evaluate=False)
+        else:
+            key_formula = parse_formula_side(gold_text)
+    except Exception as error:  # SymPy raises many different error types for text it cannot read
+        return make_error("The answer key '" + gold_text + "' could not be read as a formula: " + str(error))
+    try:
+        if student_is_equation:
+            student_left, student_right = student_text.split("=")
+            student_formula = Eq(parse_formula_side(student_left), parse_formula_side(student_right), evaluate=False)
+        else:
+            student_formula = parse_formula_side(student_text)
+    except Exception as error:  # SymPy raises many different error types for text it cannot read
+        return make_check_result("equivalent", False, method, "Could not read the answer as a formula: " + str(error))
+
+    # [Q2] [B-MIX] an equation and a plain expression cannot be the same.
+    if student_is_equation != key_is_equation:
+        return make_check_result("equivalent", False, method, "One is an equation (with \"=\") and the other is not.")
+
+    # [B-EXPR] two expressions: the same if their difference simplifies to 0.
+    if not key_is_equation:
+        if simplify(student_formula - key_formula) == 0:
+            return make_check_result("equivalent", True, method, "The two expressions are equal.")
+        return make_check_result("equivalent", False, method, "The two expressions are not equal.")
+
+    # [B-EQ] two equations: they must use the same quantities...
+    if student_formula.free_symbols != key_formula.free_symbols:
+        # List the quantities each formula uses, so the message can show the difference.
+        student_names: list[str] = []
+        for symbol in student_formula.free_symbols:
+            student_names.append(str(symbol))
+        key_names: list[str] = []
+        for symbol in key_formula.free_symbols:
+            key_names.append(str(symbol))
+        return make_check_result(
+            "equivalent", False, method,
+            "The formulas use different quantities: the answer uses " + ", ".join(sorted(student_names))
+            + "; the key uses " + ", ".join(sorted(key_names)) + ".",
+        )
+
+    # ...and solving both for a shared quantity must give the same result.
+    for quantity in sorted(key_formula.free_symbols, key=str):
+        student_solutions = solve(student_formula, quantity)
+        key_solutions = solve(key_formula, quantity)
+        # Skip a quantity that cannot be solved for in one of them.
+        if len(student_solutions) == 0 or len(key_solutions) == 0:
+            continue
+        if solutions_match(student_solutions, key_solutions):
+            return make_check_result(
+                "equivalent", True, method,
+                "Same relation: both give " + str(quantity) + " = " + str(key_solutions[0]) + ".",
+            )
+        return make_check_result(
+            "equivalent", False, method,
+            "Different relation: solving for " + str(quantity) + " gives " + str(student_solutions[0])
+            + ", but the key gives " + str(key_solutions[0]) + ".",
+        )
+    return make_check_result("equivalent", False, method, "Could not solve the formulas for any shared quantity.")
+
+
+# ---------------------------------------------------------------------------
+# Arithmetic between steps (decision D4): for numbers that sit between two solver calls,
+# such as "8 h a day for 30 days" = 8 * 30 hours. Read by a small safe parser, never by eval.
+# ---------------------------------------------------------------------------
+
+# The longest arithmetic text accepted, and the largest power allowed (10^1000000 would freeze the program).
+MAX_CALCULATION_LENGTH: int = 100
+MAX_POWER_EXPONENT: float = 100.0
+
+# Characters allowed in arithmetic after tidying: digits, the point, operators, brackets, spaces and the "e" of 3e8.
+SAFE_CALCULATION_CHARACTERS: str = "0123456789.+-*/() eE"
+
+
+def evaluate_arithmetic(node: ast.AST) -> float:
+    """Work out one part of a parsed arithmetic expression. Only numbers, + - * / ** and brackets are allowed.
+
+    Raises ValueError for anything else; calculate turns that into an error message.
+    """
+    # The whole expression: work out its body.
+    if isinstance(node, ast.Expression):
+        return evaluate_arithmetic(node.body)
+    # A plain number. (True and False count as numbers in Python, so they are refused by name.)
+    if isinstance(node, ast.Constant):
+        if isinstance(node.value, bool):
+            raise ValueError("only numbers are allowed")
+        if isinstance(node.value, int) or isinstance(node.value, float):
+            return float(node.value)
+        raise ValueError("only numbers are allowed")
+    # A sign in front: +5 or -5.
+    if isinstance(node, ast.UnaryOp):
+        operand = evaluate_arithmetic(node.operand)
+        if isinstance(node.op, ast.UAdd):
+            return operand
+        if isinstance(node.op, ast.USub):
+            return -operand
+        raise ValueError("only + and - may stand in front of a number")
+    # Two parts joined by an operator.
+    if isinstance(node, ast.BinOp):
+        left = evaluate_arithmetic(node.left)
+        right = evaluate_arithmetic(node.right)
+        if isinstance(node.op, ast.Add):
+            return left + right
+        if isinstance(node.op, ast.Sub):
+            return left - right
+        if isinstance(node.op, ast.Mult):
+            return left * right
+        if isinstance(node.op, ast.Div):
+            if right == 0:
+                raise ValueError("division by zero")
+            return left / right
+        if isinstance(node.op, ast.Pow):
+            if abs(right) > MAX_POWER_EXPONENT:
+                raise ValueError("the power is too large (at most " + str(MAX_POWER_EXPONENT) + ")")
+            return left ** right
+        raise ValueError("only + - * / and ^ are allowed")
+    # Anything else (names, function calls, lists, ...) is not arithmetic.
+    raise ValueError("only numbers, + - * / ^ and brackets are allowed")
+
+
+def calculate(expression: str) -> dict[str, Any]:
+    """Work out plain arithmetic that sits between two steps, for example "8 * 30" (8 h a day for 30 days).
+
+    Only numbers and + - * / ^ ( ) are allowed; x or × also mean times, ÷ means divide, and 3e8 or 3 × 10^8 work.
+    No letters, names or functions: this is a calculator, not a formula solver. Use the solve_... functions for
+    physics formulas, and convert_to_si for units.
+    The text is read by a small safe parser, never by Python's eval.
+    Returns the shared result shape (solved_for "value", no unit), or the error shape.
+    """
+    # Flowchart (each [box] matches a comment in the code below):
+    #
+    #   [K0] tidy: "× 10^8" -> e8; × x -> *; ÷ -> /; ^ -> **; Unicode minus -> -
+    #   [K1] at most 100 characters, and only digits . + - * / ( ) spaces e?   no -> [E] error
+    #   [K2] does it parse as Python arithmetic?                                 no -> [E] error
+    #   [K3] work it out with evaluate_arithmetic (numbers and operators only)   bad -> [E] error
+    #   [R]  make_result("value", result, "no unit", "calculated: <expression>")
+
+    # [K0] tidy the text the same way as answers, then turn the remaining symbols into Python's.
+    tidy = tidy_answer_text(expression)
+    tidy = tidy.replace("×", "*").replace("x", "*").replace("X", "*").replace("÷", "/").replace("^", "**")
+
+    # [K1] the length and the characters.
+    if len(tidy) == 0 or len(tidy) > MAX_CALCULATION_LENGTH:
+        return make_error("Give an arithmetic expression of 1 to " + str(MAX_CALCULATION_LENGTH) + " characters.")
+    for character in tidy:
+        if character not in SAFE_CALCULATION_CHARACTERS:
+            return make_error("Only numbers and + - * / ^ ( ) are allowed in a calculation, not '" + character + "'.")
+
+    # [K2] parse the text into a tree. Parsing only reads the text; nothing is run.
+    try:
+        tree = ast.parse(tidy, mode="eval")
+    except SyntaxError:
+        return make_error("'" + expression + "' is not a complete calculation.")
+
+    # [K3] work out the tree, allowing only numbers and the five operators.
+    try:
+        result = evaluate_arithmetic(tree)
+    except (ValueError, OverflowError, RecursionError) as error:
+        return make_error("Could not calculate '" + expression + "': " + str(error) + ".")
+    # A negative number to a fractional power gives a complex number, which is not a school answer.
+    if isinstance(result, complex):
+        return make_error("Could not calculate '" + expression + "': the result is not a real number.")
+
+    # [R]
+    return make_result("value", result, "no unit", "calculated: " + tidy)
+
+
 def solve_charge_current(q: float | None = None, i: float | None = None, t: float | None = None) -> dict[str, Any]:
     """Electric current: I = Q / t (NCERT Class 10 Science, Ch 11, Eq. 11.1).
 
@@ -1738,6 +2319,7 @@ def solve_energy_power_time(energy: float | None = None, p: float | None = None,
     Give exactly two of the three values and leave the third as None; the missing one is calculated.
     Units are SI: energy in joule (J), p in watt (W), t in second (s).
     Convert kW, hours or minutes first with convert_to_si.
+    For a time such as "8 h a day for 30 days", work out 8 * 30 with calculate first, then convert the hours.
     In a purely resistive circuit (resistors only) this energy is also the heat produced.
     For the cost on an electricity bill, pass the energy to solve_energy_cost.
     Every given value must be greater than 0.
@@ -1794,6 +2376,7 @@ def solve_energy_cost(energy: float | None = None, rate: float | None = None, co
     convert it first with convert_to_si(value, "kWh").
     If the power and the time are known instead, find the energy first with solve_energy_power_time.
     rate is the price of 1 kW h, in rupees (Rs per kW h). cost is in rupees (Rs).
+    To show an energy found in joules as kW h ("units"), use convert_from_si(energy, "kWh").
     1 kW h = 3.6 x 10^6 J.
     Every given value must be greater than 0.
     Returns the shared result shape, or the error shape if the inputs cannot be used.
