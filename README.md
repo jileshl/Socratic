@@ -34,6 +34,8 @@ Historical baseline: before adding six dev queries and switching to `rank_bm25`,
 
 `DATA_DIR` and `DOCUMENT_PATH` can be configured in `.env`; `DOCUMENT_PATH` must contain the three NCERT chapter PDFs, and `DATA_DIR` contains the JSON/JSONL datasets.
 
+The current 35-chunk index also stores 47 stable IDs for numbered end-of-chapter textbook questions. The NCERT Exemplar source is not present in the repository: `jesc1ps.pdf` is the textbook and `jesc1an.pdf` is its answer key, which is not indexed for student retrieval. Exemplar ingestion remains pending the correct source PDF.
+
 ## Learner Memory Status
 
 `LearnerStore` can persist mastery, misconception/resolution records, effective lesson IDs, quiz history, and per-concept failure streaks. Quiz-derived mastery is the average of up to the latest three quiz scores; the explicit `update_mastery()` method sets a supplied score. The stuck threshold counts consecutive below-threshold quiz results on a concept, not distinct sessions. Session registration creates a profile row so session-only learners can expire. `purge_expired_profiles()` and `forget_me()` are implemented APIs, but expiry has no scheduler and the graph/app does not register sessions or expose a user-facing `/forget_me` route yet. See [MEMORY_POLICY.md](MEMORY_POLICY.md) for the implemented/planned boundary.

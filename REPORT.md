@@ -203,12 +203,14 @@ Validation used a clean Python 3.12.16 environment with dependencies installed f
 
 | Check | Command / procedure | Result |
 | :--- | :--- | :--- |
-| Full automated suite | `PYTHONPATH=. python -m pytest -q` | **27 passed** |
-| Source-PDF index build | `PYTHONPATH=. python scripts/build_index.py --git-revision HEAD --force` | **35 chunks**: Chapter 9 = 15, Chapter 10 = 9, Chapter 11 = 11 |
-| Chunk integrity | Count IDs, empty content, and OCR supplements in `.index/chunks.json` | 35 unique IDs; 0 empty chunks; 0 OCR supplements for these source PDFs |
+| Full automated suite | `PYTHONPATH=. python -m pytest -q` | **203 passed** |
+| Source-PDF index build | `PYTHONPATH=. python scripts/build_index.py --force` | **35 chunks**: Chapter 9 = 15, Chapter 10 = 9, Chapter 11 = 11 |
+| Chunk integrity | Count IDs, empty content, OCR supplements, and exercise IDs in `.index/chunks.json` | 35 unique IDs; 0 empty chunks; 0 OCR supplements; 47 textbook exercise-question IDs |
 | Canonical equation metadata | Inspect sections 9.2.4, 9.3.7, and 11.4 after rebuild | Mirror: `1/f = 1/v + 1/u`; lens: `1/f = 1/v - 1/u`; Ohm: `V = I*R`, `R = V/I`, `I = V/R` |
 
-The focused ingestion/retrieval tests cover stable section IDs, canonical formula mapping, unknown-section behavior, OCR confidence filtering, sparse-page fallback, full-page OCR skipping when native text is present, rank_bm25 scoring, query rewriting, RRF fusion, and cross-encoder ordering using a fake model. The real cross-encoder was also run for this benchmark after installing the optional dependency. The OCR tests use a fake engine; the inspected NCERT PDFs contain usable native page text, so this build did not require OCR. Image-only equation recognition has not been validated against a real scanned-equation fixture. Canonical equations are curated metadata; the raw extracted passage is retained and may still contain visually fragmented fractions.
+The focused ingestion/retrieval tests cover stable section IDs, canonical formula mapping, textbook exercise-ID extraction, unknown-section behavior, OCR confidence filtering, sparse-page fallback, full-page OCR skipping when native text is present, rank_bm25 scoring, query rewriting, RRF fusion, and cross-encoder ordering using a fake model. The real cross-encoder was also run for this benchmark after installing the optional dependency. The OCR tests use a fake engine; the inspected NCERT PDFs contain usable native page text, so this build did not require OCR. Image-only equation recognition has not been validated against a real scanned-equation fixture. Canonical equations are curated metadata; the raw extracted passage is retained and may still contain visually fragmented fractions.
+
+The supplied PDFs include three NCERT chapter PDFs, `jesc1ps.pdf` (the full textbook), and `jesc1an.pdf` (the answer key). No separate NCERT Exemplar problem source was found. The answer key is intentionally not indexed in student-facing retrieval. Thus the 47 extracted IDs are textbook end-of-chapter questions, not official Exemplar IDs; Exemplar ingestion remains blocked on receiving the correct source.
 
 Reproduce the clean-environment validation with:
 
