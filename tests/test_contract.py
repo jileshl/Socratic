@@ -20,18 +20,25 @@ class _MemoryCheckpointer:
 
 
 def test_mirror_formula_solver():
-    """Verify solver accuracy: u=-30, f=-15 -> v=-30, m=-1.0"""
-    res = math_tools.solve_mirror_formula(u=-30.0, f=-15.0)
+    """Verify solver accuracy: u=-30, f=-15 -> v=-30, m=-1.0 (real and inverted).
+
+    Updated for the shared result shape: v, m and the nature now come from three calls.
+    """
+    res = math_tools.solve_mirror_formula("cm", u=-30.0, f=-15.0)
     assert "error" not in res
-    assert res["v"] == -30.0
-    assert res["m"] == -1.0
-    assert res["nature"] == "real and inverted"
+    assert res["solved_for"] == "v"
+    assert res["value"] == pytest.approx(-30.0)
+    mag = math_tools.solve_mirror_magnification("cm", v=res["value"], u=-30.0)
+    assert mag["value"] == pytest.approx(-1.0)
+    nature = math_tools.describe_image(mag["value"])
+    assert nature["value"].startswith("real and inverted")
 
 
 def test_mirror_formula_object_at_focus():
     """Object at focal point should yield infinity / error message."""
-    res = math_tools.solve_mirror_formula(u=-15.0, f=-15.0)
+    res = math_tools.solve_mirror_formula("cm", u=-15.0, f=-15.0)
     assert "error" in res
+    assert "infinity" in res["error"]
 
 
 def test_graph_compilation():
