@@ -10,16 +10,14 @@ import asyncio
 import inspect
 import sys
 import typing
-from pathlib import Path
 from typing import Any
 
 import pytest
 from mcp import Client, ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
+from socratic_tutor import config
 from socratic_tutor.tools import math_tools_server
-
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 def list_tools() -> list[Any]:
@@ -297,7 +295,8 @@ def test_server_over_stdio_like_the_lecture_client() -> None:
         params = StdioServerParameters(
             command=sys.executable,
             args=["-m", "socratic_tutor.tools.math_tools_server"],
-            cwd=str(PROJECT_ROOT),
+            # Start in the repository folder (taken from config.py) so "-m socratic_tutor..." can be found.
+            cwd=str(config.BASE_DIR),
         )
         async with stdio_client(params) as (read, write):
             async with ClientSession(read, write) as session:
