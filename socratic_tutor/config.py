@@ -17,6 +17,9 @@ def _configured_path(variable: str, default: Path) -> Path:
 
 DATA_DIR = _configured_path("DATA_DIR", BASE_DIR / "data")
 DOCUMENT_PATH = _configured_path("DOCUMENT_PATH", DATA_DIR)
+# Generated documents, e.g. docs/mcp_tool_list.json from scripts/export_tool_list.py.
+# Like DATA_DIR it can be set in .env, and a relative value is read relative to the repository.
+DOCS_DIR = _configured_path("DOCS_DIR", BASE_DIR / "docs")
 INDEX_DIR = BASE_DIR / ".index"
 CACHE_DIR = BASE_DIR / ".cache"
 
