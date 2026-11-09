@@ -227,7 +227,22 @@ def node_supervisor(state: SocraticState) -> dict:
 
 def node_diagnostician(state: SocraticState) -> dict:
     query = state.get("query", "")
-    diag_res = diagnostician.diagnose_response(query)
+    messages = state.get("messages", [])
+
+    # Formulate contextual query using short-term conversational dialogue if available
+    contextual_query = query
+    if messages and len(messages) > 1:
+        history_lines = [
+            f"{'Student' if getattr(m, 'type', '') == 'human' else 'Tutor'}: {getattr(m, 'content', str(m))}"
+            for m in messages[-4:]
+            if getattr(m, 'content', None)
+        ]
+        if history_lines:
+            contextual_query = "\n".join(history_lines)
+
+    diag_res = diagnostician.diagnose_response(contextual_query)
+    if not isinstance(diag_res, dict) or not (diag_res.get("identified_misconception_id") or diag_res.get("id")):
+        diag_res = diagnostician.diagnose_response(query)
 
     miscon_id = None
     miscon_name = None
@@ -276,6 +291,8 @@ def node_tutor(state: SocraticState) -> dict:
         hint_level=hint_step,
         approved_lesson=lesson,
         remediation=remediation,
+        misconception=state.get("identified_misconception"),
+        conversation_history=state.get("messages", []),
     )
 
     all_citations = _extract_section_ids(initial_citations, hint)
@@ -296,6 +313,12 @@ def node_output_guardrail(state: SocraticState) -> dict:
     expected_answer = state.get("student_attempt") or None
     leak = check_answer_leak(response, expected_answer)
 
+    # Validate citations against retrieved sections (checking grounded in NCERT)
+    retrieved = state.get("retrieved_sections", [])
+    valid_secs = {str(p.get("section_id")) for p in retrieved if p.get("section_id")}
+    citations = state.get("citations", [])
+    validated_citations = [c for c in citations if not valid_secs or c in valid_secs]
+
     # Socratic Invariant: If leak occurs in practice mode
     if leak and state.get("mode", "practice") == "practice":
         hint_tries = state.get("hint_tries", 0)
@@ -307,17 +330,20 @@ def node_output_guardrail(state: SocraticState) -> dict:
             return {
                 "steps": ["output_guardrail"],
                 "response": scaffold,
+                "citations": validated_citations,
                 "answer_leak_flag": True,
             }
         return {
             "steps": ["output_guardrail"],
             "response": "",
+            "citations": validated_citations,
             "answer_leak_flag": True,
         }
 
     return {
         "steps": ["output_guardrail"],
         "response": response,
+        "citations": validated_citations,
         "answer_leak_flag": False,
     }
 
