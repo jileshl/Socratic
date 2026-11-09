@@ -27,6 +27,8 @@ def generate_hint(
     hint_level: int = 1,
     approved_lesson: str | None = None,
     remediation: str | None = None,
+    misconception: dict[str, Any] | None = None,
+    conversation_history: list[Any] | None = None,
 ) -> str:
     """Generate progressive Socratic hint grounded in NCERT."""
     passages_text = "\n\n".join(
@@ -42,10 +44,22 @@ def generate_hint(
     }.get(hint_level, "Level 3 (Formula Guidance): Direct the student to the textbook formula and its variables, without doing the arithmetic.")
 
     extra_instructions = []
+    if misconception and isinstance(misconception, dict):
+        miscon_name = misconception.get("name") or misconception.get("id")
+        if miscon_name:
+            extra_instructions.append(f"Targeted Misconception: {miscon_name}")
     if approved_lesson:
         extra_instructions.append(f"Approved Teaching Lesson for this misconception: {approved_lesson}")
     if remediation == "parallel_resistors":
         extra_instructions.append("Remediation Rule: Remediate Ohm's law (V = IR) first, then review current division, then retry parallel resistance.")
+    if conversation_history:
+        recent = [
+            f"{'Student' if getattr(m, 'type', '') == 'human' else 'Tutor'}: {getattr(m, 'content', str(m))}"
+            for m in conversation_history[-4:]
+            if getattr(m, 'content', None)
+        ]
+        if recent:
+            extra_instructions.append("Recent Dialogue Context:\n" + "\n".join(recent))
 
     user_prompt = (
         f"Student Query: {student_query}\n"
