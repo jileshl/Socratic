@@ -1,7 +1,7 @@
 VENV_PY := $(shell if [ -x ./.venv/bin/python ]; then echo ./.venv/bin/python; elif [ -x ./venv/bin/python ]; then echo ./venv/bin/python; else echo python; fi)
 PY ?= $(VENV_PY)
 
-.PHONY: help check setup index run dev test app reflexion clean eval eval-list report gate up seed-demo ci docker-check
+.PHONY: help check setup index run dev test app reflexion clean eval eval-list report gate up seed-demo ci-deps ci docker-check
 
 help:
 	@grep -E '^[a-z-]+:.*?##' $(MAKEFILE_LIST) | sed 's/:.*##/\t/' | column -t -s "$$(printf '\t')"
@@ -51,6 +51,10 @@ report:  ## build the evaluation tables from evalkit/results/experiment_log.csv
 
 gate:    ## CI eval gate: fail if dev Recall@5 drops below CI_MIN_RECALL_AT_5 (config.py)
 	$(PY) -m scripts.check_threshold
+
+ci-deps: ## install packages with the small CPU-only torch (CI uses this; no GPU is needed)
+	$(PY) -m pip install --index-url https://download.pytorch.org/whl/cpu torch
+	$(PY) -m pip install -r requirements.txt
 
 ci:      ## everything CI runs: tests, index from data/, Recall@5 gate, offline smoke run of every eval suite
 	$(PY) -m pytest -q tests

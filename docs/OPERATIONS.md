@@ -60,6 +60,7 @@ Alert demo: set `OPS_DEMO=1`, sign in to the teacher view, then run `fetch('/api
 
 All CI steps are in the Makefile, so the same checks run on a laptop and on GitHub:
 
+- `make ci-deps`: installs the packages with the CPU-only torch wheel (the default wheel bundles several GB of CUDA libraries that the app never uses). The Dockerfile does the same.
 - `make ci`:
   - runs the tests
   - builds the index from the PDFs in `data/`
@@ -75,4 +76,9 @@ On 2 Nov the first CI runs of PR #14 failed in `eval-gate`:
 - **What happened:** that version of the branch had stopped tracking the NCERT PDFs and downloaded them from ncert.nic.in instead. From GitHub's servers, ncert.nic.in reset one connection and sent an incomplete certificate chain for the other two downloads.
 - **Why the job failed:** the index could not be built, so the gate could not run.
 - **Fix:** the team decided to keep reading the chapters from `data/`, so CI now builds the index from the repository and never downloads from NCERT. Certificate checking was never turned off.
-- Failed runs: https://github.com/jileshl/Socratic/actions/runs/41468473035 and /41468737613. Passing run after the fix: [link — TO FILL after the first green run].
+- Failed runs: https://github.com/jileshl/Socratic/actions/runs/41468473035 and /41468737613.
+
+On 9 Nov, after `ci.yml` was added to the rebuilt branch (PR #33), `make ci` passed but `make docker-check` failed:
+- **What happened:** the runner ran out of disk. `sentence-transformers` pulls in torch, and the default torch wheel brings several GB of CUDA libraries, once on the runner and again inside the image. One run also failed when PyPI cut off the 286 MB CUDA download.
+- **Fix:** the CPU-only torch wheel is installed first, both on the runner (`make ci-deps`) and in the Dockerfile. `requirements.txt` is unchanged.
+- Failed runs: https://github.com/jileshl/Socratic/actions/runs/42571534081 (out of disk while installing) and /42573684211 (out of disk while unpacking the image). Passing run after the fix: [link — TO FILL after the first green run].
