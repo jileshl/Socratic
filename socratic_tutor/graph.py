@@ -7,6 +7,7 @@ import uuid
 from typing import Any
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import interrupt, Command
+from langchain_core.messages import AnyMessage, AIMessage, HumanMessage
 
 from socratic_tutor import config
 from socratic_tutor.state import SocraticState
@@ -14,7 +15,7 @@ from socratic_tutor.policy import check_input_guardrails, check_answer_leak
 from socratic_tutor.concept_graph import ConceptGraph
 from socratic_tutor.learner_store import LearnerStore
 from socratic_tutor.reflexion import ReflexionPlaybook
-from socratic_tutor.tools import textbook_kb, math_tools
+from socratic_tutor.tools import textbook_kb, math_tools, question_bank
 from socratic_tutor.agents import diagnostician, tutor, grader, question_setter
 
 REFUSAL = "I cannot fulfill this request as entered. Let's focus on our NCERT study goals."
@@ -44,6 +45,22 @@ def _extract_section_ids(*sources: Any) -> list[str]:
 def node_input_guardrail(state: SocraticState) -> dict:
     query = state.get("query", "")
     guard_res = check_input_guardrails(query)
+
+    # Reset per-turn fields at the start of each turn
+    reset_state: dict[str, Any] = {
+        "steps": ["input_guardrail"],
+        "query": guard_res["sanitized_query"],
+        "response": "",
+        "citations": [],
+        "retrieved_sections": [],
+        "identified_misconception": None,
+        "effective_lesson_applied": None,
+        "grade_result": None,
+        "answer_leak_flag": False,
+        "hint_tries": 0,
+        "plan": [],
+    }
+
     if not guard_res["passed"]:
         if guard_res.get("is_distress"):
             # Teacher Rule 4: Academic distress protocol
@@ -53,30 +70,37 @@ def node_input_guardrail(state: SocraticState) -> dict:
                 "Let's take a deep breath and take this one small step at a time. "
                 "What specific part or formula are you looking at right now?"
             )
-            return {
-                "steps": ["input_guardrail"],
-                "query": guard_res["sanitized_query"],
+            reset_state.update({
                 "injection_detected": False,
                 "teacher_alert_triggered": True,
                 "response": supportive_reply,
-            }
-        return {
-            "steps": ["input_guardrail"],
-            "query": guard_res["sanitized_query"],
+            })
+            return reset_state
+
+        reset_state.update({
             "injection_detected": True,
             "teacher_alert_triggered": False,
             "response": REFUSAL,
-        }
-    return {
-        "steps": ["input_guardrail"],
-        "query": guard_res["sanitized_query"],
+        })
+        return reset_state
+
+    reset_state.update({
         "injection_detected": False,
-    }
+    })
+    return reset_state
 
 
 def node_supervisor(state: SocraticState) -> dict:
     student_id = state.get("student_id", "")
+    session_id = state.get("session_id", "")
     store = LearnerStore()
+
+    if student_id and session_id and not session_id.startswith("eval-") and not student_id.startswith("RT-"):
+        try:
+            store.register_session(student_id, session_id)
+        except Exception:
+            pass
+
     profile = store.get_profile(student_id) if student_id else {"mastery_map": {}, "failure_streaks": {}, "stuck_counter": 0}
 
     mastery = dict(profile.get("mastery_map", {}))
@@ -94,12 +118,110 @@ def node_supervisor(state: SocraticState) -> dict:
     stuck = (concept_failures >= 3) or (stuck_counter >= 3)
     teacher_alert = bool(stuck or state.get("teacher_alert_triggered", False))
 
+    hint_step = state.get("hint_step", 1)
+    if stuck and hint_step < config.MAX_HINT_STEPS:
+        hint_step = min(hint_step + 1, config.MAX_HINT_STEPS)
+
+    mode = state.get("mode", "practice")
+
+    # Quiz Mode:
+    if mode == "quiz":
+        grade_res = state.get("grade_result")
+        if grade_res is None:
+            return {
+                "steps": ["supervisor"],
+                "plan": ["grade", "replan"],
+                "mastery_map": mastery,
+                "current_concept_id": current_concept,
+                "next_recommended_concept": next_concept,
+                "teacher_alert_triggered": teacher_alert,
+                "hint_step": hint_step,
+            }
+        else:
+            # Grader finished! Supervisor replans
+            score = float(grade_res.get("score", 0.0))
+            if student_id and current_concept:
+                quiz_res = store.record_quiz_result(student_id, current_concept, score)
+                if quiz_res.get("alert_stuck"):
+                    teacher_alert = True
+                updated_profile = store.get_profile(student_id)
+                mastery = dict(updated_profile.get("mastery_map", {}))
+
+            if score >= 0.7:
+                next_concept = cg.next_recommended(mastery)
+            elif concept_failures >= 3:
+                prereqs = cg.get_prerequisites(current_concept)
+                if prereqs:
+                    next_concept = prereqs[0]
+
+            return {
+                "steps": ["supervisor"],
+                "plan": ["graded", "replanned"],
+                "mastery_map": mastery,
+                "current_concept_id": current_concept,
+                "next_recommended_concept": next_concept,
+                "teacher_alert_triggered": teacher_alert,
+                "hint_step": hint_step,
+            }
+
+    # Question Setter Mode:
+    if state.get("teacher_approval_required"):
+        return {
+            "steps": ["supervisor"],
+            "plan": ["propose_question", "teacher_gate"],
+            "mastery_map": mastery,
+            "current_concept_id": current_concept,
+            "next_recommended_concept": next_concept,
+            "teacher_alert_triggered": teacher_alert,
+            "hint_step": hint_step,
+        }
+
+    # Practice Mode:
+    # 1. Has tutor produced a hint?
+    if state.get("response") and "tutor" in state.get("steps", []):
+        return {
+            "steps": ["supervisor"],
+            "plan": ["verify"],
+            "mastery_map": mastery,
+            "current_concept_id": current_concept,
+            "next_recommended_concept": next_concept,
+            "teacher_alert_triggered": teacher_alert,
+            "hint_step": hint_step,
+        }
+
+    # 2. Has diagnostician produced a result?
+    if "diagnostician" in state.get("steps", []):
+        diag = state.get("identified_misconception")
+        if diag and isinstance(diag, dict) and diag.get("id"):
+            if student_id:
+                try:
+                    store.record_misconception(student_id, diag["id"])
+                except Exception:
+                    pass
+            new_plan = ["misconception_addressed", "hint", "verify"]
+        else:
+            # Replan when no misconception is found (contradicts initial hypothesis)
+            new_plan = ["hint", "verify"]
+
+        return {
+            "steps": ["supervisor"],
+            "plan": new_plan,
+            "mastery_map": mastery,
+            "current_concept_id": current_concept,
+            "next_recommended_concept": next_concept,
+            "teacher_alert_triggered": teacher_alert,
+            "hint_step": hint_step,
+        }
+
+    # First pass in practice mode:
     return {
         "steps": ["supervisor"],
+        "plan": ["diagnose", "hint", "verify"],
         "mastery_map": mastery,
         "current_concept_id": current_concept,
         "next_recommended_concept": next_concept,
         "teacher_alert_triggered": teacher_alert,
+        "hint_step": hint_step,
     }
 
 
@@ -129,7 +251,8 @@ def node_diagnostician(state: SocraticState) -> dict:
 
 def node_tutor(state: SocraticState) -> dict:
     query = state.get("query", "")
-    passages = textbook_kb.search_textbook(query, top_k=4)
+    hint_tries = state.get("hint_tries", 0) + 1
+    passages = state.get("retrieved_sections") or textbook_kb.search_textbook(query, top_k=4)
 
     initial_citations = []
     for p in passages:
@@ -162,6 +285,9 @@ def node_tutor(state: SocraticState) -> dict:
         "response": hint,
         "citations": all_citations,
         "retrieved_sections": passages,
+        "hint_tries": hint_tries,
+        "answer_leak_flag": False,
+        "messages": [AIMessage(content=hint)],
     }
 
 
@@ -170,15 +296,22 @@ def node_output_guardrail(state: SocraticState) -> dict:
     expected_answer = state.get("student_attempt") or None
     leak = check_answer_leak(response, expected_answer)
 
-    # Socratic Invariant: If leak occurs in practice mode, replace with scaffolding prompt
+    # Socratic Invariant: If leak occurs in practice mode
     if leak and state.get("mode", "practice") == "practice":
-        scaffold = (
-            "Let's focus on the underlying physical principle rather than the final calculated value. "
-            "What does the textbook rule say about how these quantities are related?"
-        )
+        hint_tries = state.get("hint_tries", 0)
+        if hint_tries >= 2:
+            scaffold = (
+                "Let's focus on the underlying physical principle rather than the final calculated value. "
+                "What does the textbook rule say about how these quantities are related?"
+            )
+            return {
+                "steps": ["output_guardrail"],
+                "response": scaffold,
+                "answer_leak_flag": True,
+            }
         return {
             "steps": ["output_guardrail"],
-            "response": scaffold,
+            "response": "",
             "answer_leak_flag": True,
         }
 
@@ -191,14 +324,25 @@ def node_output_guardrail(state: SocraticState) -> dict:
 
 def node_grader(state: SocraticState) -> dict:
     attempt = state.get("student_attempt") or state.get("query", "")
-    gold_answer = state.get("gold_answer", "")
+    gold_answer = ""
+    concept_id = state.get("current_concept_id", "")
+
+    qid = state.get("current_question_id")
+    if qid:
+        q = question_bank.get_approved_question(qid) or question_bank.get_question(qid)
+        if q:
+            gold_answer = q.get("gold_answer", "")
+            if not concept_id and q.get("concept_id"):
+                concept_id = q.get("concept_id")
+
+    if not gold_answer:
+        gold_answer = state.get("gold_answer", "")
 
     is_numeric = bool(re.search(r"\d", gold_answer))
     res = grader.grade_answer(attempt, gold_answer, is_numeric=is_numeric)
 
     score = float(res.get("score", 0.0))
     student_id = state.get("student_id", "")
-    concept_id = state.get("current_concept_id", "")
 
     alert_stuck = False
     if student_id and concept_id:
@@ -212,6 +356,7 @@ def node_grader(state: SocraticState) -> dict:
         "steps": ["grader"],
         "grade_result": res,
         "response": feedback,
+        "current_concept_id": concept_id or state.get("current_concept_id"),
         "teacher_alert_triggered": alert_stuck or state.get("teacher_alert_triggered", False),
     }
 
@@ -250,13 +395,35 @@ def route_guardrail(state: SocraticState) -> str:
     return "supervisor"
 
 
-def route_mode(state: SocraticState) -> str:
+def route_supervisor(state: SocraticState) -> str:
     mode = state.get("mode", "practice")
+
     if mode == "quiz":
-        return "grader"
+        if state.get("grade_result") is None:
+            return "grader"
+        return "output_guardrail"
+
     if state.get("teacher_approval_required"):
         return "question_setter"
-    return "diagnostician"
+
+    # Practice mode
+    steps = state.get("steps", [])
+    if "diagnostician" not in steps and ("diagnose" in state.get("plan", []) or not state.get("identified_misconception")):
+        return "diagnostician"
+
+    if "tutor" not in steps or not state.get("response"):
+        return "tutor"
+
+    return "output_guardrail"
+
+
+route_mode = route_supervisor  # Backward-compatibility alias
+
+
+def route_output(state: SocraticState) -> str:
+    if state.get("answer_leak_flag") and state.get("hint_tries", 0) < 2 and state.get("mode", "practice") == "practice":
+        return "tutor"
+    return END
 
 
 # --- Graph Construction ---
@@ -274,13 +441,31 @@ def build_graph(checkpointer=None):
     workflow.add_node("teacher_approval_gate", node_teacher_approval_gate)
 
     workflow.add_edge(START, "input_guardrail")
-    workflow.add_conditional_edges("input_guardrail", route_guardrail)
-    workflow.add_conditional_edges("supervisor", route_mode)
-    workflow.add_edge("diagnostician", "tutor")
-    workflow.add_edge("tutor", "output_guardrail")
-    workflow.add_edge("output_guardrail", END)
-    workflow.add_edge("grader", END)
+    workflow.add_conditional_edges(
+        "input_guardrail",
+        route_guardrail,
+        {"supervisor": "supervisor", END: END},
+    )
+    workflow.add_conditional_edges(
+        "supervisor",
+        route_supervisor,
+        {
+            "diagnostician": "diagnostician",
+            "tutor": "tutor",
+            "grader": "grader",
+            "question_setter": "question_setter",
+            "output_guardrail": "output_guardrail",
+        },
+    )
+    workflow.add_edge("diagnostician", "supervisor")
+    workflow.add_edge("tutor", "supervisor")
+    workflow.add_edge("grader", "supervisor")
     workflow.add_edge("question_setter", "teacher_approval_gate")
     workflow.add_edge("teacher_approval_gate", END)
+    workflow.add_conditional_edges(
+        "output_guardrail",
+        route_output,
+        {"tutor": "tutor", END: END},
+    )
 
     return workflow.compile(checkpointer=checkpointer)

@@ -47,6 +47,63 @@ def test_graph_compilation():
     assert app is not None
 
 
+def test_graph_draw_mermaid_shows_all_edges_and_supervisor_loop():
+    """Verify that build_graph().get_graph().draw_mermaid() includes all edges with supervisor loops."""
+    app = build_graph()
+    g = app.get_graph()
+    assert len(g.edges) == 15
+
+    mermaid = g.draw_mermaid()
+    assert "input_guardrail -.-> supervisor" in mermaid
+    assert "input_guardrail -.-> __end__" in mermaid
+    assert "supervisor -.-> grader" in mermaid
+    assert "supervisor -.-> diagnostician" in mermaid
+    assert "supervisor -.-> question_setter" in mermaid
+    assert "supervisor -.-> tutor" in mermaid
+    assert "diagnostician --> supervisor" in mermaid
+    assert "grader --> supervisor" in mermaid
+    assert "tutor --> supervisor" in mermaid
+    assert "output_guardrail -.-> tutor" in mermaid
+    assert "output_guardrail -.-> __end__" in mermaid
+
+
+def test_graph_quiz_mode_uses_question_id_lookup(monkeypatch, tmp_path):
+    """Verify end-to-end quiz turn routes to grader and looks up answer key via current_question_id."""
+    from socratic_tutor.tools import question_bank
+
+    monkeypatch.setattr(question_bank, "DB_PATH", tmp_path / "qb.db")
+    question_bank._init_db()
+
+    proposed = question_bank.propose_question(
+        concept_id="concept_ohms_law",
+        difficulty="easy",
+        prompt="12 V across 4 ohm: find current",
+        gold_answer="3 A",
+    )
+    qid = proposed["question_id"]
+    question_bank.publish_approved_question(qid)
+
+    app = build_graph()
+    state = {
+        "session_id": "test_quiz_01",
+        "student_id": "student_quiz_01",
+        "mode": "quiz",
+        "current_question_id": qid,
+        "query": "3 A",
+        "student_attempt": "3 A",
+        "messages": [],
+        "steps": [],
+        "hint_step": 1,
+    }
+    output = app.invoke(state)
+    assert "input_guardrail" in output["steps"]
+    assert "supervisor" in output["steps"]
+    assert "grader" in output["steps"]
+    assert output["grade_result"]["is_correct"] is True
+    assert output["grade_result"]["score"] == 1.0
+    assert "gold_answer" not in output
+
+
 def test_graph_basic_invocation():
     """Verify basic practice invocation runs without crashing."""
     app = build_graph()
@@ -62,8 +119,47 @@ def test_graph_basic_invocation():
     }
     output = app.invoke(state)
     assert "input_guardrail" in output["steps"]
+    assert "supervisor" in output["steps"]
+    assert "diagnostician" in output["steps"]
     assert "tutor" in output["steps"]
+    assert "output_guardrail" in output["steps"]
     assert len(output.get("response", "")) > 0
+    assert output.get("hint_tries") == 1
+    assert "plan" in output
+
+
+def test_graph_leak_retry_cycle(monkeypatch):
+    """Verify that an answer leak in practice mode loops back to tutor for revision."""
+    from socratic_tutor import graph
+
+    tutor_calls = []
+
+    def fake_generate_hint(*args, **kwargs):
+        tutor_calls.append(len(tutor_calls) + 1)
+        if len(tutor_calls) == 1:
+            return "The image distance is exactly -30 cm (NCERT Section 9.2.4)."
+        return "Think about the mirror formula relating u, v, and f (NCERT Section 9.2.4)."
+
+    monkeypatch.setattr(graph.tutor, "generate_hint", fake_generate_hint)
+
+    app = build_graph()
+    state = {
+        "session_id": "test_leak_01",
+        "student_id": "student_leak_01",
+        "mode": "practice",
+        "query": "Where is the image formed?",
+        "student_attempt": "-30 cm",
+        "messages": [],
+        "steps": [],
+        "hint_step": 1,
+    }
+    output = app.invoke(state)
+    assert len(tutor_calls) == 2
+    assert output["hint_tries"] == 2
+    assert "output_guardrail" in output["steps"]
+    assert "Think about" in output["response"]
+    assert output["answer_leak_flag"] is False
+
 
 
 def test_learner_store_records_mastery_misconceptions_lessons_and_quizzes(tmp_path):
