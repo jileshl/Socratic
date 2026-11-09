@@ -112,6 +112,20 @@ Requests flow top to bottom. There are two lanes: the **student** (left) and the
 10. **Output guardrails and reply**: When the loop ends, the final reply is checked for answer leaks, grounding and valid citation IDs, then streamed to the student.
 11. **Teacher lane**: The teacher logs in and sees class misconceptions, leaks, mastery, waiting approvals, cost and alerts. They open a question set the question setter proposed. The graph is paused at `interrupt()` on that **exact** set, and the teacher approves, edits or rejects. Only an approved set is published. Any edit needs a fresh approval.
 
+### 1.3 Multi-Agent Team Implementation & Pedagogical Scaffolding (Phase 2 / Milestone 6)
+
+The LangGraph `StateGraph` in `socratic_tutor/graph.py` implements the multi-agent team with typed state and strict execution boundaries:
+
+* **Supervisor & Study Planner**: Reads pseudonymous learner profiles from `LearnerStore`, manages prerequisite traversal over the 30-concept DAG (`ConceptGraph`), and routes between Practice Mode (hint scaffolding) and Quiz Mode (deterministic grading).
+* **Diagnostician**: Matches student misconceptions against the 36-item catalog in `data/misconceptions.json`, retrieving approved Reflexion lessons from `reflexion_playbook.json` to inform the tutor's scaffolding.
+* **Tutor & Progressive Hint Ladder (Teacher Rule 1)**: Formulates Socratic hints grounded in retrieved NCERT passages (`HybridRetriever`) strictly adhering to the 3-hint escalation ladder:
+  - *Level 1*: Conceptual orientation and qualitative visualization.
+  - *Level 2*: Procedural and ray-diagram guidance (identifying specific rays or circuit branches).
+  - *Level 3+*: Formula-specific guidance (directing to canonical equation variables without substituting values).
+* **Parallel Resistor Remediation (Teacher Rule 2)**: Detects repeated failures on parallel resistor concepts and triggers an explicit three-step remediation path: Ohm's law ($V = IR$) review $\to$ current-division principle review $\to$ parallel equivalent resistance retry.
+* **Stuck Student Detection (Teacher Rule 3)**: Flags learners after 3 consecutive quiz failures on a concept or $>10$ minutes elapsed, raising `teacher_alert_triggered: True` to escalate to the teacher dashboard.
+* **Output Guardrail (Socratic Invariant)**: In practice mode, scans draft replies for numerical answers or direct formula substitutions against the gold solution. If a leak is detected, `answer_leak_flag: True` is flagged and the reply is replaced with an abstract conceptual scaffolding question.
+
 ---
 
 ## 2. Experiments & Evaluation
