@@ -42,10 +42,11 @@ Human-judge calibration, assessment-material approval, question-bank rejection c
   - `Socratic/data/concept_graph.json`
   - `Socratic/data/misconceptions.json`
 * **Tasks**:
-  1. Populate `Socratic/data/concept_graph.json` with ~25 concepts and prerequisite links.
-  2. Populate `Socratic/data/misconceptions.json` with 8–12 catalogued misconceptions per chapter.
-  3. Implement markdown/text parsing in `Socratic/socratic_tutor/kb.py` that preserves section tags (`10.1`, `10.2.1`), equations (`1/f = 1/v + 1/u`), and exemplar exercise IDs.
-* **Verification**: `python scripts/build_index.py --force` produces structured chunks in `.index/chunks.json`.
+  1. [x] Populate `Socratic/data/concept_graph.json` with ~25 concepts and prerequisite links (30 currently present).
+  2. [x] Populate `Socratic/data/misconceptions.json` with 8–12 catalogued misconceptions per chapter (12 per chapter currently present).
+  3. [~] Parse textbook PDFs into section chunks, preserving section metadata, canonical equations, native ray-diagram descriptions, and generated IDs for numbered end-of-chapter exercises.
+* **Remaining source dependency**: No NCERT Exemplar question PDF/source is present in `data/`. `jesc1ps.pdf` is the textbook and `jesc1an.pdf` is an answer key; do not ingest the answer key into student-facing retrieval. Exemplar problem ingestion and official exemplar IDs remain blocked until the correct source is provided.
+* **Verification**: A clean build produces 35 unique, non-empty chunks and 47 textbook exercise-question IDs in `.index/chunks.json`; the current full suite passes 203 tests.
 
 ---
 
