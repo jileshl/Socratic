@@ -54,27 +54,3 @@ def compute_misconception_accuracy(predicted_ids: list[str], gold_ids: list[str]
     matched = sum(1 for pred, gold in zip(predicted_ids, gold_ids) if pred == gold)
     return matched / len(gold_ids)
 
-
-
-def compute_weighted_kappa(rater1: Sequence[int], rater2: Sequence[int], categories: Sequence[int] = (1, 2, 3, 4, 5)) -> float:
-    """Quadratic-weighted Cohen's kappa for ordinal scores (e.g. the teacher's 1-5 rubric).
-
-    A disagreement of 1 point costs much less than a disagreement of 4 points.
-    Returns 1.0 for perfect agreement and 0.0 for chance-level agreement.
-    """
-    if len(rater1) != len(rater2) or len(rater1) == 0:
-        return 0.0
-    cats = list(categories)
-    index = {c: i for i, c in enumerate(cats)}
-    k, n = len(cats), len(rater1)
-    observed = [[0.0] * k for _ in range(k)]
-    for a, b in zip(rater1, rater2):
-        observed[index[a]][index[b]] += 1
-    row = [sum(observed[i]) for i in range(k)]
-    col = [sum(observed[i][j] for i in range(k)) for j in range(k)]
-    weight = lambda i, j: ((i - j) ** 2) / ((k - 1) ** 2)  # noqa: E731
-    num = sum(weight(i, j) * observed[i][j] for i in range(k) for j in range(k))
-    den = sum(weight(i, j) * row[i] * col[j] / n for i in range(k) for j in range(k))
-    if den == 0:
-        return 1.0
-    return 1.0 - num / den

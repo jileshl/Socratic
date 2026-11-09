@@ -51,21 +51,3 @@ TARGET_CHAPTERS = [
     "Human Eye and the Colourful World",
     "Electricity"
 ]
-
-# --- Evaluation (R5) and operations (R6) -----------------------------------
-# Kept here so every model ID, budget and threshold lives in this one file.
-# Each evaluation run records these values and the git commit it ran on.
-SIMULATED_STUDENT_MODEL = os.getenv("SIMULATED_STUDENT_MODEL", "meta-llama/llama-3.3-70b-instruct")  # not the agents' family
-AGENT_TEMPERATURE = float(os.getenv("AGENT_TEMPERATURE", "0.2"))
-JUDGE_TEMPERATURE = float(os.getenv("JUDGE_TEMPERATURE", "0.0"))
-SIMULATED_STUDENT_TEMPERATURE = float(os.getenv("SIMULATED_STUDENT_TEMPERATURE", "0.7"))
-
-MAX_LLM_CALLS_PER_TURN = int(os.getenv("MAX_LLM_CALLS_PER_TURN", "12"))   # graph recursion budget per student turn
-MAX_SESSION_TURNS = int(os.getenv("MAX_SESSION_TURNS", "6"))               # tutor turns in one simulated session
-CASE_TIMEOUT_SECONDS = int(os.getenv("CASE_TIMEOUT_SECONDS", "180"))       # an eval case slower than this counts as a timeout
-
-STUCK_MINUTES_ON_PROBLEM = 10      # Teacher-validated: flag a learner after 10+ minutes on one problem
-CI_MIN_RECALL_AT_5 = 0.90          # CI gate on dev retrieval queries: never below the BM25 baseline (README)
-
-EVAL_RESULTS_DIR = _configured_path("EVAL_RESULTS_DIR", BASE_DIR / "evalkit" / "results")  # git-ignored
-TRACES_DIR = CACHE_DIR / "traces"  # scrubbed traces from the app and the eval harness

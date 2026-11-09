@@ -1,19 +1,15 @@
-"""Start the Socratic Tutor web service (student view, teacher view, /metrics).
-
-    python -m socratic_tutor.app          # http://127.0.0.1:8000
-    make app                              # same
-"""
+"""Web Application UI & API service for Socratic Tutor."""
 
 import os
+from socratic_tutor.graph import build_graph
 
 
-def main() -> None:
-    import uvicorn
-
-    host = os.getenv("HOST", "127.0.0.1")
-    port = int(os.getenv("PORT", "8000"))
-    print(f"Socratic Tutor: student view http://{host}:{port}/  ·  teacher view http://{host}:{port}/teacher")
-    uvicorn.run("socratic_tutor.web.server:app", host=host, port=port, log_level="info")
+def main():
+    print("Initializing Socratic Tutor service...")
+    app = build_graph()
+    print("Socratic Tutor graph successfully loaded.")
+    # In future steps, start FastAPI or Gradio/Streamlit UI server
+    print("Visit http://127.0.0.1:7860 to interact with Socratic Tutor.")
 
 
 if __name__ == "__main__":

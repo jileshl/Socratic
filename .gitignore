@@ -224,6 +224,3 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
-
-# Evaluation outputs (R5) and scrubbed traces (R6)
-evalkit/results/

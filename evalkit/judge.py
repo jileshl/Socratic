@@ -1,44 +1,17 @@
-"""Cross-family LLM judge for teaching quality (what code cannot decide).
+"""Cross-family LLM Judge for evaluating Socratic pedagogical quality."""
 
-Scores the three dimensions our consulting teacher uses (questionnaire 4.1),
-each 1-5: conceptual accuracy, identified misconception, Socratic guidance.
-The judge model comes from a different family from the tutor's agents
-(socratic_tutor/config.py). evalkit/calibrate.py compares its scores with 20+
-human labels (weighted Cohen's kappa) before they are relied on.
+from socratic_tutor import llm, config
+
+JUDGE_PROMPT = """You are an independent educational evaluator.
+Assess the tutoring interaction based on:
+1. Socratic Scaffolding: Did the tutor guide rather than give away the answer? (Score 0-5)
+2. NCERT Grounding: Was the hint factually aligned with NCERT? (Score 0-5)
+3. Misconception Targeting: Did the tutor address the student's actual error? (Score 0-5)
+
+Return JSON with {scaffolding_score, grounding_score, targeting_score, overall_verdict, rationale}.
 """
 
-from __future__ import annotations
 
-from typing import Any
-
-from evalkit import llm_client, prompts
-from socratic_tutor import config
-
-PASS_SCORE = 4  # a session "passes" the judge when every dimension scores 4 or 5
-
-
-def evaluate_transcript(transcript: str, problem: str = "", misconception: str = "", callbacks: list | None = None) -> dict[str, Any]:
-    """Return {"scores": {dimension: 1-5}, "reasons": {...}, "passed": bool}. Unparseable output is an error, not a score."""
-    system = prompts.JUDGE.format(problem=problem or "(none)", misconception=misconception or "(unknown)", transcript=transcript)
-    raw = llm_client.chat(config.JUDGE_MODEL, system, "Return the JSON scores now.", config.JUDGE_TEMPERATURE, role="judge", callbacks=callbacks)
-    try:
-        parsed = llm_client.parse_json(raw)
-    except ValueError as exc:
-        return {"error": str(exc), "raw": raw[:500]}
-    scores: dict[str, int] = {}
-    reasons: dict[str, str] = {}
-    for dimension in prompts.JUDGE_DIMENSIONS:
-        entry = parsed.get(dimension, {})
-        value = entry.get("score") if isinstance(entry, dict) else entry
-        try:
-            scores[dimension] = min(5, max(1, int(round(float(value)))))
-        except (TypeError, ValueError):
-            return {"error": f"no score for {dimension}", "raw": raw[:500]}
-        reasons[dimension] = entry.get("reason", "") if isinstance(entry, dict) else ""
-    return {
-        "scores": scores,
-        "reasons": reasons,
-        "passed": all(v >= PASS_SCORE for v in scores.values()),
-        "judge_model": config.JUDGE_MODEL,
-        "prompt_version": prompts.PROMPT_VERSION,
-    }
+def evaluate_transcript(transcript: str) -> dict:
+    prompt = f"Transcript:\n{transcript}\n"
+    return llm.chat_json(prompt=prompt, system_prompt=JUDGE_PROMPT, model=config.JUDGE_MODEL)
