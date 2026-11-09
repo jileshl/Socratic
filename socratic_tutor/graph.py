@@ -120,6 +120,14 @@ def node_diagnostician(state: SocraticState) -> dict:
         if lessons:
             effective_lesson = lessons[0]
 
+    student_id = state.get("student_id")
+    if student_id and miscon_id:
+        try:
+            store = LearnerStore()
+            store.record_misconception(student_id, miscon_id)
+        except Exception:
+            pass
+
     return {
         "steps": ["diagnostician"],
         "identified_misconception": {"id": miscon_id, "name": miscon_name} if miscon_id else None,
@@ -201,10 +209,28 @@ def node_grader(state: SocraticState) -> dict:
     concept_id = state.get("current_concept_id", "")
 
     alert_stuck = False
+    mastery_val = score
     if student_id and concept_id:
         store = LearnerStore()
         quiz_res = store.record_quiz_result(student_id, concept_id, score)
-        alert_stuck = quiz_res.get("alert_stuck", False)
+        alert_stuck = bool(quiz_res.get("teacher_alert_triggered", False) or quiz_res.get("alert_stuck", False))
+        mastery_val = quiz_res.get("mastery", score)
+
+        # If passed, mark misconception resolved and record effective lesson if one was applied
+        if score >= config.PASSING_MASTERY_THRESHOLD:
+            miscon = state.get("identified_misconception")
+            if miscon and isinstance(miscon, dict) and miscon.get("id"):
+                try:
+                    store.record_misconception(student_id, miscon["id"], resolved=True)
+                except Exception:
+                    pass
+            lesson = state.get("effective_lesson_applied")
+            if lesson:
+                try:
+                    lesson_id = lesson if isinstance(lesson, str) else str(lesson.get("lesson_id", lesson))
+                    store.record_effective_lesson(student_id, lesson_id)
+                except Exception:
+                    pass
 
     feedback = res.get("feedback") or ("Correct! Well done." if res.get("is_correct") else "Not quite right. Let's review the concept.")
 

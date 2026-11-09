@@ -324,7 +324,7 @@ def forget_me(body: ForgetIn) -> dict[str, Any]:
             deleted_threads += 1
         except Exception:
             metrics.ERRORS.labels("forget_checkpoint").inc()
-    learner_deleted = learners.forget_student(body.student_id)
+    learner_deleted = learners.forget_student(body.student_id, checkpointer=_saver)
     counts = ops.forget(body.student_id)
     trace.record("forget_me", student_id=body.student_id, sessions=len(sessions))
     return {"student_id": body.student_id, "learner_record_deleted": learner_deleted, "checkpoint_threads_deleted": deleted_threads, "ops_rows_deleted": counts}
