@@ -541,5 +541,70 @@
       "title": "ToolResult",
       "type": "object"
     }
+  },
+  {
+    "server": "question-bank",
+    "tool": "propose_question",
+    "access": "write",
+    "description": "Save ONE new practice question as a DRAFT for the teacher to review (NCERT Class 10 Science, Ch 9-11).\nIt does not publish anything: students can't see the question until the teacher approves it, and there\nis no publish tool. Use it only for a new question.\n- concept_id: a concept id from the concept graph (at most 60 characters), for example concept_ohms_law\n  or concept_mirror_formula.\n- difficulty: easy, medium or hard.\n- prompt: the question text the student will see (at most 1000 characters).\n- gold_answer: the answer key (at most 200 characters), computed with math-tools first. Write one of:\n  a number with a known unit in the NCERT sign convention ('-60 cm', '3 A', '2.5 D'), or a bare number;\n  a formula ('R = V/I'), in English letters, with ^ for powers and Greek letters as words ('rho'),\n  at most 100 characters; or a short text answer ('real and inverted').\n  Don't write 'name = value' ('I = 3 A'), 'value = name', or unworked arithmetic ('f = 1/20').\nAn exact copy of a question already in the bank (any status) is refused. If it is refused as a copy,\ndon't propose it again with small changes.\nThe result says whether it was saved (with its question_id) or why not; for any other problem, fix it\nand call again.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "concept_id": {
+          "title": "Concept Id",
+          "type": "string"
+        },
+        "difficulty": {
+          "enum": [
+            "easy",
+            "medium",
+            "hard"
+          ],
+          "title": "Difficulty",
+          "type": "string"
+        },
+        "prompt": {
+          "title": "Prompt",
+          "type": "string"
+        },
+        "gold_answer": {
+          "title": "Gold Answer",
+          "type": "string"
+        }
+      },
+      "required": [
+        "concept_id",
+        "difficulty",
+        "prompt",
+        "gold_answer"
+      ],
+      "title": "propose_questionArguments"
+    },
+    "output_schema": {
+      "properties": {
+        "ok": {
+          "title": "Ok",
+          "type": "boolean"
+        },
+        "question_id": {
+          "title": "Question Id",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "detail": {
+          "title": "Detail",
+          "type": "string"
+        },
+        "error": {
+          "title": "Error",
+          "type": "string"
+        }
+      },
+      "title": "ProposeResult",
+      "type": "object"
+    }
   }
 ]
