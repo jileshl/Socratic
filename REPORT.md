@@ -197,15 +197,17 @@ Hybrid with query rewriting improved macro Recall@5 by **0.0500** (5 percentage 
 
 The examples show why hybrid retrieval needs regression checks: query rewriting recovered a parallel-resistor target, while the combined system still displaced an exact numerical-query match. MRR and latency have not been measured.
 
-### PDF Ingestion and Test Validation (2026-11-01)
+### PDF Ingestion and Test Validation (Phase 1 Baseline)
 
 Validation used a clean Python 3.12.16 environment with dependencies installed from `requirements.txt`.
 
 | Check | Command / procedure | Result |
 | :--- | :--- | :--- |
-| Full automated suite | `PYTHONPATH=. python -m pytest -q` | **203 passed** |
-| Source-PDF index build | `PYTHONPATH=. python scripts/build_index.py --force` | **35 chunks**: Chapter 9 = 15, Chapter 10 = 9, Chapter 11 = 11 |
+| Full automated suite | `PYTHONPATH=. .venv/bin/pytest tests/ -q` | **396 passed** (across checkers, contract, eval datasets, guardrails, math tools, MCP servers, web server) |
+| Source-PDF index build | `PYTHONPATH=. .venv/bin/python -m scripts.build_index --force` | **35 chunks**: Chapter 9 = 15, Chapter 10 = 9, Chapter 11 = 11 |
 | Chunk integrity | Count IDs, empty content, OCR supplements, and exercise IDs in `.index/chunks.json` | 35 unique IDs; 0 empty chunks; 0 OCR supplements; 47 textbook exercise-question IDs |
+| CI Recall Gate | `PYTHONPATH=. .venv/bin/python -m scripts.check_threshold` | **Recall@5 = 0.9500** on 30 dev queries (floor 0.90) — **PASS** |
+| Eval Smoke Suite | `PYTHONPATH=. .venv/bin/python -m evalkit.runner smoke --split dev --limit 3 --stub` | 15 smoke test cases — **PASS** |
 | Canonical equation metadata | Inspect sections 9.2.4, 9.3.7, and 11.4 after rebuild | Mirror: `1/f = 1/v + 1/u`; lens: `1/f = 1/v - 1/u`; Ohm: `V = I*R`, `R = V/I`, `I = V/R` |
 
 The focused ingestion/retrieval tests cover stable section IDs, canonical formula mapping, textbook exercise-ID extraction, unknown-section behavior, OCR confidence filtering, sparse-page fallback, full-page OCR skipping when native text is present, rank_bm25 scoring, query rewriting, RRF fusion, and cross-encoder ordering using a fake model. The real cross-encoder was also run for this benchmark after installing the optional dependency. The OCR tests use a fake engine; the inspected NCERT PDFs contain usable native page text, so this build did not require OCR. Image-only equation recognition has not been validated against a real scanned-equation fixture. Canonical equations are curated metadata; the raw extracted passage is retained and may still contain visually fragmented fractions.
@@ -280,9 +282,8 @@ The contract tests cover profile updates, rolling mastery calculation, score val
 
 | Team Member | Assigned Role | Key Modules Owned |
 | :--- | :--- | :--- |
-| *Member 1* | **Domain & Product Lead** | Pedagogical framing, teacher interview rubrics, golden set authoring |
-| *Member 2* | **Knowledge & Memory Engineer** | Hybrid retrieval, chunking, reranking, `learner_store`, memory policy |
-| *Member 3* | **Agents & Orchestration Engineer** | LangGraph supervisor, specialists, Reflexion loop, checkpointer |
-| *Member 4* | **Tools, Control & Security Engineer** | FastMCP servers (`math-tools`, `textbook-kb`), approval gate, guardrails |
-| *Member 5* | **Evaluation & Red-Team Engineer** | 40 simulated students, 30+ red-team attacks, judge calibration ($\kappa$) |
-| *Member 6* | **Deployment & Operations Engineer** | FastAPI streaming backend, UI, Docker Compose, CI eval gate, Grafana |
+| **Anurag** | **R1: Domain & Product Lead** | Pedagogical framing, teacher interview rubrics, gold set policy check, demo script |
+| **Aman** | **R2: Knowledge & Memory Engineer** *(co-owner R5a/R5d)* | Hybrid retrieval, chunking, reranking, `learner_store`, evaluation harness, red-team attacks (E2) |
+| **Jilesh** | **R3: Agents & Orchestration Engineer** | LangGraph supervisor & state machine, specialist agents, Reflexion loop, checkpointer, baselines |
+| **Abhishek** | **R4: Tools, Control & Security Engineer** | FastMCP stdio servers (`math-tools`, `question-bank`), teacher approval gate, safety guardrails |
+| **Vidhya** | **R6: Deployment & Ops Engineer** *(main R5b/R5c/R5e)* | FastAPI streaming backend, UI, Docker Compose, CI eval gate, Prometheus/Grafana, 40 student cards, 64 gold questions, judge calibration |
