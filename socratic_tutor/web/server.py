@@ -153,6 +153,7 @@ def start_session(body: SessionIn) -> dict[str, Any]:
 class ChatIn(BaseModel):
     session_id: str
     message: str = Field(min_length=1, max_length=4000)
+    current_question_id: str | None = None
 
 
 def _sse(event: dict[str, Any]) -> str:
@@ -168,10 +169,10 @@ def chat(body: ChatIn) -> StreamingResponse:
     session = ops.session(body.session_id)
     if session is None:
         raise HTTPException(404, "Unknown session; start one with POST /api/session")
-    return StreamingResponse(_run_turn(session, body.message), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return StreamingResponse(_run_turn(session, body.message, body.current_question_id), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
-def _run_turn(session: dict[str, Any], message: str) -> Iterator[str]:
+def _run_turn(session: dict[str, Any], message: str, current_question_id: str | None = None) -> Iterator[str]:
     session_id, student_id, mode = session["session_id"], session["student_id"], session["mode"]
     meter = trace.CostMeter()  # the same meter the eval harness uses
     cfg = {
@@ -185,6 +186,7 @@ def _run_turn(session: dict[str, Any], message: str) -> Iterator[str]:
         "session_id": session_id,
         "student_id": student_id,
         "mode": mode,
+        "current_question_id": current_question_id,
         "query": message,
         "messages": [HumanMessage(content=message)],
         "steps": [],

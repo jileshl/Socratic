@@ -15,24 +15,26 @@ class SocraticState(TypedDict, total=False):
     student_id: str                          # Pseudonymous UUID
     mode: str                                # "practice" | "quiz"
     current_concept_id: str | None
+    current_question_id: str | None
     
     # --- Dialogue & History ---------------------------------------------------
     query: str
     messages: Annotated[list[AnyMessage], operator.add]
     steps: Annotated[list[str], operator.add] # Node execution trajectory
+    plan: list[str]                          # Current turn execution plan (e.g. ["diagnose", "hint"])
     
     # --- Learner Model Snapshot -----------------------------------------------
     mastery_map: dict[str, float]            # {concept_id: mastery_score}
     identified_misconception: dict | None    # {id, name, confidence}
     effective_lesson_applied: str | None     # Reflexion playbook lesson applied
     hint_step: int                           # 1..MAX_HINT_STEPS
+    hint_tries: int                          # Re-try counter for hint generation on leak
     
     # --- Retrieval & Evidence -------------------------------------------------
     retrieved_sections: list[dict]           # NCERT section passages
     citations: list[str]                     # Passage/Section IDs cited
     
     # --- Solver & Math Grounding ----------------------------------------------
-    solver_result: dict | None               # Ground truth computed by SymPy code
     student_attempt: str | None
     grade_result: dict | None                # {is_correct, feedback, score}
     
