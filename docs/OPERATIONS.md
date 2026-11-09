@@ -81,4 +81,4 @@ On 2 Nov the first CI runs of PR #14 failed in `eval-gate`:
 On 9 Nov, after `ci.yml` was added to the rebuilt branch (PR #33), `make ci` passed but `make docker-check` failed:
 - **What happened:** the runner ran out of disk. `sentence-transformers` pulls in torch, and the default torch wheel brings several GB of CUDA libraries, once on the runner and again inside the image. One run also failed when PyPI cut off the 286 MB CUDA download.
 - **Fix:** the CPU-only torch wheel is installed first, both on the runner (`make ci-deps`) and in the Dockerfile. `requirements.txt` is unchanged.
-- Failed runs: https://github.com/jileshl/Socratic/actions/runs/42571534081 (out of disk while installing) and /42573684211 (out of disk while unpacking the image). Passing run after the fix: [link — TO FILL after the first green run].
+- Failed runs: https://github.com/jileshl/Socratic/actions/runs/42571534081 (out of disk while installing) and /42573684211 (out of disk while unpacking the image). Passing run after the fix (tests, index, Recall@5 gate, eval smoke run and Docker build): https://github.com/jileshl/Socratic/actions/runs/42574868301.
