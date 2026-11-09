@@ -120,3 +120,18 @@ answer checked by the solver, and a student being refused when they claim to be 
 Watch out for. Avoid building a chatbot that simply gives answers, assessing teaching only with an LLM judge,
 
 or testing on the simulated students used for tuning.
+
+## Web app, monitoring and evaluation (R5 + R6)
+
+```bash
+cp .env.example .env                                   # add OPENROUTER_API_KEY, change TEACHER_PIN
+docker compose -f docker/docker-compose.yml up --build # student :8000, teacher :8000/teacher, Grafana :3000, Prometheus :9090
+python -m evalkit.runner --list           # experiments E1–E4 (evalkit/experiments.py)
+python -m evalkit.runner e1_c2 --split dev
+```
+
+- **[docs/OPERATIONS.md](docs/OPERATIONS.md):** Docker, web app, teacher view, metrics, alerts, CI.
+- **[docs/EVALUATION.md](docs/EVALUATION.md):** datasets, experiments, judge calibration.
+- **[docs/INTEGRATION_CONTRACT.md](docs/INTEGRATION_CONTRACT.md):** what the app and the eval harness read from the agent graph.
+
+No evaluation results are committed: every number in REPORT.md must come from a logged run with a real model.

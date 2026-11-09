@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Socratic Tutor</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <div><h1>Socratic Tutor</h1><div class="sub">NCERT Class 10 Science · Light, Human Eye, Electricity</div></div>
+  <div class="row">
+    <div class="seg" role="group" aria-label="Mode">
+      <button id="m-practice" class="on" onclick="setMode('practice')">Practice</button><button id="m-quiz" onclick="setMode('quiz')">Quiz</button>
+    </div>
+    <button class="danger" onclick="forgetMe()" title="Delete everything stored about you">Forget my data</button>
+  </div>
+</header>
+<main>
+  <div id="consent" class="panel banner hidden">
+    <b>Before we start</b>
+    <p class="muted">The tutor remembers your progress (which topics you have mastered and which mistakes you made) under a random ID, not your name, so it can help you better next time. Records are deleted after 90 days of inactivity, and you can delete them any time with "Forget my data". Please don't type your name, phone number or school.</p>
+    <div class="row"><button class="primary" onclick="giveConsent(true)">OK, remember my progress</button><button onclick="giveConsent(false)">Don't remember me</button></div>
+  </div>
+
+  <div class="panel">
+    <div class="muted" style="margin-bottom:6px">What happens to your message · <span class="tag model">model</span> <span class="tag code">code</span> <span class="tag person">person</span> decides</div>
+    <div class="pipeline" id="pipeline"></div>
+  </div>
+
+  <div class="panel">
+    <div id="log" aria-live="polite"></div>
+    <form class="row" style="margin-top:10px" onsubmit="send(event)">
+      <input id="msg" style="flex:1;min-width:200px" placeholder="Ask a question, or share your working…" autocomplete="off" maxlength="4000">
+      <button class="primary" id="sendBtn">Send</button>
+    </form>
+  </div>
+  <p class="muted">The tutor gives hints, not answers. In quiz mode it checks your answer instead. Teachers sign in at <a href="/teacher">/teacher</a>.</p>
+</main>
+<script>
+const BOXES = [
+  ["input_guardrail", "Safety check", "code"], ["supervisor", "Supervisor", "model"], ["diagnostician", "Diagnostician", "model"],
+  ["tutor", "Tutor (hints)", "model"], ["grader", "Grader", "code"], ["question_setter", "Question setter", "model"],
+  ["teacher_approval_gate", "Teacher approval", "person"], ["output_guardrail", "Answer-leak check", "code"],
+];
+const store = { get(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }, set(k,v){ try { localStorage.setItem(k,v); } catch(e){} }, del(k){ try { localStorage.removeItem(k); } catch(e){} } };
+let mode = "practice", session = null, busy = false;
+
+function renderPipeline(lit = {}) {
+  document.getElementById("pipeline").innerHTML = BOXES.map(([id, name, who]) => {
+    const decided = lit[id] || who;
+    return `<div class="box ${lit[id] ? "lit" : ""}" id="box-${id}"><b>${name}</b><span class="tag ${decided}">${decided}</span></div>`;
+  }).join("");
+}
+function add(cls, text, chips = []) {
+  const div = document.createElement("div");
+  div.className = "msg " + cls;
+  div.textContent = text;
+  if (chips.length) { const c = document.createElement("div"); c.className = "chips"; chips.forEach(t => { const s = document.createElement("span"); s.className = "chip"; s.textContent = t; c.appendChild(s); }); div.appendChild(c); }
+  const log = document.getElementById("log"); log.appendChild(div); log.scrollTop = log.scrollHeight;
+}
+function setMode(m) {
+  mode = m; session = null;
+  document.getElementById("m-practice").classList.toggle("on", m === "practice");
+  document.getElementById("m-quiz").classList.toggle("on", m === "quiz");
+  add("note", m === "quiz" ? "Quiz mode: answer the question and the tutor checks it." : "Practice mode: you get hints, never the final answer.");
+}
+function giveConsent(yes) { store.set("consent", yes ? "yes" : "no"); document.getElementById("consent").classList.add("hidden"); }
+async function ensureSession() {
+  if (session) return session;
+  const consent = store.get("consent") === "yes";
+  const r = await fetch("/api/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode, consent, student_id: consent ? store.get("student_id") : null }) });
+  session = await r.json();
+  if (consent) store.set("student_id", session.student_id);
+  return session;
+}
+async function send(ev) {
+  ev.preventDefault();
+  if (busy) return;
+  const input = document.getElementById("msg"); const text = input.value.trim(); if (!text) return;
+  busy = true; document.getElementById("sendBtn").disabled = true; input.value = "";
+  add("me", text); renderPipeline();
+  const lit = {};
+  try {
+    const s = await ensureSession();
+    const r = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: s.session_id, message: text }) });
+    const reader = r.body.getReader(); const dec = new TextDecoder(); let buf = "";
+    while (true) {
+      const { done, value } = await reader.read(); if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let i; while ((i = buf.indexOf("\n\n")) >= 0) {
+        const line = buf.slice(0, i).replace(/^data: /, ""); buf = buf.slice(i + 2);
+        if (!line.trim()) continue;
+        const ev = JSON.parse(line);
+        if (ev.type === "step") { lit[ev.node] = ev.decided_by; renderPipeline(lit); }
+        if (ev.type === "reply") {
+          const chips = (ev.citations || []).map(c => "📖 " + c);
+          if (ev.blocked) chips.push("stopped by safety check");
+          if (ev.teacher_alerted) chips.push("a teacher has been told");
+          if (ev.pending_approval) chips.push("waiting for teacher approval");
+          add("tutor", ev.text || "(no reply)", chips);
+        }
+      }
+    }
+  } catch (e) { add("note", "Couldn't reach the tutor. Please try again."); }
+  busy = false; document.getElementById("sendBtn").disabled = false; input.focus();
+}
+async function forgetMe() {
+  const id = store.get("student_id");
+  if (!id) { add("note", "Nothing is stored for you on this device."); return; }
+  if (!confirm("Delete everything the tutor has stored about you? This cannot be undone.")) return;
+  const r = await fetch("/api/forget_me", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ student_id: id }) });
+  const out = await r.json();
+  store.del("student_id"); session = null;
+  add("note", `Deleted: learner record ${out.learner_record_deleted ? "yes" : "none found"}, ${out.checkpoint_threads_deleted} session history item(s).`);
+}
+renderPipeline();
+if (!store.get("consent")) document.getElementById("consent").classList.remove("hidden");
+add("note", "Practice mode: you get hints, never the final answer.");
+</script>
+</body>
+</html>
