@@ -10,7 +10,11 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 COPY requirements.txt .
-RUN pip install -r requirements.txt
+# sentence-transformers (optional reranker) needs torch. The default torch wheel
+# bundles CUDA (several GB) and filled the CI runner's disk, so the small CPU
+# wheel goes in first; requirements.txt then finds torch already installed.
+RUN pip install --index-url https://download.pytorch.org/whl/cpu torch \
+    && pip install -r requirements.txt
 
 COPY . .
 
