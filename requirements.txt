@@ -28,6 +28,9 @@ langchain-core>=0.3
 langchain-openai>=0.2     # OpenRouter is OpenAI-compatible
 grandalf>=0.8             # ASCII graph rendering for graph.draw()
 
+# math tools
+sympy>=1.12               # formula equivalence check (math_tools.check_equivalence)
+
 # interface
 gradio>=5,<7              # 5.x and 6.x both work; app.py handles the API change
 
