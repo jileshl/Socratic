@@ -8,7 +8,7 @@
 
 | Metric | Target / Minimum Bar | Current System Result |
 | :--- | :--- | :--- |
-| **Recall@5 (Retrieval)** | $\ge 0.80$ on 30+ labelled queries | **0.9028 BM25 dev baseline** on 24 queries; final 30+ query protocol pending |
+| **Recall@5 (Retrieval)** | $\ge 0.80$ on 30+ labelled queries | **0.9500 hybrid dev result** on 30 queries; 12 held-out queries reserved |
 | **Answer Leak Rate (Practice Mode)** | $0.0\%$ (Strictly enforced) | *Pending measurement* |
 | **Misconception Diagnosis Accuracy** | $\ge 80\%$ on simulated students | *Pending measurement* |
 | **Quiz Score Gain ($\Delta$)** | Measurable positive shift post-hinting | *Pending measurement* |
@@ -203,12 +203,14 @@ Validation used a clean Python 3.12.16 environment with dependencies installed f
 
 | Check | Command / procedure | Result |
 | :--- | :--- | :--- |
-| Full automated suite | `PYTHONPATH=. python -m pytest -q` | **21 passed** |
-| Source-PDF index build | `PYTHONPATH=. python scripts/build_index.py --git-revision HEAD --force` | **35 chunks**: Chapter 9 = 15, Chapter 10 = 9, Chapter 11 = 11 |
-| Chunk integrity | Count IDs, empty content, and OCR supplements in `.index/chunks.json` | 35 unique IDs; 0 empty chunks; 0 OCR supplements for these source PDFs |
+| Full automated suite | `PYTHONPATH=. python -m pytest -q` | **203 passed** |
+| Source-PDF index build | `PYTHONPATH=. python scripts/build_index.py --force` | **35 chunks**: Chapter 9 = 15, Chapter 10 = 9, Chapter 11 = 11 |
+| Chunk integrity | Count IDs, empty content, OCR supplements, and exercise IDs in `.index/chunks.json` | 35 unique IDs; 0 empty chunks; 0 OCR supplements; 47 textbook exercise-question IDs |
 | Canonical equation metadata | Inspect sections 9.2.4, 9.3.7, and 11.4 after rebuild | Mirror: `1/f = 1/v + 1/u`; lens: `1/f = 1/v - 1/u`; Ohm: `V = I*R`, `R = V/I`, `I = V/R` |
 
-The focused ingestion/retrieval tests cover stable section IDs, canonical formula mapping, unknown-section behavior, OCR confidence filtering, sparse-page fallback, full-page OCR skipping when native text is present, rank_bm25 scoring, query rewriting, RRF fusion, and cross-encoder ordering using a fake model. The real cross-encoder was also run for this benchmark after installing the optional dependency. The OCR tests use a fake engine; the inspected NCERT PDFs contain usable native page text, so this build did not require OCR. Image-only equation recognition has not been validated against a real scanned-equation fixture. Canonical equations are curated metadata; the raw extracted passage is retained and may still contain visually fragmented fractions.
+The focused ingestion/retrieval tests cover stable section IDs, canonical formula mapping, textbook exercise-ID extraction, unknown-section behavior, OCR confidence filtering, sparse-page fallback, full-page OCR skipping when native text is present, rank_bm25 scoring, query rewriting, RRF fusion, and cross-encoder ordering using a fake model. The real cross-encoder was also run for this benchmark after installing the optional dependency. The OCR tests use a fake engine; the inspected NCERT PDFs contain usable native page text, so this build did not require OCR. Image-only equation recognition has not been validated against a real scanned-equation fixture. Canonical equations are curated metadata; the raw extracted passage is retained and may still contain visually fragmented fractions.
+
+The supplied PDFs include three NCERT chapter PDFs, `jesc1ps.pdf` (the full textbook), and `jesc1an.pdf` (the answer key). No separate NCERT Exemplar problem source was found. The answer key is intentionally not indexed in student-facing retrieval. Thus the 47 extracted IDs are textbook end-of-chapter questions, not official Exemplar IDs; Exemplar ingestion remains blocked on receiving the correct source.
 
 Reproduce the clean-environment validation with:
 
@@ -238,9 +240,17 @@ PYTHONPATH=. .venv/bin/python scripts/build_index.py --git-revision HEAD --force
 
 *Refer to [MEMORY_POLICY.md](MEMORY_POLICY.md) for full legal and privacy specifications.*
 
-* **Storage Scope**: Pseudonymous user ID $\rightarrow$ concept mastery vector, encountered misconception IDs, explanation effectiveness scores.
+* **Storage API implemented**: mastery scores, misconception IDs with first/last-seen timestamps and resolution status, effective lesson IDs, recent quiz attempts, and per-concept failure streaks. Scores and durations are validated.
+* **Mastery rule**: quiz-derived mastery is the arithmetic mean of up to the latest three quiz scores for that concept. `update_mastery()` remains an explicit setter for imported or externally computed values.
+* **Stuck learner rule**: `record_quiz_result()` reports an alert after three consecutive below-threshold quiz results on the same concept (a passing result resets the streak), or a problem duration greater than ten minutes. This is based on quiz failures, not distinct sessions. Teacher-dashboard delivery is not wired.
 * **Strict Exclusions**: No student names, school names, location data, or raw conversational logs in long-term storage.
-* **Right to be Forgotten**: Implementation of the `/forget_me` command, which completely purges learner history from SQLite and vector stores.
+* **Retention API implemented**: `register_session()` creates a profile row even before the learner has quiz/mastery data, so `purge_expired_profiles()` can remove session-only learners after 90 days. A scheduled/application-level caller is still required; automatic expiry is not running.
+* **Deletion API implemented**: `forget_me(student_id, checkpointer)` deletes learner profiles, quiz attempts, session links, and registered LangGraph threads. The caller must register each learner/thread pair and supply the saver.
+* **Integration still pending**: The current app/graph does not register sessions or expose a user-facing `/forget_me` command. No cryptographic erasure receipt is implemented, and no learner vector store exists to purge.
+
+### TODO 4 Validation
+
+The contract tests cover profile updates, rolling mastery calculation, score validation, misconception and lesson recording, quiz history, per-concept failure streak/reset behavior, ten-minute alerts, expiry of session-only learners, checkpoint deletion requirements, and concept prerequisite recommendations. The full suite passed **201 tests** on 2026-11-08. Checkpoint deletion is tested with a saver test double; end-to-end app/checkpointer integration remains pending.
 
 ---
 

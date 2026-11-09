@@ -58,12 +58,15 @@ class TextChunk:
     section_title: str
     content: str
     equations: list[str]
+    exercise_ids: list[str]
 
     def to_dict(self) -> dict:
         return asdict(self)
 
 
 _SECTION_PREFIX = re.compile(r"^(\d+\.\d+(?:\.\d+)?)\s*")
+_EXERCISE_HEADING = re.compile(r"(?im)^\s*EXERCISES\s*$")
+_EXERCISE_QUESTION = re.compile(r"(?m)^\s*(\d{1,2})\.\s+\S")
 _PAGE_NOISE = re.compile(
     r"^(?:Reprint\s+\d{4}-\d{2}|Science\s*\d+|"
     r"Light\s*[–-]\s*Reflection and Refraction\s*\d+|"
@@ -208,6 +211,21 @@ def _chunk_id(chapter_num: str, section_id: str) -> str:
     return f"ncert_c10_science_ch{int(chapter_num):02d}_sec_{section_slug}"
 
 
+def _extract_exercise_ids(content: str, chapter_num: str) -> list[str]:
+    headings = list(_EXERCISE_HEADING.finditer(content))
+    exercise_ids: list[str] = []
+    chapter_slug = f"{int(chapter_num):02d}"
+    for exercise_index, heading in enumerate(headings, start=1):
+        end = headings[exercise_index].start() if exercise_index < len(headings) else len(content)
+        exercise_text = content[heading.end():end]
+        for match in _EXERCISE_QUESTION.finditer(exercise_text):
+            question_number = int(match.group(1))
+            exercise_ids.append(
+                f"ncert_c10_science_ch{chapter_slug}_ex{exercise_index:02d}_q{question_number:02d}"
+            )
+    return exercise_ids
+
+
 def chunk_ncert_text(text: str, chapter_num: str, chapter_title: str) -> list[TextChunk]:
     """Split extracted NCERT text into one stable chunk per printed section."""
     allowed_prefix = f"{int(chapter_num)}."
@@ -246,6 +264,7 @@ def chunk_ncert_text(text: str, chapter_num: str, chapter_title: str) -> list[Te
                 section_title=SECTION_TITLES[section_id],
                 content=content,
                 equations=equations[:20],
+                exercise_ids=_extract_exercise_ids(content, chapter_num),
             )
         )
     return chunks

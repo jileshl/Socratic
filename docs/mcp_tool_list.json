@@ -1,0 +1,610 @@
+[
+  {
+    "server": "math-tools",
+    "tool": "solve_optics",
+    "access": "read",
+    "description": "Solve one NCERT Class 10 optics formula (Ch 9; lens power also for Ch 10 spectacles) exactly, in code.\nPick the formula by name, give the KNOWN values in `values` (leave the unknown one out), and the\nlength unit of all distances in `length_unit` (for example \"cm\" or \"m\"); the answer is in that unit.\nUse the New Cartesian sign convention: the object is on the left, so u is negative.\nFormulas:\n- mirror_formula: 1/v + 1/u = 1/f (Eq. 9.1). Give 2 of u, v, f. u is negative; concave f negative, convex f positive (inputs: u, v, f)\n- lens_formula: 1/v - 1/u = 1/f (Eq. 9.8). Give 2 of u, v, f. u is negative; convex f positive, concave f negative (inputs: u, v, f)\n- focal_length_from_radius: f = R / 2 for a mirror, keeping the sign of R (inputs: radius_of_curvature)\n- mirror_magnification: m = -v / u (Eq. 9.3). Give 2 of m, v, u. A real image has m < 0 (inputs: m, v, u)\n- lens_magnification: m = v / u (Eq. 9.10). Give 2 of m, v, u. A real image has m < 0 (inputs: m, v, u)\n- image_height: m = h' / h (Eq. 9.2, 9.9). Give 2 of m, h_object, h_image. h_object is positive (inputs: m, h_object, h_image)\n- image_nature: the image's nature from m: real/virtual, inverted/erect, enlarged/same size/diminished (inputs: m)\n- lens_power: P = 1 / f in dioptres (Eq. 9.11). Give 1 of p (D), f (in length_unit; converted to metres inside) (inputs: p, f)\n- combine_lens_powers: P = P1 + P2 + ... for lenses in contact. powers is a list of at least 2 values in D (inputs: powers)\n- absolute_refractive_index: n = c / v, c = 3 x 10^8 m/s (Eq. 9.7). Give 1 of n, v (m/s) (inputs: n, v)\n- relative_refractive_index: n21 = v1 / v2 (Eq. 9.5). Give 2 of n21, v1, v2 (m/s); light goes from medium 1 into 2 (inputs: n21, v1, v2)\n- relative_index_from_absolute: n21 = n2 / n1 from two absolute indices (e.g. Table 9.3). Give 2 of n21, n1, n2 (inputs: n21, n1, n2)",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "formula": {
+          "enum": [
+            "mirror_formula",
+            "lens_formula",
+            "focal_length_from_radius",
+            "mirror_magnification",
+            "lens_magnification",
+            "image_height",
+            "image_nature",
+            "lens_power",
+            "combine_lens_powers",
+            "absolute_refractive_index",
+            "relative_refractive_index",
+            "relative_index_from_absolute"
+          ],
+          "title": "Formula",
+          "type": "string"
+        },
+        "values": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              }
+            ]
+          },
+          "title": "Values",
+          "type": "object"
+        },
+        "length_unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Length Unit"
+        }
+      },
+      "required": [
+        "formula",
+        "values"
+      ],
+      "title": "solve_opticsArguments"
+    },
+    "output_schema": {
+      "properties": {
+        "ok": {
+          "title": "Ok",
+          "type": "boolean"
+        },
+        "solved_for": {
+          "title": "Solved For",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "boolean"
+            }
+          ],
+          "title": "Value"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        },
+        "formula": {
+          "title": "Formula",
+          "type": "string"
+        },
+        "detail": {
+          "title": "Detail",
+          "type": "string"
+        },
+        "error": {
+          "title": "Error",
+          "type": "string"
+        }
+      },
+      "title": "ToolResult",
+      "type": "object"
+    }
+  },
+  {
+    "server": "math-tools",
+    "tool": "solve_electricity",
+    "access": "read",
+    "description": "Solve one NCERT Class 10 electricity formula (Ch 11) exactly, in code.\nPick the formula by name and give the KNOWN values in `values` (leave the unknown one out).\nAll values in SI units (V, A, ohm, s, C, J, W, m); convert other units first with convert_to_si.\nFor a mixed circuit, combine each group first, then the groups.\nFormulas:\n- charge_current: Q = I x t (Eq. 11.1). Give 2 of q (C), i (A), t (s) (inputs: q, i, t)\n- voltage_work_charge: V = W / Q (Eq. 11.2). Give 2 of v (V), w (work, J), q (C). In a resistor, heat = V x Q (inputs: v, w, q)\n- ohms_law: V = I x R (Eq. 11.5). Give 2 of v (V), i (A), r (ohm) (inputs: v, i, r)\n- resistivity: R = rho x length / area (Eq. 11.10). Give 3 of r (ohm), rho (ohm m), length (m), area (m^2) (inputs: r, rho, length, area)\n- wire_area: A = pi d^2 / 4 or pi r^2. Give 1 of diameter, radius (m) (inputs: diameter, radius)\n- series_resistance: Rs = R1 + R2 + ... (section 11.6.1). resistors is a list of at least 2 values in ohm (inputs: resistors)\n- parallel_resistance: 1/Rp = 1/R1 + 1/R2 + ... (section 11.6.2). resistors is a list of at least 2 values in ohm (inputs: resistors)\n- joule_heating: H = I^2 x R x t (Eq. 11.21). Give 3 of h (J), i (A), r (ohm), t (s) (inputs: h, i, r, t)\n- power_voltage_current: P = V x I (Eq. 11.22). Give 2 of p (W), v (V), i (A) (inputs: p, v, i)\n- power_current_resistance: P = I^2 x R (Eq. 11.22). Give 2 of p (W), i (A), r (ohm) (inputs: p, i, r)\n- power_voltage_resistance: P = V^2 / R (Eq. 11.22). Give 2 of p (W), v (V), r (ohm). A rating like 220 V, 100 W gives R (inputs: p, v, r)\n- energy_power_time: energy = P x t (section 11.8). Give 2 of energy (J), p (W), t (s) (inputs: energy, p, t)\n- energy_cost: cost = energy in kW h x rate. Give 2 of energy (J), rate (Rs per kW h), cost (Rs) (inputs: energy, rate, cost)",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "formula": {
+          "enum": [
+            "charge_current",
+            "voltage_work_charge",
+            "ohms_law",
+            "resistivity",
+            "wire_area",
+            "series_resistance",
+            "parallel_resistance",
+            "joule_heating",
+            "power_voltage_current",
+            "power_current_resistance",
+            "power_voltage_resistance",
+            "energy_power_time",
+            "energy_cost"
+          ],
+          "title": "Formula",
+          "type": "string"
+        },
+        "values": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              }
+            ]
+          },
+          "title": "Values",
+          "type": "object"
+        }
+      },
+      "required": [
+        "formula",
+        "values"
+      ],
+      "title": "solve_electricityArguments"
+    },
+    "output_schema": {
+      "properties": {
+        "ok": {
+          "title": "Ok",
+          "type": "boolean"
+        },
+        "solved_for": {
+          "title": "Solved For",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "boolean"
+            }
+          ],
+          "title": "Value"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        },
+        "formula": {
+          "title": "Formula",
+          "type": "string"
+        },
+        "detail": {
+          "title": "Detail",
+          "type": "string"
+        },
+        "error": {
+          "title": "Error",
+          "type": "string"
+        }
+      },
+      "title": "ToolResult",
+      "type": "object"
+    }
+  },
+  {
+    "server": "math-tools",
+    "tool": "convert_to_si",
+    "access": "read",
+    "description": "Convert a value to its SI unit, for example 0.3 mm -> 0.0003 m, or 10 min -> 600 s.\n\n    Call this before any solver whenever a value is not already in SI units.\n    unit is a symbol such as \"mm\", \"cm\", \"min\", \"mA\", \"kWh\" (capital letters matter: \"mA\" is\n    milliampere), or a word such as \"millimetre\", \"minutes\" or \"ohms\" (any capitals).\n    Negative values are converted too, because optics uses signed distances (u = -30 cm).\n    Returns the shared result shape (solved_for is the kind of quantity, e.g. \"length\"), or the error shape.\n    ",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "title": "Value",
+          "type": "number"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "value",
+        "unit"
+      ],
+      "title": "convert_to_siArguments"
+    },
+    "output_schema": {
+      "properties": {
+        "ok": {
+          "title": "Ok",
+          "type": "boolean"
+        },
+        "solved_for": {
+          "title": "Solved For",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "boolean"
+            }
+          ],
+          "title": "Value"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        },
+        "formula": {
+          "title": "Formula",
+          "type": "string"
+        },
+        "detail": {
+          "title": "Detail",
+          "type": "string"
+        },
+        "error": {
+          "title": "Error",
+          "type": "string"
+        }
+      },
+      "title": "ToolResult",
+      "type": "object"
+    }
+  },
+  {
+    "server": "math-tools",
+    "tool": "convert_from_si",
+    "access": "read",
+    "description": "Convert a value in SI units back into another unit: 3.456 x 10^8 J -> 96 kWh, or -0.3 m -> -30 cm.\n\n    The reverse of convert_to_si. si_value must already be in the SI unit of its kind (m, s, A, V, ohm, C, J, W, m/s).\n    unit is the unit wanted, written as a symbol (\"kWh\", \"cm\") or a word (\"kilowatt hours\").\n    Use it to show an SI answer in the unit a question asks for, for example energy on a bill in kW h.\n    Returns the shared result shape (solved_for is the kind of quantity), or the error shape.\n    ",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "si_value": {
+          "title": "Si Value",
+          "type": "number"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "si_value",
+        "unit"
+      ],
+      "title": "convert_from_siArguments"
+    },
+    "output_schema": {
+      "properties": {
+        "ok": {
+          "title": "Ok",
+          "type": "boolean"
+        },
+        "solved_for": {
+          "title": "Solved For",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "boolean"
+            }
+          ],
+          "title": "Value"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        },
+        "formula": {
+          "title": "Formula",
+          "type": "string"
+        },
+        "detail": {
+          "title": "Detail",
+          "type": "string"
+        },
+        "error": {
+          "title": "Error",
+          "type": "string"
+        }
+      },
+      "title": "ToolResult",
+      "type": "object"
+    }
+  },
+  {
+    "server": "math-tools",
+    "tool": "calculate",
+    "access": "read",
+    "description": "Work out plain arithmetic that sits between two steps, for example \"8 * 30\" (8 h a day for 30 days).\n\n    Only numbers and + - * / ^ ( ) are allowed; x or × also mean times, ÷ means divide, and 3e8 or 3 × 10^8 work.\n    No letters, names or functions: this is a calculator, not a formula solver. Use the solve_... functions for\n    physics formulas, and convert_to_si for units.\n    The text is read by a small safe parser, never by Python's eval.\n    Returns the shared result shape (solved_for \"value\", no unit), or the error shape.\n    ",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "expression": {
+          "title": "Expression",
+          "type": "string"
+        }
+      },
+      "required": [
+        "expression"
+      ],
+      "title": "calculateArguments"
+    },
+    "output_schema": {
+      "properties": {
+        "ok": {
+          "title": "Ok",
+          "type": "boolean"
+        },
+        "solved_for": {
+          "title": "Solved For",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "boolean"
+            }
+          ],
+          "title": "Value"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        },
+        "formula": {
+          "title": "Formula",
+          "type": "string"
+        },
+        "detail": {
+          "title": "Detail",
+          "type": "string"
+        },
+        "error": {
+          "title": "Error",
+          "type": "string"
+        }
+      },
+      "title": "ToolResult",
+      "type": "object"
+    }
+  },
+  {
+    "server": "math-tools",
+    "tool": "check_numeric_answer",
+    "access": "read",
+    "description": "Check a student's numerical answer against the answer key, both written as text with units, such as \"-30 cm\".\n\n    Both are read with read_quantity and compared in SI units, so \"-0.3 m\" matches \"-30 cm\".\n    The answer is correct when the sign matches and |student - key| / |key| <= tolerance (default 0.02, that is 2%).\n    The default allows for rounding: NCERT's own printed answers differ from the exact values by up to 1%.\n    A different kind of unit (s instead of cm) is wrong. A missing unit is read in the key's unit and still counts as\n    correct, but \"detail\" says the unit is missing, so the tutor can remind the student.\n    Returns the shared shape with value True or False and a \"detail\" saying why. Returns the error shape only if\n    the answer key itself cannot be read, or the tolerance is not between 0 and 1.\n    ",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "student_text": {
+          "title": "Student Text",
+          "type": "string"
+        },
+        "gold_text": {
+          "title": "Gold Text",
+          "type": "string"
+        },
+        "tolerance": {
+          "default": 0.02,
+          "title": "Tolerance",
+          "type": "number"
+        }
+      },
+      "required": [
+        "student_text",
+        "gold_text"
+      ],
+      "title": "check_numeric_answerArguments"
+    },
+    "output_schema": {
+      "properties": {
+        "ok": {
+          "title": "Ok",
+          "type": "boolean"
+        },
+        "solved_for": {
+          "title": "Solved For",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "boolean"
+            }
+          ],
+          "title": "Value"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        },
+        "formula": {
+          "title": "Formula",
+          "type": "string"
+        },
+        "detail": {
+          "title": "Detail",
+          "type": "string"
+        },
+        "error": {
+          "title": "Error",
+          "type": "string"
+        }
+      },
+      "title": "ToolResult",
+      "type": "object"
+    }
+  },
+  {
+    "server": "math-tools",
+    "tool": "check_equivalence",
+    "access": "read",
+    "description": "Check whether a student's formula is the same as the key's formula, for example \"R = V/I\" and \"V = IR\".\n\n    Both can be equations (with \"=\") or both plain expressions (such as \"I^2 R\"). Write powers with \"^\";\n    letters next to each other multiply (\"IR\" is I x R); \"rho\", \"pi\", \"Rs\" and \"Rp\" stay whole names.\n    Equations are the same when solving both for a shared quantity gives the same result; expressions are the\n    same when their difference simplifies to 0. A different set of quantities (\"P = VI\" vs \"P = I^2 R\") is\n    reported as different: linking them needs Ohm's law, which this check does not assume.\n    The text is checked for safe characters before SymPy reads it, because SymPy's parser runs Python's eval.\n    Returns the shared shape with value True or False and a \"detail\" saying why. Returns the error shape only if\n    the answer key itself is unsafe or cannot be read.\n    ",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "student_text": {
+          "title": "Student Text",
+          "type": "string"
+        },
+        "gold_text": {
+          "title": "Gold Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "student_text",
+        "gold_text"
+      ],
+      "title": "check_equivalenceArguments"
+    },
+    "output_schema": {
+      "properties": {
+        "ok": {
+          "title": "Ok",
+          "type": "boolean"
+        },
+        "solved_for": {
+          "title": "Solved For",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "boolean"
+            }
+          ],
+          "title": "Value"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        },
+        "formula": {
+          "title": "Formula",
+          "type": "string"
+        },
+        "detail": {
+          "title": "Detail",
+          "type": "string"
+        },
+        "error": {
+          "title": "Error",
+          "type": "string"
+        }
+      },
+      "title": "ToolResult",
+      "type": "object"
+    }
+  },
+  {
+    "server": "question-bank",
+    "tool": "propose_question",
+    "access": "write",
+    "description": "Save ONE new practice question as a DRAFT for the teacher to review (NCERT Class 10 Science, Ch 9-11).\nIt does not publish anything: students can't see the question until the teacher approves it, and there\nis no publish tool. Use it only for a new question.\n- concept_id: a concept id from the concept graph (at most 60 characters), for example concept_ohms_law\n  or concept_mirror_formula.\n- difficulty: easy, medium or hard.\n- prompt: the question text the student will see (at most 1000 characters).\n- gold_answer: the answer key (at most 200 characters), computed with math-tools first. Write one of:\n  a number with a known unit in the NCERT sign convention ('-60 cm', '3 A', '2.5 D'), or a bare number;\n  a formula ('R = V/I'), in English letters, with ^ for powers and Greek letters as words ('rho'),\n  at most 100 characters; or a short text answer ('real and inverted').\n  Don't write 'name = value' ('I = 3 A'), 'value = name', or unworked arithmetic ('f = 1/20').\nAn exact copy of a question already in the bank (any status) is refused. If it is refused as a copy,\ndon't propose it again with small changes.\nThe result says whether it was saved (with its question_id) or why not; for any other problem, fix it\nand call again.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "concept_id": {
+          "title": "Concept Id",
+          "type": "string"
+        },
+        "difficulty": {
+          "enum": [
+            "easy",
+            "medium",
+            "hard"
+          ],
+          "title": "Difficulty",
+          "type": "string"
+        },
+        "prompt": {
+          "title": "Prompt",
+          "type": "string"
+        },
+        "gold_answer": {
+          "title": "Gold Answer",
+          "type": "string"
+        }
+      },
+      "required": [
+        "concept_id",
+        "difficulty",
+        "prompt",
+        "gold_answer"
+      ],
+      "title": "propose_questionArguments"
+    },
+    "output_schema": {
+      "properties": {
+        "ok": {
+          "title": "Ok",
+          "type": "boolean"
+        },
+        "question_id": {
+          "title": "Question Id",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "detail": {
+          "title": "Detail",
+          "type": "string"
+        },
+        "error": {
+          "title": "Error",
+          "type": "string"
+        }
+      },
+      "title": "ProposeResult",
+      "type": "object"
+    }
+  }
+]

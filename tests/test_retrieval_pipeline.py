@@ -91,6 +91,42 @@ A concave mirror can form real or virtual images.
     assert "angle of incidence" in chunks[0].content
 
 
+def test_chunk_preserves_numbered_exercise_question_ids() -> None:
+    text = """
+9.3.8 Power of a Lens
+The power is the reciprocal of focal length.
+EXERCISES
+1. What is the power of a lens with focal length 0.5 m?
+2. Explain the sign of the power for a concave lens.
+"""
+
+    chunks = chunk_ncert_text(text, "9", "Light - Reflection and Refraction")
+
+    assert chunks[0].exercise_ids == [
+        "ncert_c10_science_ch09_ex01_q01",
+        "ncert_c10_science_ch09_ex01_q02",
+    ]
+    assert "1. What is the power" in chunks[0].content
+
+
+def test_chunk_preserves_printed_exercise_question_ids() -> None:
+    text = """
+9.3.8 Power of a Lens
+The power is the reciprocal of focal length.
+EXERCISES
+1. What is the power of a lens with focal length 0.5 m?
+2. Explain the sign of the power for a concave lens.
+"""
+
+    chunks = chunk_ncert_text(text, "9", "Light - Reflection and Refraction")
+
+    assert chunks[0].exercise_ids == [
+        "ncert_c10_science_ch09_ex01_q01",
+        "ncert_c10_science_ch09_ex01_q02",
+    ]
+    assert "1. What is the power" in chunks[0].content
+
+
 def test_equation_metadata_uses_canonical_section_formulas() -> None:
     optics = chunk_ncert_text(
         "9.2.4 Mirror Formula and Magnification\n"

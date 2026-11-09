@@ -17,6 +17,9 @@ def _configured_path(variable: str, default: Path) -> Path:
 
 DATA_DIR = _configured_path("DATA_DIR", BASE_DIR / "data")
 DOCUMENT_PATH = _configured_path("DOCUMENT_PATH", DATA_DIR)
+# Generated documents, e.g. docs/mcp_tool_list.json from scripts/export_tool_list.py.
+# Like DATA_DIR it can be set in .env, and a relative value is read relative to the repository.
+DOCS_DIR = _configured_path("DOCS_DIR", BASE_DIR / "docs")
 INDEX_DIR = BASE_DIR / ".index"
 CACHE_DIR = BASE_DIR / ".cache"
 
@@ -34,7 +37,9 @@ RERANKER_MODEL = os.getenv("RERANKER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-
 # Socratic Policy Thresholds
 MAX_HINT_STEPS = 3                 # Teacher-validated limit before switching strategy
 PASSING_MASTERY_THRESHOLD = 0.70   # Required mastery to advance to dependent concept
-STUCK_SESSION_COUNT = 3            # Sessions without progress before triggering teacher alert
+MASTERY_WINDOW_SIZE = 3            # Rolling quiz-score window used for concept mastery
+STUCK_FAILURE_COUNT = 3            # Consecutive below-threshold quiz results on one concept
+STUCK_SESSION_COUNT = STUCK_FAILURE_COUNT  # Backward-compatible alias; counts failures, not sessions
 VERIFY_LEAK_THRESHOLD = 0.85       # Similarity threshold to flag potential answer leak
 RRF_K = 60                         # Reciprocal Rank Fusion parameter
 
