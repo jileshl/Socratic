@@ -1,6 +1,6 @@
 # GitHub only runs CI from this folder, so this file just calls the Makefile.
-# All CI steps live in `make ci` and `make docker-check`; the Recall@5 floor is
-# CI_MIN_RECALL_AT_5 in socratic_tutor/config.py. No API key is needed.
+# All CI steps live in `make ci-deps`, `make ci` and `make docker-check`; the
+# Recall@5 floor is CI_MIN_RECALL_AT_5 in socratic_tutor/config.py. No API key is needed.
 name: ci
 on: [push, pull_request]
 jobs:
@@ -10,6 +10,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: "3.12", cache: pip}
-      - run: pip install -r requirements.txt
+      - run: make ci-deps PY=python
       - run: make ci PY=python
       - run: make docker-check
