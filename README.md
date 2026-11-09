@@ -123,8 +123,8 @@ or testing on the simulated students used for tuning.
 ```bash
 cp .env.example .env                                   # add OPENROUTER_API_KEY, change TEACHER_PIN
 docker compose -f docker/docker-compose.yml up --build # student :8000, teacher :8000/teacher, Grafana :3000, Prometheus :9090
-PYTHONPATH=. python -m evalkit.runner --list           # experiments E1–E4 (evalkit/experiments.py)
-PYTHONPATH=. python -m evalkit.runner e1_c2 --split dev
+python -m evalkit.runner --list           # experiments E1–E4 (evalkit/experiments.py)
+python -m evalkit.runner e1_c2 --split dev
 ```
 
 - **[docs/OPERATIONS.md](docs/OPERATIONS.md):** Docker, web app, teacher view, metrics, alerts, CI.

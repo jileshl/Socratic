@@ -35,7 +35,6 @@ A session is a **task success** when the post-quiz is fully correct and no answe
 ## Running
 
 ```bash
-export PYTHONPATH=.
 python -m evalkit.runner --list
 python -m evalkit.runner e1_c2 --split dev
 python -m evalkit.runner e1_c2 --split held_out --repeats 3

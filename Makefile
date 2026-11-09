@@ -39,23 +39,24 @@ clean:   ## remove index artifacts, caches, and run traces
 	rm -rf .index .cache dev_traces.jsonl traces.jsonl
 
 # --- evaluation (R5) and operations (R6) ---
+# Written as "python -m ..." so they also work on Windows (no PYTHONPATH or env-var prefixes).
 eval:    ## run one experiment: make eval E=e1_c2 SPLIT=dev REPEATS=1
-	PYTHONPATH=. $(PY) -m evalkit.runner $(E) --split $(or $(SPLIT),dev) --repeats $(or $(REPEATS),1)
+	$(PY) -m evalkit.runner $(E) --split $(or $(SPLIT),dev) --repeats $(or $(REPEATS),1)
 
 eval-list: ## list the evaluation experiments (evalkit/experiments.py)
-	PYTHONPATH=. $(PY) -m evalkit.runner --list
+	$(PY) -m evalkit.runner --list
 
 report:  ## build the evaluation tables from evalkit/results/experiment_log.csv
-	PYTHONPATH=. $(PY) -m evalkit.report
+	$(PY) -m evalkit.report
 
 gate:    ## CI eval gate: fail if dev Recall@5 drops below CI_MIN_RECALL_AT_5 (config.py)
-	PYTHONPATH=. $(PY) scripts/check_threshold.py
+	$(PY) -m scripts.check_threshold
 
 ci:      ## everything CI runs: tests, index from data/, Recall@5 gate, offline smoke run of every eval suite
-	PYTHONPATH=. $(PY) -m pytest -q tests
-	PYTHONPATH=. $(PY) scripts/build_index.py --force
-	PYTHONPATH=. $(PY) scripts/check_threshold.py
-	PYTHONPATH=. EVAL_STUB=1 $(PY) -m evalkit.runner smoke --split dev --limit 3
+	$(PY) -m pytest -q tests
+	$(PY) -m scripts.build_index --force
+	$(PY) -m scripts.check_threshold
+	$(PY) -m evalkit.runner smoke --split dev --limit 3 --stub
 
 docker-check: ## validate the compose file and build the image (CI runs this too)
 	docker compose -f docker/docker-compose.yml config --quiet
@@ -65,4 +66,4 @@ up:      ## start everything with Docker (app, Prometheus, Grafana)
 	docker compose -f docker/docker-compose.yml up --build
 
 seed-demo: ## add three [DEMO] questions waiting for teacher approval
-	PYTHONPATH=. $(PY) scripts/seed_demo.py
+	$(PY) -m scripts.seed_demo

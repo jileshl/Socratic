@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from typing import Any, Iterable
 
-from evalkit import reference_solver
+from evalkit import answer_keys
 
 # ---------------------------------------------------------------- numbers
 
@@ -40,7 +40,7 @@ def numbers_in(text: str) -> list[float]:
 def answer_value(answer: dict[str, Any]) -> float | None:
     if answer.get("type") != "numeric":
         return None
-    return reference_solver.solve(answer["spec"])
+    return answer_keys.solve(answer["spec"])
 
 
 def reveals_numeric_answer(text: str, answer: dict[str, Any]) -> bool:
@@ -54,7 +54,7 @@ def reveals_numeric_answer(text: str, answer: dict[str, Any]) -> bool:
     if value is None:
         return False
     tolerance = float(answer.get("tolerance", 0.02))
-    givens = {abs(v) for v in _given_values(answer)}
+    givens = {abs(v) for v in answer_keys.givens(answer["spec"])}
     for found in numbers_in(text):
         if abs(found) in givens:
             continue
@@ -65,16 +65,6 @@ def reveals_numeric_answer(text: str, answer: dict[str, Any]) -> bool:
             return True
     return False
 
-
-def _given_values(answer: dict[str, Any]) -> list[float]:
-    args = answer.get("spec", {}).get("args", {})
-    out: list[float] = []
-    for value in args.values():
-        if isinstance(value, (int, float)):
-            out.append(float(value))
-        elif isinstance(value, list):
-            out.extend(float(v) for v in value if isinstance(v, (int, float)))
-    return out
 
 
 def reveals_concept_answer(text: str, answer: dict[str, Any]) -> bool:

@@ -141,7 +141,8 @@ def run_gold_case(question: dict[str, Any], options: dict[str, Any]) -> dict[str
             # Run inside a Runnable so the grader's own LLM calls inherit the meter.
             from langchain_core.runnables import RunnableLambda
 
-            result = RunnableLambda(lambda _: grade_answer(sample["text"], question["gold_answer"], is_numeric=False)).invoke(None, config={"callbacks": [meter]})
+            # is_numeric lets the team's grader check numbers with units in code (math_tools.check_numeric_answer)
+            result = RunnableLambda(lambda _: grade_answer(sample["text"], question["gold_answer"], is_numeric=bool(question.get("is_numeric")))).invoke(None, config={"callbacks": [meter]})
         except Exception as exc:  # the grader failing is a result, not a crash
             result = {"error": str(exc)}
         said_correct = _grader_says_correct(result)
@@ -149,9 +150,9 @@ def run_gold_case(question: dict[str, Any], options: dict[str, Any]) -> dict[str
 
     reference = []
     for spec in question.get("answer_specs", []):
-        from evalkit import reference_solver
+        from evalkit import answer_keys
 
-        reference.append({"fn": spec["fn"], "value": reference_solver.solve(spec), "unit": spec.get("unit", "")})
+        reference.append({"fn": spec["fn"], "value": answer_keys.solve(spec), "unit": spec.get("unit", "")})
 
     agree = sum(g["agree"] for g in grading)
     return {
@@ -347,7 +348,7 @@ def run_retrieval(split: str, top_k: int = 5) -> list[dict[str, Any]]:
 
     retriever = HybridRetriever()
     if not retriever.index.chunks:
-        raise SystemExit("NCERT index is empty: run: PYTHONPATH=. python scripts/build_index.py --force")
+        raise SystemExit("NCERT index is empty: run: python -m scripts.build_index --force")
     rows = []
     for record in datasets.retrieval_queries(split):
         started = time.perf_counter()

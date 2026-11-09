@@ -2,7 +2,7 @@
 
 from evalkit import checkers
 
-MIRROR = {"type": "numeric", "spec": {"fn": "mirror_image_distance", "args": {"u": -25, "f": -15}}, "unit": "cm", "tolerance": 0.02}
+MIRROR = {"type": "numeric", "spec": {"fn": "solve_mirror_formula", "args": {"length_unit": "cm", "u": -25, "f": -15}}, "unit": "cm", "tolerance": 0.02}
 
 
 def test_numbers_in_handles_signs_powers_and_fractions():

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from evalkit import datasets, reference_solver
+from evalkit import answer_keys, datasets
 from evalkit.checkers import numbers_in
 from socratic_tutor.kb import SECTION_TITLES
 from socratic_tutor.tools import math_tools
@@ -35,7 +35,7 @@ def test_gold_question_is_well_formed(q):
 def test_written_answer_matches_the_code_answer(q):
     stated = numbers_in(q["gold_answer"])
     for spec in q["answer_specs"]:
-        value = reference_solver.solve(spec)
+        value = answer_keys.solve(spec)
         assert any(abs(abs(s) - abs(value)) <= max(0.02 * abs(value), 0.011) for s in stated), (q["id"], value, stated)
 
 
@@ -61,27 +61,29 @@ def test_quiz_items_and_practice_answers():
     for item in datasets.quiz_bank().values():
         assert set(item["options"]) == {"A", "B", "C", "D"} and item["correct"] != item["misconception_option"]
         if item.get("answer_spec"):
-            assert reference_solver.solve(item["answer_spec"]) == pytest.approx(item["answer_spec"]["option_value"])
+            assert answer_keys.solve(item["answer_spec"]) == pytest.approx(item["answer_spec"]["option_value"])
     for card in CARDS:
         answer = card["practice_problem"]["answer"]
         if answer["type"] == "numeric":  # the answer must differ from every given, or a leak could never be seen
-            value = abs(reference_solver.solve(answer["spec"]))
-            givens = [abs(g) for v in answer["spec"]["args"].values() for g in (v if isinstance(v, list) else [v])]
+            value = abs(answer_keys.solve(answer["spec"]))
+            givens = [abs(g) for g in answer_keys.givens(answer["spec"])]
             assert all(abs(value - g) > 1e-9 for g in givens), card["practice_problem"]["id"]
         else:
             assert answer["key_phrases"]
 
 
-def test_reference_solver_agrees_with_the_tutor_calculator():
-    """Two independent implementations: if they disagree, one of them has a bug."""
-    for u, f in [(-30, -15), (-25, -15), (-20, 20), (-6, -10)]:
-        assert math_tools.solve_mirror_formula("cm", u=u, f=f)["value"] == pytest.approx(reference_solver.mirror_image_distance(u, f))
-    for u, f in [(-15, 10), (-10, -15), (-60, 20)]:
-        assert math_tools.solve_lens_formula("cm", u=u, f=f)["value"] == pytest.approx(reference_solver.lens_image_distance(u, f))
-    assert math_tools.solve_ohms_law(v=12, i=2.5)["value"] == pytest.approx(reference_solver.ohm_resistance(12, 2.5))
-    assert math_tools.solve_parallel_resistance([5, 10, 30])["value"] == pytest.approx(reference_solver.parallel_resistance([5, 10, 30]))
-    assert math_tools.solve_series_resistance([20, 4])["value"] == pytest.approx(reference_solver.series_resistance([20, 4]))
-    assert math_tools.solve_lens_power("cm", f=-50)["value"] == pytest.approx(reference_solver.lens_power_dioptre(-50))
+def test_every_answer_key_is_computed_by_math_tools():
+    """No formula is written twice: every key is a call into the team's calculator."""
+    import json
+
+    specs = [s for q in GOLD for s in q["answer_specs"]]
+    specs += [c["practice_problem"]["answer"]["spec"] for c in CARDS if c["practice_problem"]["answer"]["type"] == "numeric"]
+    specs += [i["answer_spec"] for i in datasets.quiz_bank().values() if i.get("answer_spec")]
+    specs += [a["problem"]["answer"]["spec"] for a in datasets.redteam_attacks() if a.get("problem")]
+    assert specs
+    for spec in specs:
+        assert hasattr(math_tools, spec["fn"]), spec
+        answer_keys.solve(spec)
 
 
 def test_red_team_suite():

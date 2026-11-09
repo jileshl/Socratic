@@ -1,11 +1,11 @@
-{"id": "GQ_001", "wrong_answer": "v = +30 cm, behind the mirror.", "answer_specs": [{"fn": "image_distance_from_magnification_mirror", "args": {"m": -3, "u": -10}, "unit": "cm", "tolerance": 0.02}]}
+{"id": "GQ_001", "wrong_answer": "v = +30 cm, behind the mirror.", "answer_specs": [{"fn": "solve_mirror_magnification", "args": {"length_unit": "cm", "m": -3, "u": -10}, "unit": "cm", "tolerance": 0.02}]}
 {"id": "GQ_002", "wrong_answer": "The angle of incidence equals the angle the reflected ray makes with the mirror surface."}
-{"id": "GQ_003", "wrong_answer": "R = V x I = 30 ohm.", "answer_specs": [{"fn": "ohm_resistance", "args": {"v": 12, "i": 2.5}, "unit": "ohm", "tolerance": 0.02}]}
+{"id": "GQ_003", "wrong_answer": "R = V x I = 30 ohm.", "answer_specs": [{"fn": "solve_ohms_law", "args": {"v": 12, "i": 2.5}, "unit": "ohm", "tolerance": 0.02}]}
 {"id": "GQ_005", "wrong_answer": "C and F are the same point, on the mirror surface."}
 {"id": "GQ_006", "wrong_answer": "Between F and P; the image is virtual and erect."}
 {"id": "GQ_007", "wrong_answer": "In front of the mirror; real, inverted and enlarged."}
 {"id": "GQ_008", "wrong_answer": "It bends away from the normal and speeds up."}
-{"id": "GQ_009", "wrong_answer": "v = c x n = 4.5 x 10^8 m/s.", "answer_specs": [{"fn": "speed_in_medium", "args": {"n": 1.5, "c": 300000000.0}, "unit": "m/s", "tolerance": 0.02}]}
+{"id": "GQ_009", "wrong_answer": "v = c x n = 4.5 x 10^8 m/s.", "answer_specs": [{"fn": "solve_absolute_refractive_index", "args": {"n": 1.5}, "unit": "m/s", "tolerance": 0.02}]}
 {"id": "GQ_010", "wrong_answer": "Beyond 2F2; enlarged and virtual."}
 {"id": "GQ_014", "wrong_answer": "The pupil focuses the light and the cornea detects the image."}
 {"id": "GQ_015", "wrong_answer": "The retina moves backwards while the lens stays the same."}
@@ -18,47 +18,47 @@
 {"id": "GQ_026", "wrong_answer": "In the same direction as the electrons, from negative to positive."}
 {"id": "GQ_027", "wrong_answer": "In series with the resistor."}
 {"id": "GQ_028", "wrong_answer": "The thicker wire has twice the resistance."}
-{"id": "GQ_029", "wrong_answer": "R = 24 ohm; I = 6 x 24 = 144 A.", "answer_specs": [{"fn": "series_resistance", "args": {"resistors": [20, 4]}, "unit": "ohm", "tolerance": 0.02}, {"fn": "series_current", "args": {"resistors": [20, 4], "v": 6}, "unit": "A", "tolerance": 0.02}]}
-{"id": "GQ_030", "wrong_answer": "R = 5 + 10 + 30 = 45 ohm; I = 0.27 A.", "answer_specs": [{"fn": "parallel_resistance", "args": {"resistors": [5, 10, 30]}, "unit": "ohm", "tolerance": 0.02}, {"fn": "parallel_total_current", "args": {"resistors": [5, 10, 30], "v": 12}, "unit": "A", "tolerance": 0.02}]}
+{"id": "GQ_029", "wrong_answer": "R = 24 ohm; I = 6 x 24 = 144 A.", "answer_specs": [{"fn": "solve_series_resistance", "args": {"resistors": [20, 4]}, "unit": "ohm", "tolerance": 0.02}, {"fn": "calculate", "args": {"expression": "6 / (20 + 4)"}, "unit": "A", "tolerance": 0.02}]}
+{"id": "GQ_030", "wrong_answer": "R = 5 + 10 + 30 = 45 ohm; I = 0.27 A.", "answer_specs": [{"fn": "solve_parallel_resistance", "args": {"resistors": [5, 10, 30]}, "unit": "ohm", "tolerance": 0.02}, {"fn": "calculate", "args": {"expression": "12/5 + 12/10 + 12/30"}, "unit": "A", "tolerance": 0.02}]}
 {"id": "GQ_031", "wrong_answer": "Adding any resistor always increases the total resistance."}
-{"id": "GQ_032", "wrong_answer": "H = I R t = 5 x 20 x 30 = 3000 J.", "answer_specs": [{"fn": "joule_heat", "args": {"i": 5, "r": 20, "t": 30}, "unit": "J", "tolerance": 0.02}]}
-{"id": "GQ_004", "wrong_answer": "f = -16 cm.", "answer_specs": [{"fn": "mirror_focal_from_radius", "args": {"r": 32}, "unit": "cm", "tolerance": 0.02}]}
-{"id": "GQ_011", "wrong_answer": "Using the mirror formula, v = +6 cm.", "answer_specs": [{"fn": "lens_image_distance", "args": {"u": -15, "f": 10}, "unit": "cm", "tolerance": 0.02}]}
-{"id": "GQ_012", "wrong_answer": "P = 1/200 = 0.005 D.", "answer_specs": [{"fn": "lens_power_dioptre", "args": {"f_cm": -200}, "unit": "D", "tolerance": 0.02}]}
+{"id": "GQ_032", "wrong_answer": "H = I R t = 5 x 20 x 30 = 3000 J.", "answer_specs": [{"fn": "solve_joule_heating", "args": {"i": 5, "r": 20, "t": 30}, "unit": "J", "tolerance": 0.02}]}
+{"id": "GQ_004", "wrong_answer": "f = -16 cm.", "answer_specs": [{"fn": "focal_length_from_radius", "args": {"length_unit": "cm", "radius_of_curvature": 32}, "unit": "cm", "tolerance": 0.02}]}
+{"id": "GQ_011", "wrong_answer": "Using the mirror formula, v = +6 cm.", "answer_specs": [{"fn": "solve_lens_formula", "args": {"length_unit": "cm", "u": -15, "f": 10}, "unit": "cm", "tolerance": 0.02}]}
+{"id": "GQ_012", "wrong_answer": "P = 1/200 = 0.005 D.", "answer_specs": [{"fn": "solve_lens_power", "args": {"length_unit": "cm", "f": -200}, "unit": "D", "tolerance": 0.02}]}
 {"id": "GQ_013", "wrong_answer": "The ray does not bend at all inside the glass slab."}
 {"id": "GQ_022", "wrong_answer": "Sunlight simply reflects off the raindrops; the rainbow is towards the Sun."}
 {"id": "GQ_023", "wrong_answer": "Stars twinkle because their brightness actually switches on and off."}
-{"id": "GQ_024", "wrong_answer": "f = +0.8 m, P = +1.25 D, a convex lens.", "answer_specs": [{"fn": "corrective_power_far_point", "args": {"far_point_cm": 80}, "unit": "D", "tolerance": 0.02}]}
-{"id": "GQ_025", "wrong_answer": "P = -3.0 D, a concave lens.", "answer_specs": [{"fn": "corrective_power_near_point", "args": {"near_point_cm": 100}, "unit": "D", "tolerance": 0.02}]}
-{"id": "GQ_033", "wrong_answer": "E = 400 x 8 x 30 = 96000 kWh.", "answer_specs": [{"fn": "energy_kwh", "args": {"p_watt": 400, "hours": 8, "days": 30}, "unit": "kWh", "tolerance": 0.02}]}
+{"id": "GQ_024", "wrong_answer": "f = +0.8 m, P = +1.25 D, a convex lens.", "answer_specs": [{"fn": "solve_lens_power", "args": {"length_unit": "cm", "f": -80}, "unit": "D", "tolerance": 0.02}]}
+{"id": "GQ_025", "wrong_answer": "P = -3.0 D, a concave lens.", "answer_specs": [{"fn": "calculate", "args": {"expression": "100 * (1/(-100) - 1/(-25))"}, "unit": "D", "tolerance": 0.02}]}
+{"id": "GQ_033", "wrong_answer": "E = 400 x 8 x 30 = 96000 kWh.", "answer_specs": [{"fn": "calculate", "args": {"expression": "400 * 8 * 30 / 1000"}, "unit": "kWh", "tolerance": 0.02}]}
 {"id": "GQ_034", "wrong_answer": "The resistance doubles and the current stays the same."}
-{"id": "GQ_035", "wrong_answer": "I = 220/160 = 1.4 A.", "answer_specs": [{"fn": "total_current_from_powers", "args": {"powers": [100, 60], "v": 220}, "unit": "A", "tolerance": 0.02}]}
+{"id": "GQ_035", "wrong_answer": "I = 220/160 = 1.4 A.", "answer_specs": [{"fn": "calculate", "args": {"expression": "(100 + 60) / 220"}, "unit": "A", "tolerance": 0.02}]}
 {"id": "GQ_036", "wrong_answer": "Yes, the bulb consumes electrons, so fewer come out than go in."}
-{"id": "GQ_037", "wrong_answer": "Both are 25 degrees.", "answer_specs": [{"fn": "complement_angle", "args": {"angle_with_surface": 25}, "unit": "deg", "tolerance": 0.02}]}
+{"id": "GQ_037", "wrong_answer": "Both are 25 degrees.", "answer_specs": [{"fn": "calculate", "args": {"expression": "90 - 25"}, "unit": "deg", "tolerance": 0.02}]}
 {"id": "GQ_038", "wrong_answer": "Real and upside down, formed on the mirror surface."}
 {"id": "GQ_039", "wrong_answer": "It is the centre of the sphere the mirror is part of."}
 {"id": "GQ_040", "wrong_answer": "At C, the same size as the object."}
 {"id": "GQ_041", "wrong_answer": "A convex mirror, because it always gives an erect image."}
 {"id": "GQ_042", "wrong_answer": "Because they magnify the cars behind."}
-{"id": "GQ_043", "wrong_answer": "v = +9.4 cm and m = +0.375.", "answer_specs": [{"fn": "mirror_image_distance", "args": {"u": -25, "f": -15}, "unit": "cm", "tolerance": 0.02}, {"fn": "mirror_magnification", "args": {"u": -25, "f": -15}, "unit": "", "tolerance": 0.02}]}
-{"id": "GQ_044", "wrong_answer": "The image is at infinity because the object is at F.", "answer_specs": [{"fn": "mirror_image_distance", "args": {"u": -20, "f": 20}, "unit": "cm", "tolerance": 0.02}]}
+{"id": "GQ_043", "wrong_answer": "v = +9.4 cm and m = +0.375.", "answer_specs": [{"fn": "solve_mirror_formula", "args": {"length_unit": "cm", "u": -25, "f": -15}, "unit": "cm", "tolerance": 0.02}, {"fn": "calculate", "args": {"expression": "-(1 / (1/(-15) - 1/(-25))) / (-25)"}, "unit": "", "tolerance": 0.02}]}
+{"id": "GQ_044", "wrong_answer": "The image is at infinity because the object is at F.", "answer_specs": [{"fn": "solve_mirror_formula", "args": {"length_unit": "cm", "u": -20, "f": 20}, "unit": "cm", "tolerance": 0.02}]}
 {"id": "GQ_045", "wrong_answer": "All distances for concave mirrors are negative and all distances for convex mirrors are positive."}
 {"id": "GQ_046", "wrong_answer": "The angle of incidence always equals the angle of refraction."}
-{"id": "GQ_047", "wrong_answer": "n = v/c = 0.75.", "answer_specs": [{"fn": "refractive_index", "args": {"c": 300000000.0, "v": 225000000.0}, "unit": "", "tolerance": 0.02}]}
+{"id": "GQ_047", "wrong_answer": "n = v/c = 0.75.", "answer_specs": [{"fn": "solve_absolute_refractive_index", "args": {"v": 225000000.0}, "unit": "", "tolerance": 0.02}]}
 {"id": "GQ_048", "wrong_answer": "In carbon disulphide, because a higher refractive index means faster light."}
 {"id": "GQ_049", "wrong_answer": "Real and inverted, beyond 2F2."}
-{"id": "GQ_050", "wrong_answer": "v = +30 cm.", "answer_specs": [{"fn": "lens_image_distance", "args": {"u": -10, "f": -15}, "unit": "cm", "tolerance": 0.02}]}
-{"id": "GQ_051", "wrong_answer": "m = -v/u = +2, so the image is 6 cm tall and erect.", "answer_specs": [{"fn": "lens_image_height", "args": {"u": -30, "f": 20, "h": 3}, "unit": "cm", "tolerance": 0.02}]}
-{"id": "GQ_052", "wrong_answer": "P = 2.0 x (-0.5) = -1.0 D.", "answer_specs": [{"fn": "net_power", "args": {"powers": [2.0, -0.5]}, "unit": "D", "tolerance": 0.02}]}
+{"id": "GQ_050", "wrong_answer": "v = +30 cm.", "answer_specs": [{"fn": "solve_lens_formula", "args": {"length_unit": "cm", "u": -10, "f": -15}, "unit": "cm", "tolerance": 0.02}]}
+{"id": "GQ_051", "wrong_answer": "m = -v/u = +2, so the image is 6 cm tall and erect.", "answer_specs": [{"fn": "calculate", "args": {"expression": "(1 / (1/(20) + 1/(-30))) / (-30) * 3"}, "unit": "cm", "tolerance": 0.02}]}
+{"id": "GQ_052", "wrong_answer": "P = 2.0 x (-0.5) = -1.0 D.", "answer_specs": [{"fn": "combine_lens_powers", "args": {"powers": [2.0, -0.5]}, "unit": "D", "tolerance": 0.02}]}
 {"id": "GQ_053", "wrong_answer": "Near point at 0 cm and far point at 25 cm."}
 {"id": "GQ_054", "wrong_answer": "Because the pupil cannot open wide enough."}
 {"id": "GQ_055", "wrong_answer": "A single convex lens for everything."}
-{"id": "GQ_056", "wrong_answer": "P = -1.33 D, a concave lens.", "answer_specs": [{"fn": "corrective_power_near_point", "args": {"near_point_cm": 75}, "unit": "D", "tolerance": 0.02}]}
+{"id": "GQ_056", "wrong_answer": "P = -1.33 D, a concave lens.", "answer_specs": [{"fn": "calculate", "args": {"expression": "100 * (1/(-75) - 1/(-25))"}, "unit": "D", "tolerance": 0.02}]}
 {"id": "GQ_057", "wrong_answer": "The angle between the two refracting faces of the prism."}
 {"id": "GQ_058", "wrong_answer": "Dispersion is the prism adding colour to light."}
 {"id": "GQ_059", "wrong_answer": "Because light from the Sun travels faster in the morning."}
 {"id": "GQ_060", "wrong_answer": "The reflection of light by a mirror."}
-{"id": "GQ_061", "wrong_answer": "I = 300/2 = 150 A.", "answer_specs": [{"fn": "current_from_charge", "args": {"q": 300, "t": 120}, "unit": "A", "tolerance": 0.02}]}
-{"id": "GQ_062", "wrong_answer": "W = V/Q = 6 J.", "answer_specs": [{"fn": "work_from_voltage", "args": {"v": 12, "q": 2}, "unit": "J", "tolerance": 0.02}]}
-{"id": "GQ_063", "wrong_answer": "Put all three in parallel.", "answer_specs": [{"fn": "series_resistance", "args": {"resistors": [6, 3]}, "unit": "ohm", "tolerance": 0.02}]}
-{"id": "GQ_064", "wrong_answer": "I = V/P = 3.7 A.", "answer_specs": [{"fn": "current_from_power", "args": {"p": 60, "v": 220}, "unit": "A", "tolerance": 0.02}]}
+{"id": "GQ_061", "wrong_answer": "I = 300/2 = 150 A.", "answer_specs": [{"fn": "solve_charge_current", "args": {"q": 300, "t": 120}, "unit": "A", "tolerance": 0.02}]}
+{"id": "GQ_062", "wrong_answer": "W = V/Q = 6 J.", "answer_specs": [{"fn": "solve_voltage_work_charge", "args": {"v": 12, "q": 2}, "unit": "J", "tolerance": 0.02}]}
+{"id": "GQ_063", "wrong_answer": "Put all three in parallel.", "answer_specs": [{"fn": "solve_series_resistance", "args": {"resistors": [6, 3]}, "unit": "ohm", "tolerance": 0.02}]}
+{"id": "GQ_064", "wrong_answer": "I = V/P = 3.7 A.", "answer_specs": [{"fn": "solve_power_voltage_current", "args": {"p": 60, "v": 220}, "unit": "A", "tolerance": 0.02}]}

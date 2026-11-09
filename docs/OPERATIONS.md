@@ -14,7 +14,7 @@ docker compose -f docker/docker-compose.yml up --build      # or: make up
 | http://localhost:3000 | Grafana, dashboard "Socratic Tutor" |
 | http://localhost:9090 | Prometheus, alert `AnswerLeakSpike` |
 
-Without Docker: `pip install -r requirements.txt`, `PYTHONPATH=. python scripts/build_index.py --force`, then `PYTHONPATH=. python -m socratic_tutor.app`. On Windows without `make`, run the commands from the Makefile directly.
+Without Docker: `pip install -r requirements.txt`, `python -m scripts.build_index --force`, then `python -m socratic_tutor.app`. These commands work the same on Windows. Without `make`, run the commands from the Makefile directly.
 
 `docker/` holds three files: the `Dockerfile`, `docker-compose.yml` (which also contains the Prometheus and Grafana settings, written inline) and the Grafana dashboard. The index is built on first start from the NCERT PDFs in `data/`. The MCP tool servers (R4) use stdio, so they run inside the app container.
 
@@ -30,7 +30,7 @@ One file: `socratic_tutor/config.py` holds every model ID, budget and threshold,
   - class misconceptions by concept, mastery by concept, cost per session
   - approvals and alerts
   - transcript labelling for the judge (the teacher's 1–5 rubric)
-- **Approvals tied to the exact payload:** each item shows its SHA-256 hash, and every decision must send the hash the teacher saw. An edit creates a new hash, so an approval carrying the old one is refused (HTTP 409, counted as a stale approval). `python scripts/seed_demo.py` adds three `[DEMO]` items for the demo until the question setter proposes its own.
+- **Approvals tied to the exact payload:** each item shows its SHA-256 hash, and every decision must send the hash the teacher saw. An edit creates a new hash, so an approval carrying the old one is refused (HTTP 409, counted as a stale approval). `python -m scripts.seed_demo` adds three `[DEMO]` items for the demo until the question setter proposes its own.
 - **Alerts:**
   - distress: immediately
   - stuck: 3 sessions on one concept, or 10+ minutes in a session without progress (both teacher-validated)

@@ -4,7 +4,7 @@ Until the question-setter agent proposes items through the graph, this lets the
 team demo the approval gate (approve, edit-invalidates-approval, reject) in the
 teacher view. Answer keys come from the tutor's own calculator, never typed in.
 
-    python scripts/seed_demo.py
+    python -m scripts.seed_demo
 """
 
 from __future__ import annotations

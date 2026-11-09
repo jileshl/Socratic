@@ -1,6 +1,6 @@
 """CI eval gate: fail the build when a measured metric falls below its floor.
 
-    python scripts/check_threshold.py            # floor: CI_MIN_RECALL_AT_5 in socratic_tutor/config.py
+    python -m scripts.check_threshold            # floor: CI_MIN_RECALL_AT_5 in socratic_tutor/config.py
 
 Runs the retrieval suite (no LLM calls, so no API key is needed in CI),
 prints the result, and exits with status 1 if Recall@5 is below the floor.

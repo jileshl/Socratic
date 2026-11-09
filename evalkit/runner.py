@@ -202,7 +202,12 @@ def main() -> None:
     parser.add_argument("--limit", type=int, default=None, help="only the first N cases of each suite (smoke tests)")
     parser.add_argument("--workers", type=int, default=None)
     parser.add_argument("--note", default="")
+    parser.add_argument("--stub", action="store_true", help="use the offline stand-in model (plumbing check; never reported)")
     args = parser.parse_args()
+    if args.stub:
+        import os
+
+        os.environ["EVAL_STUB"] = "1"
 
     if args.list or not args.experiment:
         for name, spec in experiments.EXPERIMENTS.items():
