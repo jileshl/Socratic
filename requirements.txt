@@ -28,8 +28,9 @@ langchain-core>=0.3
 langchain-openai>=0.2     # OpenRouter is OpenAI-compatible
 grandalf>=0.8             # ASCII graph rendering for graph.draw()
 
-# math tools
+# math tools and MCP servers
 sympy>=1.12               # formula equivalence check (math_tools.check_equivalence)
+mcp>=2.3,<3               # official MCP Python SDK: MCPServer + ClientSession (as in the L7 hands-on)
 
 # interface
 gradio>=5,<7              # 5.x and 6.x both work; app.py handles the API change
