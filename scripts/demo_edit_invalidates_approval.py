@@ -15,7 +15,6 @@ Run it from the repository root, like the other scripts:
     bash:        PYTHONPATH=. python scripts/demo_edit_invalidates_approval.py
 """
 
-import os
 import sqlite3
 import tempfile
 from pathlib import Path
@@ -23,6 +22,7 @@ from pathlib import Path
 from langgraph.checkpoint.sqlite import SqliteSaver
 
 from socratic_tutor import approval_gate
+from socratic_tutor import config
 from socratic_tutor.tools import question_bank
 
 # The demo signs its decisions with its own throwaway key (the real key lives in .env as APPROVAL_SIGNING_KEY).
@@ -92,8 +92,8 @@ def run_demo(work_dir: Path) -> list[str]:
 
 def main() -> None:
     """Run the demo in a fresh temporary folder and print each step."""
-    # The gate reads the key from the environment, like the real server does.
-    os.environ[approval_gate.SIGNING_KEY_VARIABLE] = DEMO_KEY
+    # The gate reads the key from config (the real server gets it from .env); the demo uses its own.
+    config.APPROVAL_SIGNING_KEY = DEMO_KEY
     with tempfile.TemporaryDirectory() as work_dir:
         for line in run_demo(Path(work_dir)):
             print(line)

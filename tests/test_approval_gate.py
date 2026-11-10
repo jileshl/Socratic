@@ -39,7 +39,8 @@ def bank(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """A temporary, empty question bank, and the test signing key in the environment."""
     monkeypatch.setattr(question_bank, "DB_PATH", tmp_path / "question_bank.db")
     question_bank._init_db()
-    monkeypatch.setenv(approval_gate.SIGNING_KEY_VARIABLE, TEST_KEY)
+    # The gate reads config.APPROVAL_SIGNING_KEY; monkeypatch puts the real value back afterwards.
+    monkeypatch.setattr(config, "APPROVAL_SIGNING_KEY", TEST_KEY)
 
 
 @pytest.fixture
@@ -131,9 +132,17 @@ def test_a_signature_changes_when_anything_signed_changes() -> None:
         assert other != base
 
 
+def test_the_key_is_the_config_setting(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The key is config.APPROVAL_SIGNING_KEY (loaded from .env like every other setting); blank means no key."""
+    monkeypatch.setattr(config, "APPROVAL_SIGNING_KEY", "a-server-key")
+    assert approval_gate.signing_key() == "a-server-key"
+    monkeypatch.setattr(config, "APPROVAL_SIGNING_KEY", "   ")
+    assert approval_gate.signing_key() is None
+
+
 def test_signing_without_a_key_is_impossible(monkeypatch: pytest.MonkeyPatch) -> None:
     """With no APPROVAL_SIGNING_KEY, sign_decision raises instead of producing an unsigned decision."""
-    monkeypatch.delenv(approval_gate.SIGNING_KEY_VARIABLE, raising=False)
+    monkeypatch.setattr(config, "APPROVAL_SIGNING_KEY", "")
     with pytest.raises(ValueError):
         approval_gate.sign_decision("set_a", "approve", "h1", TEACHER)
 
@@ -245,7 +254,7 @@ def test_without_a_key_on_the_server_nothing_can_be_decided(gate: Any, monkeypat
     ids = propose_two()
     submitted = submit(gate, ids)
     decision = sign("set_a", "approve", submitted["payload_hash"])
-    monkeypatch.delenv(approval_gate.SIGNING_KEY_VARIABLE)
+    monkeypatch.setattr(config, "APPROVAL_SIGNING_KEY", "")
     result = approval_gate.decide(gate, "set_a", decision)
     assert result["status"] == "waiting"
     assert "APPROVAL_SIGNING_KEY" in result["note"]
@@ -874,7 +883,7 @@ def test_the_demo_script_shows_the_edit_invalidating_the_approval(
     demo = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(demo)
     # The demo signs with its own key; the gate reads the key from the environment.
-    monkeypatch.setenv(approval_gate.SIGNING_KEY_VARIABLE, demo.DEMO_KEY)
+    monkeypatch.setattr(config, "APPROVAL_SIGNING_KEY", demo.DEMO_KEY)
     lines = demo.run_demo(tmp_path)
     assert len(lines) == 6
     assert lines[3].startswith("4. approve with H1: waiting (This decision is for an older version")

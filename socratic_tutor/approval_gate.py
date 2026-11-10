@@ -19,7 +19,7 @@ Decisions (reviews/r4_stage3_approval_gate_step1.md and step2.md):
   through the "edit" action, which makes a new version (a new version number, so a new hash).
 - S3-6: fail closed, all or nothing. Any problem: nothing is published, and the set waits again.
 - S3-10: every decision names the approver and is signed (HMAC-SHA256) with a server-only key,
-  APPROVAL_SIGNING_KEY, which no agent tool can read. No key, or a wrong signature: refused.
+  config.APPROVAL_SIGNING_KEY (from .env), which no agent tool can read. No key, or a wrong signature: refused.
 
 The database work is in question_bank.py (decision S3-7): get_questions, publish_question_set, reject_question_set.
 
@@ -34,7 +34,6 @@ import hashlib
 import hmac
 import json
 import logging
-import os
 import sqlite3
 import sys
 import threading
@@ -65,8 +64,6 @@ from socratic_tutor.tools.question_bank_server import (
 ACTIONS: list[str] = ["approve", "edit", "reject"]
 # Each set waits on its own thread: "qbset:" + set_id (decision S3-3).
 THREAD_PREFIX: str = "qbset:"
-# The name of the environment variable (in .env) that holds the server-only signing key (decision S3-10).
-SIGNING_KEY_VARIABLE: str = "APPROVAL_SIGNING_KEY"
 # A set is a handful of questions; more than this is refused, so one approval can't hide a flood [own choice].
 MAX_SET_SIZE: int = 10
 # The longest set id and approver id accepted [own choice].
@@ -194,9 +191,10 @@ def is_hex_digest(text: Any) -> bool:
 
 
 def signing_key() -> str | None:
-    """The server-only key from the environment (.env), read at call time; None if it isn't set."""
-    key = os.getenv(SIGNING_KEY_VARIABLE)
-    if key is None or key.strip() == "":
+    """The server-only key, config.APPROVAL_SIGNING_KEY (set in .env, like every other setting), read at call
+    time; None if it's empty."""
+    key = config.APPROVAL_SIGNING_KEY
+    if not isinstance(key, str) or key.strip() == "":
         return None
     return key
 
@@ -220,7 +218,7 @@ def sign_decision(set_id: str, action: str, hash_text: str, approver: str, chang
                   payload: dict[str, Any] | None = None, key: str | None = None) -> dict[str, Any]:
     """Build a signed decision. The teacher view calls this when the logged-in teacher clicks a button.
 
-    The key comes from APPROVAL_SIGNING_KEY unless one is given (the tests and the demo give one).
+    The key comes from config.APPROVAL_SIGNING_KEY unless one is given (the tests and the demo give one).
     """
     if key is None:
         key = signing_key()
