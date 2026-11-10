@@ -16,6 +16,7 @@ class SocraticState(TypedDict, total=False):
     mode: str                                # "practice" | "quiz"
     current_concept_id: str | None
     current_question_id: str | None
+    chapter: str | None
     
     # --- Dialogue & History ---------------------------------------------------
     query: str

@@ -528,6 +528,44 @@ def test_graph_leak_retry_max_tries_falls_back_to_scaffold(monkeypatch, tmp_path
     assert output["answer_leak_flag"] is True
 
 
+def test_node_tutor_passes_resolved_chapter_to_search_textbook(monkeypatch):
+    """Verify that node_tutor resolves the student's chapter and passes it to search_textbook."""
+    from socratic_tutor import graph
+
+    search_calls = []
+
+    def mock_search(query, chapter=None, top_k=4):
+        search_calls.append({"query": query, "chapter": chapter, "top_k": top_k})
+        return [{"section_id": "9.1", "title": "Reflection", "content": "Sample content"}]
+
+    monkeypatch.setattr(graph.textbook_kb, "search_textbook", mock_search)
+    monkeypatch.setattr(graph.tutor, "generate_hint", lambda **kwargs: "Look at the angle of incidence.")
+
+    # 1. Resolved from concept_id (concept_reflection_laws is Chapter 9)
+    state1 = {
+        "query": "What is the law of reflection?",
+        "current_concept_id": "concept_reflection_laws",
+    }
+    graph.node_tutor(state1)
+    assert search_calls[-1]["chapter"] == "9"
+
+    # 2. Direct from state["chapter"] = "11"
+    state2 = {
+        "query": "What is current?",
+        "chapter": "11",
+    }
+    graph.node_tutor(state2)
+    assert search_calls[-1]["chapter"] == "11"
+
+    # 3. From identified_misconception
+    state3 = {
+        "query": "Why does eye lens change?",
+        "identified_misconception": {"id": "M1", "chapter": "Human Eye and the Colourful World"},
+    }
+    graph.node_tutor(state3)
+    assert search_calls[-1]["chapter"] == "10"
+
+
 
 def test_learner_store_records_mastery_misconceptions_lessons_and_quizzes(tmp_path):
     store = LearnerStore(tmp_path / "learner.sqlite")
