@@ -61,6 +61,31 @@ def get_questions(question_ids: list[str]) -> list[dict]:
 
     Ids that aren't in the bank are left out, so the caller can compare the lengths.
     """
+    return _read_questions(question_ids)
+
+
+def _rows_problem(shown: list[dict]) -> str | None:
+    """[R1] Compare the stored rows with what was shown (no lock); the reason for the first difference, or None."""
+    ids = []
+    for question in shown:
+        ids.append(question["id"])
+    stored = {}
+    for row in _read_questions(ids):
+        stored[row["id"]] = row
+    for before in shown:
+        row = stored.get(before["id"])
+        if row is None:
+            return f"Question {before['id']} is no longer in the bank."
+        if row["status"] != "pending_approval":
+            return f"Question {before['id']} is already '{row['status']}'."
+        for field in QUESTION_FIELDS:
+            if row[field] != before[field]:
+                return f"Question {before['id']} changed since it was shown."
+    return None
+
+
+def _read_questions(question_ids: list[str]) -> list[dict]:
+    """The stored rows for these ids, in order, missing ones left out (used by get_questions and _rows_problem)."""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     try:
@@ -115,39 +140,40 @@ def _set_problem(shown: list[dict], approved: list[dict]) -> str | None:
 
 
 def _change_set(shown: list[dict], approved: list[dict], new_status: str, result_key: str) -> dict:
-    """Check every row and change them all in ONE transaction, or change nothing."""
+    """Check every row, then change them all in ONE short transaction, or change nothing.
+
+    [R1] The rows are read and compared OUTSIDE the transaction, so the write lock is held only for the UPDATEs.
+    [R3] Each UPDATE's WHERE repeats the values that were checked, so a row changed after [R1] (by another writer
+         in that gap) updates 0 rows, and the whole set is rolled back. This is an "optimistic" check.
+    """
     problem = _set_problem(shown, approved)
+    if problem is not None:
+        return {result_key: [], "problem": problem}
+    # [R1] read and compare, without taking any lock.
+    problem = _rows_problem(shown)
     if problem is not None:
         return {result_key: [], "problem": problem}
     # isolation_level=None: this function starts and ends the transaction itself.
     conn = sqlite3.connect(DB_PATH, isolation_level=None)
     try:
-        # BEGIN IMMEDIATE takes the write lock now, so no one can change these rows between our
-        # check and our update (two approvals of the same set at once: the second finds them decided).
+        # [R2] BEGIN IMMEDIATE takes the write lock; only the UPDATEs run while it's held.
         conn.execute("BEGIN IMMEDIATE")
         ids = []
         for before, after in zip(shown, approved):
-            row = conn.execute(
-                "SELECT id, concept_id, difficulty, prompt, gold_answer, status FROM questions WHERE id = ?",
-                (before["id"],),
-            ).fetchone()
-            if row is None:
-                conn.execute("ROLLBACK")
-                return {result_key: [], "problem": f"Question {before['id']} is no longer in the bank."}
-            if row[5] != "pending_approval":
-                conn.execute("ROLLBACK")
-                return {result_key: [], "problem": f"Question {before['id']} is already '{row[5]}'."}
-            for position, field in enumerate(QUESTION_FIELDS):
-                if row[position] != before[field]:
-                    conn.execute("ROLLBACK")
-                    return {result_key: [], "problem": f"Question {before['id']} changed since it was shown."}
-            conn.execute(
+            # [R3] change the row only if it is still exactly what was checked in [R1].
+            cursor = conn.execute(
                 "UPDATE questions SET difficulty = ?, prompt = ?, gold_answer = ?, status = ? "
-                "WHERE id = ? AND status = 'pending_approval'",
-                (after["difficulty"], after["prompt"], after["gold_answer"], new_status, before["id"]),
+                "WHERE id = ? AND status = 'pending_approval' "
+                "AND concept_id = ? AND difficulty = ? AND prompt = ? AND gold_answer = ?",
+                (after["difficulty"], after["prompt"], after["gold_answer"], new_status,
+                 before["id"], before["concept_id"], before["difficulty"], before["prompt"], before["gold_answer"]),
             )
+            if cursor.rowcount != 1:
+                # Someone changed (or decided, or deleted) it after [R1]: undo every row of this set.
+                conn.execute("ROLLBACK")
+                return {result_key: [], "problem": f"Question {before['id']} changed while the set was being saved."}
             ids.append(before["id"])
-        # Every row passed: make all the changes visible together.
+        # [R4] every row matched: make all the changes visible together.
         conn.execute("COMMIT")
         return {result_key: ids}
     except Exception:

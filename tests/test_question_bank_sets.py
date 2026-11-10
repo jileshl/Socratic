@@ -159,6 +159,49 @@ def test_text_that_looks_like_sql_is_stored_as_plain_text(temp_bank: None) -> No
     assert rows[shown[0]["id"]][1] == "x'; DROP TABLE questions; --"
 
 
+def change_a_row_in_the_gap(monkeypatch: pytest.MonkeyPatch, sql: str, values: tuple[Any, ...]) -> None:
+    """Make another writer act exactly in the gap: after the rows are read and compared (step [R1]), before the
+    transaction starts. The real check runs first and passes; then the other writer's change is saved."""
+    real_rows_problem = question_bank._rows_problem
+
+    def check_then_another_writer(shown: list[dict[str, Any]]) -> str | None:
+        problem = real_rows_problem(shown)
+        connection = sqlite3.connect(question_bank.DB_PATH)
+        connection.execute(sql, values)
+        connection.commit()
+        connection.close()
+        return problem
+
+    monkeypatch.setattr(question_bank, "_rows_problem", check_then_another_writer)
+
+
+def test_an_edit_in_the_gap_between_the_check_and_the_write_publishes_nothing(
+    temp_bank: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The reads are outside the transaction (to keep it short), so a row can change after the check. Each
+    UPDATE repeats the checked values in its WHERE: the changed row updates 0 rows and the whole set rolls back,
+    so the other writer's correction is not overwritten and nothing is half-published."""
+    shown = two_pending_questions()
+    change_a_row_in_the_gap(monkeypatch, "UPDATE questions SET gold_answer = ? WHERE id = ?", ("-50 cm", shown[1]["id"]))
+    result = question_bank.publish_question_set(shown, shown)
+    assert result == {"published": [], "problem": "Question " + shown[1]["id"] + " changed while the set was being saved."}
+    rows = stored_rows()
+    # The first row's update was rolled back, and the other writer's correction is still there.
+    assert rows[shown[0]["id"]][3] == "pending_approval"
+    assert rows[shown[1]["id"]] == ("medium", MIRROR_PROMPT, "-50 cm", "pending_approval")
+
+
+def test_an_approval_in_the_gap_between_the_check_and_the_write_publishes_nothing(
+    temp_bank: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The per-question button approves a row in the gap: that row updates 0 rows, so the set rolls back."""
+    shown = two_pending_questions()
+    change_a_row_in_the_gap(monkeypatch, "UPDATE questions SET status = 'approved' WHERE id = ?", (shown[1]["id"],))
+    result = question_bank.reject_question_set(shown)
+    assert result["rejected"] == []
+    assert stored_rows()[shown[0]["id"]][3] == "pending_approval"
+
+
 def test_rejecting_a_set_rejects_every_question(temp_bank: None) -> None:
     """The happy path for reject: both rows become 'rejected', text unchanged."""
     shown = two_pending_questions()
