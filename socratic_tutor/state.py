@@ -21,6 +21,7 @@ class SocraticState(TypedDict, total=False):
     query: str
     messages: Annotated[list[AnyMessage], operator.add]
     steps: Annotated[list[str], operator.add] # Node execution trajectory
+    turn_steps: list[str]                    # Current turn node execution (reset each turn)
     plan: list[str]                          # Current turn execution plan (e.g. ["diagnose", "hint"])
     
     # --- Learner Model Snapshot -----------------------------------------------
@@ -29,6 +30,8 @@ class SocraticState(TypedDict, total=False):
     effective_lesson_applied: str | None     # Reflexion playbook lesson applied
     hint_step: int                           # 1..MAX_HINT_STEPS
     hint_tries: int                          # Re-try counter for hint generation on leak
+    last_concept_id: str | None              # Track previous concept for hint ladder reset
+    last_misconception_id: str | None        # Track previous misconception for hint ladder progression
     
     # --- Retrieval & Evidence -------------------------------------------------
     retrieved_sections: list[dict]           # NCERT section passages
@@ -40,6 +43,7 @@ class SocraticState(TypedDict, total=False):
     
     # --- Safety & Teacher Gate ------------------------------------------------
     injection_detected: bool
+    distress_detected: bool                  # Distress detected on current turn
     answer_leak_flag: bool                   # Triggered if practice response gave direct answer
     teacher_approval_required: bool
     teacher_approval_payload: dict | None    # Question proposal payload for interrupt()

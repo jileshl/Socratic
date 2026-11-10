@@ -49,6 +49,7 @@ def node_input_guardrail(state: SocraticState) -> dict:
     # Reset per-turn fields at the start of each turn
     reset_state: dict[str, Any] = {
         "steps": ["input_guardrail"],
+        "turn_steps": ["input_guardrail"],
         "query": guard_res["sanitized_query"],
         "response": "",
         "citations": [],
@@ -59,6 +60,8 @@ def node_input_guardrail(state: SocraticState) -> dict:
         "answer_leak_flag": False,
         "hint_tries": 0,
         "plan": [],
+        "distress_detected": False,
+        "teacher_alert_triggered": False,
     }
 
     if not guard_res["passed"]:
@@ -72,6 +75,7 @@ def node_input_guardrail(state: SocraticState) -> dict:
             )
             reset_state.update({
                 "injection_detected": False,
+                "distress_detected": True,
                 "teacher_alert_triggered": True,
                 "response": supportive_reply,
             })
@@ -79,6 +83,7 @@ def node_input_guardrail(state: SocraticState) -> dict:
 
         reset_state.update({
             "injection_detected": True,
+            "distress_detected": False,
             "teacher_alert_triggered": False,
             "response": REFUSAL,
         })
@@ -86,6 +91,7 @@ def node_input_guardrail(state: SocraticState) -> dict:
 
     reset_state.update({
         "injection_detected": False,
+        "distress_detected": False,
     })
     return reset_state
 
@@ -118,11 +124,19 @@ def node_supervisor(state: SocraticState) -> dict:
     stuck = (concept_failures >= 3) or (stuck_counter >= 3)
     teacher_alert = bool(stuck or state.get("teacher_alert_triggered", False))
 
-    hint_step = state.get("hint_step", 1)
-    if stuck and hint_step < config.MAX_HINT_STEPS:
-        hint_step = min(hint_step + 1, config.MAX_HINT_STEPS)
-
     mode = state.get("mode", "practice")
+    plan = state.get("plan", [])
+    turn_steps = state.get("turn_steps", [])
+
+    hint_step = state.get("hint_step", 1)
+    last_concept = state.get("last_concept_id")
+    if last_concept and current_concept and last_concept != current_concept:
+        hint_step = 1
+
+    # Hint progression: adjust once per turn at start of practice turn if stuck
+    if mode == "practice" and not plan:
+        if stuck and hint_step < config.MAX_HINT_STEPS:
+            hint_step = min(hint_step + 1, config.MAX_HINT_STEPS)
 
     # Quiz Mode:
     if mode == "quiz":
@@ -130,6 +144,7 @@ def node_supervisor(state: SocraticState) -> dict:
         if grade_res is None:
             return {
                 "steps": ["supervisor"],
+                "turn_steps": turn_steps + ["supervisor"],
                 "plan": ["grade", "replan"],
                 "mastery_map": mastery,
                 "current_concept_id": current_concept,
@@ -138,36 +153,45 @@ def node_supervisor(state: SocraticState) -> dict:
                 "hint_step": hint_step,
             }
         else:
-            # Grader finished! Supervisor replans
+            # Grader finished! Supervisor saves quiz result and replans
             score = float(grade_res.get("score", 0.0))
-            if student_id and current_concept:
+            if student_id and current_concept and not grade_res.get("error"):
                 quiz_res = store.record_quiz_result(student_id, current_concept, score)
-                if quiz_res.get("alert_stuck"):
+                if quiz_res.get("teacher_alert_triggered"):
                     teacher_alert = True
                 updated_profile = store.get_profile(student_id)
                 mastery = dict(updated_profile.get("mastery_map", {}))
+                failure_streaks = updated_profile.get("failure_streaks", {})
+                concept_failures = failure_streaks.get(current_concept or "", 0)
 
             if score >= 0.7:
                 next_concept = cg.next_recommended(mastery)
+                current_concept = next_concept
+                hint_step = 1
             elif concept_failures >= 3:
                 prereqs = cg.get_prerequisites(current_concept)
                 if prereqs:
                     next_concept = prereqs[0]
+                    current_concept = next_concept
+                    hint_step = 1
 
             return {
                 "steps": ["supervisor"],
+                "turn_steps": turn_steps + ["supervisor"],
                 "plan": ["graded", "replanned"],
                 "mastery_map": mastery,
                 "current_concept_id": current_concept,
                 "next_recommended_concept": next_concept,
                 "teacher_alert_triggered": teacher_alert,
                 "hint_step": hint_step,
+                "last_concept_id": current_concept,
             }
 
     # Question Setter Mode:
     if state.get("teacher_approval_required"):
         return {
             "steps": ["supervisor"],
+            "turn_steps": turn_steps + ["supervisor"],
             "plan": ["propose_question", "teacher_gate"],
             "mastery_map": mastery,
             "current_concept_id": current_concept,
@@ -178,24 +202,35 @@ def node_supervisor(state: SocraticState) -> dict:
 
     # Practice Mode:
     # 1. Has tutor produced a hint?
-    if state.get("response") and "tutor" in state.get("steps", []):
+    if state.get("response") and ("tutor" in turn_steps or "hint" in plan):
         return {
             "steps": ["supervisor"],
+            "turn_steps": turn_steps + ["supervisor"],
             "plan": ["verify"],
             "mastery_map": mastery,
             "current_concept_id": current_concept,
             "next_recommended_concept": next_concept,
             "teacher_alert_triggered": teacher_alert,
             "hint_step": hint_step,
+            "last_concept_id": current_concept,
+            "last_misconception_id": state.get("last_misconception_id"),
         }
 
     # 2. Has diagnostician produced a result?
-    if "diagnostician" in state.get("steps", []):
+    if "diagnostician" in turn_steps or "diagnose" in plan:
         diag = state.get("identified_misconception")
-        if diag and isinstance(diag, dict) and diag.get("id"):
+        miscon_id = diag.get("id") if (diag and isinstance(diag, dict)) else None
+        last_miscon = state.get("last_misconception_id")
+
+        # Raise hint ladder when the same concept and misconception returned (last hint didn't help)
+        if miscon_id and last_miscon and miscon_id == last_miscon and last_concept == current_concept:
+            if hint_step < config.MAX_HINT_STEPS:
+                hint_step = min(hint_step + 1, config.MAX_HINT_STEPS)
+
+        if miscon_id:
             if student_id:
                 try:
-                    store.record_misconception(student_id, diag["id"])
+                    store.record_misconception(student_id, miscon_id)
                 except Exception:
                     pass
             new_plan = ["misconception_addressed", "hint", "verify"]
@@ -205,23 +240,28 @@ def node_supervisor(state: SocraticState) -> dict:
 
         return {
             "steps": ["supervisor"],
+            "turn_steps": turn_steps + ["supervisor"],
             "plan": new_plan,
             "mastery_map": mastery,
             "current_concept_id": current_concept,
             "next_recommended_concept": next_concept,
             "teacher_alert_triggered": teacher_alert,
             "hint_step": hint_step,
+            "last_concept_id": current_concept,
+            "last_misconception_id": miscon_id or last_miscon,
         }
 
     # First pass in practice mode:
     return {
         "steps": ["supervisor"],
+        "turn_steps": turn_steps + ["supervisor"],
         "plan": ["diagnose", "hint", "verify"],
         "mastery_map": mastery,
         "current_concept_id": current_concept,
         "next_recommended_concept": next_concept,
         "teacher_alert_triggered": teacher_alert,
         "hint_step": hint_step,
+        "last_concept_id": current_concept,
     }
 
 
@@ -259,6 +299,7 @@ def node_diagnostician(state: SocraticState) -> dict:
 
     return {
         "steps": ["diagnostician"],
+        "turn_steps": state.get("turn_steps", []) + ["diagnostician"],
         "identified_misconception": {"id": miscon_id, "name": miscon_name} if miscon_id else None,
         "effective_lesson_applied": effective_lesson,
     }
@@ -299,6 +340,7 @@ def node_tutor(state: SocraticState) -> dict:
 
     return {
         "steps": ["tutor"],
+        "turn_steps": state.get("turn_steps", []) + ["tutor"],
         "response": hint,
         "citations": all_citations,
         "retrieved_sections": passages,
@@ -310,7 +352,13 @@ def node_tutor(state: SocraticState) -> dict:
 
 def node_output_guardrail(state: SocraticState) -> dict:
     response = state.get("response", "")
-    expected_answer = state.get("student_attempt") or None
+    expected_answer = None
+    qid = state.get("current_question_id")
+    if qid:
+        q = question_bank.get_approved_question(qid)
+        if q:
+            expected_answer = q.get("gold_answer")
+
     leak = check_answer_leak(response, expected_answer)
 
     # Validate citations against retrieved sections (checking grounded in NCERT)
@@ -329,12 +377,14 @@ def node_output_guardrail(state: SocraticState) -> dict:
             )
             return {
                 "steps": ["output_guardrail"],
+                "turn_steps": state.get("turn_steps", []) + ["output_guardrail"],
                 "response": scaffold,
                 "citations": validated_citations,
                 "answer_leak_flag": True,
             }
         return {
             "steps": ["output_guardrail"],
+            "turn_steps": state.get("turn_steps", []) + ["output_guardrail"],
             "response": "",
             "citations": validated_citations,
             "answer_leak_flag": True,
@@ -342,6 +392,7 @@ def node_output_guardrail(state: SocraticState) -> dict:
 
     return {
         "steps": ["output_guardrail"],
+        "turn_steps": state.get("turn_steps", []) + ["output_guardrail"],
         "response": response,
         "citations": validated_citations,
         "answer_leak_flag": False,
@@ -350,40 +401,36 @@ def node_output_guardrail(state: SocraticState) -> dict:
 
 def node_grader(state: SocraticState) -> dict:
     attempt = state.get("student_attempt") or state.get("query", "")
-    gold_answer = ""
     concept_id = state.get("current_concept_id", "")
-
     qid = state.get("current_question_id")
-    if qid:
-        q = question_bank.get_approved_question(qid) or question_bank.get_question(qid)
-        if q:
-            gold_answer = q.get("gold_answer", "")
-            if not concept_id and q.get("concept_id"):
-                concept_id = q.get("concept_id")
 
-    if not gold_answer:
-        gold_answer = state.get("gold_answer", "")
+    q = question_bank.get_approved_question(qid) if qid else None
+    if not q:
+        feedback = "This question is not available yet."
+        return {
+            "steps": ["grader"],
+            "turn_steps": state.get("turn_steps", []) + ["grader"],
+            "grade_result": {"is_correct": False, "score": 0.0, "feedback": feedback, "error": "unapproved_question"},
+            "response": feedback,
+            "current_concept_id": concept_id or state.get("current_concept_id"),
+            "teacher_alert_triggered": True,
+        }
+
+    gold_answer = q.get("gold_answer", "")
+    if not concept_id and q.get("concept_id"):
+        concept_id = q.get("concept_id")
 
     is_numeric = bool(re.search(r"\d", gold_answer))
     res = grader.grade_answer(attempt, gold_answer, is_numeric=is_numeric)
-
-    score = float(res.get("score", 0.0))
-    student_id = state.get("student_id", "")
-
-    alert_stuck = False
-    if student_id and concept_id:
-        store = LearnerStore()
-        quiz_res = store.record_quiz_result(student_id, concept_id, score)
-        alert_stuck = quiz_res.get("alert_stuck", False)
 
     feedback = res.get("feedback") or ("Correct! Well done." if res.get("is_correct") else "Not quite right. Let's review the concept.")
 
     return {
         "steps": ["grader"],
+        "turn_steps": state.get("turn_steps", []) + ["grader"],
         "grade_result": res,
         "response": feedback,
         "current_concept_id": concept_id or state.get("current_concept_id"),
-        "teacher_alert_triggered": alert_stuck or state.get("teacher_alert_triggered", False),
     }
 
 
@@ -392,6 +439,7 @@ def node_question_setter(state: SocraticState) -> dict:
     res = question_setter.select_question(concept)
     return {
         "steps": ["question_setter"],
+        "turn_steps": state.get("turn_steps", []) + ["question_setter"],
         "teacher_approval_required": True,
         "teacher_approval_payload": {
             "set_id": f"set_{uuid.uuid4().hex[:8]}",
@@ -408,6 +456,7 @@ def node_teacher_approval_gate(state: SocraticState) -> dict:
     approved = isinstance(decision, dict) and decision.get("action") == "approve"
     return {
         "steps": ["teacher_approval_gate"],
+        "turn_steps": state.get("turn_steps", []) + ["teacher_approval_gate"],
         "teacher_approval_required": False,
         "response": "Question approved and published." if approved else "Question proposal rejected."
     }
@@ -416,7 +465,7 @@ def node_teacher_approval_gate(state: SocraticState) -> dict:
 # --- Routing Functions ---
 
 def route_guardrail(state: SocraticState) -> str:
-    if state.get("injection_detected") or state.get("teacher_alert_triggered"):
+    if state.get("injection_detected") or state.get("distress_detected"):
         return END
     return "supervisor"
 
@@ -433,11 +482,12 @@ def route_supervisor(state: SocraticState) -> str:
         return "question_setter"
 
     # Practice mode
-    steps = state.get("steps", [])
-    if "diagnostician" not in steps and ("diagnose" in state.get("plan", []) or not state.get("identified_misconception")):
+    turn_steps = state.get("turn_steps", [])
+    plan = state.get("plan", [])
+    if "diagnostician" not in turn_steps and ("diagnose" in plan or not state.get("identified_misconception")):
         return "diagnostician"
 
-    if "tutor" not in steps or not state.get("response"):
+    if "tutor" not in turn_steps or not state.get("response"):
         return "tutor"
 
     return "output_guardrail"
