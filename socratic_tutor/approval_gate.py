@@ -22,6 +22,12 @@ Decisions (reviews/r4_stage3_approval_gate_step1.md and step2.md):
   APPROVAL_SIGNING_KEY, which no agent tool can read. No key, or a wrong signature: refused.
 
 The database work is in question_bank.py (decision S3-7): get_questions, publish_question_set, reject_question_set.
+
+For the rest of the app:
+    propose_set(drafts)    - the question setter's one call: check and save each draft, submit them as one set,
+                             and get the line to tell the student ("Your teacher will review N new ...")
+    get_approval_graph()   - the one shared approval graph (on .index/checkpoints.sqlite), for the question
+                             setter and the teacher view alike
 """
 
 import hashlib
@@ -29,17 +35,20 @@ import hmac
 import json
 import logging
 import os
+import sqlite3
 import sys
 import threading
 import time
 import uuid
 from typing import Any, TypedDict
 
+from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
 
-from socratic_tutor import config  # noqa: F401  (imported so that .env is loaded before the key is read)
+from socratic_tutor import config  # also loads .env, so the signing key can be read
 from socratic_tutor.tools import question_bank
+from socratic_tutor.tools import question_bank_server
 from socratic_tutor.tools.question_bank_server import (
     DIFFICULTIES,
     MAX_GOLD_ANSWER_LENGTH,
@@ -628,6 +637,100 @@ def pending_set(graph: Any, set_id: str) -> dict[str, Any] | None:
                 "note": str(snapshot.values.get("note", "")),
             }
     return None
+
+
+# ---------------------------------------------------------------------------
+# For the rest of the app: one shared approval graph, and one call for the question setter
+# ---------------------------------------------------------------------------
+
+# The checkpoint file the web server's graph already uses (web/server.py: .index/checkpoints.sqlite).
+CHECKPOINT_FILE_NAME: str = "checkpoints.sqlite"
+# The shared approval graph, built on first use (see get_approval_graph). A dict, so the tests can swap it.
+APPROVAL_GRAPH_HOLDER: dict[str, Any] = {"graph": None, "connection": None}
+APPROVAL_GRAPH_GUARD: threading.Lock = threading.Lock()
+# What a draft question must contain (the same four inputs as the question-bank tool, propose_question).
+DRAFT_FIELDS: list[str] = ["concept_id", "difficulty", "prompt", "gold_answer"]
+
+
+def get_approval_graph() -> Any:
+    """The ONE approval graph the app shares: the question setter submits sets to it, and the teacher view lists
+    and decides them. Built on first use, with a SqliteSaver on config.INDEX_DIR / "checkpoints.sqlite"."""
+    with APPROVAL_GRAPH_GUARD:
+        if APPROVAL_GRAPH_HOLDER["graph"] is None:
+            # check_same_thread=False: the web server calls it from its worker threads.
+            connection = sqlite3.connect(config.INDEX_DIR / CHECKPOINT_FILE_NAME, check_same_thread=False)
+            APPROVAL_GRAPH_HOLDER["connection"] = connection
+            APPROVAL_GRAPH_HOLDER["graph"] = build_approval_graph(SqliteSaver(connection))
+        return APPROVAL_GRAPH_HOLDER["graph"]
+
+
+def draft_problem(draft: Any) -> str | None:
+    """[P1] What's wrong with one draft's shape; None if it has the four text fields."""
+    if not isinstance(draft, dict):
+        return "A draft must be {concept_id, difficulty, prompt, gold_answer}."
+    for field in DRAFT_FIELDS:
+        if not isinstance(draft.get(field), str):
+            return "The draft's " + field + " is missing or isn't text."
+    return None
+
+
+def student_message(count: int) -> str:
+    """What the question setter tells the student: the questions wait for the teacher (never the questions)."""
+    word = "questions"
+    if count == 1:
+        word = "question"
+    return "Your teacher will review " + str(count) + " new practice " + word + "."
+
+
+def propose_set(drafts: list[dict[str, Any]], set_id: str | None = None, graph: Any = None) -> dict[str, Any]:
+    """[P1]-[P5] What the question setter calls: check and save each draft, then send the saved ones to the
+    teacher as ONE set. A draft that fails a check is reported, not saved; the others still go.
+
+    drafts: [{"concept_id", "difficulty", "prompt", "gold_answer"}, ...] (1 to MAX_SET_SIZE).
+    Returns {"ok": True, "set_id", "thread_id", "question_ids", "refused", "student_message"}, or
+    {"ok": False, "error", "refused", "question_ids", "student_message": ""}. "refused" lists {"draft": n, "error"}.
+    """
+    # [P1] a short list of drafts.
+    if not isinstance(drafts, list) or len(drafts) == 0 or len(drafts) > MAX_SET_SIZE:
+        return {"ok": False, "error": "propose_set needs 1 to " + str(MAX_SET_SIZE) + " drafts.",
+                "refused": [], "question_ids": [], "student_message": ""}
+    # [P2] each draft through the question-bank checks (the same as the MCP tool): duplicates, a readable answer
+    # key, a known concept, the lengths. A good one is saved as 'pending_approval'; students can't see it.
+    saved_ids: list[str] = []
+    refused: list[dict[str, Any]] = []
+    for position, draft in enumerate(drafts):
+        problem = draft_problem(draft)
+        if problem is not None:
+            refused.append({"draft": position, "error": problem})
+            continue
+        result = question_bank_server.run_and_log(
+            draft["concept_id"], draft["difficulty"], draft["prompt"], draft["gold_answer"]
+        )
+        if result.get("ok") is True:
+            saved_ids.append(result["question_id"])
+        else:
+            refused.append({"draft": position, "error": str(result.get("error", ""))})
+    # [P3] nothing saved: nothing goes to the teacher.
+    if len(saved_ids) == 0:
+        return {"ok": False, "error": "None of the drafts could be saved, so nothing was sent to the teacher.",
+                "refused": refused, "question_ids": [], "student_message": ""}
+    # [P4] the saved questions wait for the teacher as one set, on its own thread.
+    if graph is None:
+        graph = get_approval_graph()
+    submitted = submit_set(graph, saved_ids, set_id=set_id)
+    if not submitted["ok"]:
+        # The rows stay 'pending_approval' (students can't see them); the caller learns why the set didn't start.
+        return {"ok": False, "error": submitted["error"], "refused": refused, "question_ids": saved_ids,
+                "student_message": ""}
+    # [P5] what the student is told.
+    return {
+        "ok": True,
+        "set_id": submitted["set_id"],
+        "thread_id": submitted["thread_id"],
+        "question_ids": saved_ids,
+        "refused": refused,
+        "student_message": student_message(len(saved_ids)),
+    }
 
 
 def decide(graph: Any, set_id: str, decision: Any) -> dict[str, Any]:

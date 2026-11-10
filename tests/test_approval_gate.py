@@ -20,6 +20,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from socratic_tutor import approval_gate
 from socratic_tutor import config
 from socratic_tutor.tools import question_bank
+from socratic_tutor.tools import question_bank_server
 
 
 TEST_KEY: str = "test-signing-key"
@@ -744,6 +745,118 @@ def test_fast_is_measured_from_when_the_version_appeared(gate: Any, log_lines: l
     approval_gate.decide(gate, "set_a", sign("set_a", "approve", edited["payload_hash"]))
     assert "wait_s=100.0" in log_lines[1]
     assert "wait_s=1.0 fast=True" in log_lines[2]
+
+
+# ---------------------------------------------------------------------------
+# propose_set (the question setter's one call) and the shared graph
+# ---------------------------------------------------------------------------
+
+
+def two_known_concepts() -> list[str]:
+    """Stand-in for the concept graph, so these tests never read data/concept_graph.json."""
+    return ["concept_ohms_law", "concept_mirror_formula"]
+
+
+@pytest.fixture
+def known_concepts(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The question-bank checks see two known concepts."""
+    monkeypatch.setattr(question_bank_server, "load_concept_ids", two_known_concepts)
+
+
+def draft(concept_id: str, prompt: str, gold_answer: str) -> dict[str, Any]:
+    """One draft question, as the question setter would make it."""
+    return {"concept_id": concept_id, "difficulty": "medium", "prompt": prompt, "gold_answer": gold_answer}
+
+
+def test_propose_set_saves_the_drafts_and_sends_one_set_to_the_teacher(gate: Any, known_concepts: None) -> None:
+    """[P2]-[P5]: both drafts are checked and saved (pending), and they wait as ONE set; the student is told."""
+    result = approval_gate.propose_set(
+        [draft("concept_ohms_law", OHMS_PROMPT, "3 A"), draft("concept_mirror_formula", MIRROR_PROMPT, "-60 cm")],
+        set_id="set_p", graph=gate,
+    )
+    assert result["ok"] is True
+    assert result["thread_id"] == "qbset:set_p"
+    assert len(result["question_ids"]) == 2
+    assert result["refused"] == []
+    assert result["student_message"] == "Your teacher will review 2 new practice questions."
+    waiting = approval_gate.pending_set(gate, "set_p")
+    ids_waiting: list[str] = []
+    for question in waiting["payload"]["questions"]:
+        ids_waiting.append(question["id"])
+    assert ids_waiting == result["question_ids"]
+    for question_id in result["question_ids"]:
+        assert status_of(question_id) == "pending_approval"
+
+
+def test_propose_set_reports_a_refused_draft_and_sends_the_rest(gate: Any, known_concepts: None) -> None:
+    """[P2]: a draft with an unreadable key ("I = 3 A") is refused with its reason; the good one still goes."""
+    result = approval_gate.propose_set(
+        [draft("concept_mirror_formula", MIRROR_PROMPT, "-60 cm"), draft("concept_ohms_law", OHMS_PROMPT, "I = 3 A")],
+        set_id="set_q", graph=gate,
+    )
+    assert result["ok"] is True
+    assert len(result["question_ids"]) == 1
+    assert result["refused"][0]["draft"] == 1
+    assert result["refused"][0]["error"].startswith("Write only the value")
+    assert result["student_message"] == "Your teacher will review 1 new practice question."
+
+
+def test_propose_set_with_nothing_valid_sends_nothing(gate: Any, known_concepts: None) -> None:
+    """[P3]: every draft refused (an unknown concept, a non-text field): nothing is saved and nothing waits."""
+    result = approval_gate.propose_set(
+        [draft("concept_photosynthesis", OHMS_PROMPT, "3 A"), {"concept_id": "concept_ohms_law", "difficulty": "easy", "prompt": None, "gold_answer": "3 A"}],
+        set_id="set_r", graph=gate,
+    )
+    assert result["ok"] is False
+    assert result["error"] == "None of the drafts could be saved, so nothing was sent to the teacher."
+    assert len(result["refused"]) == 2
+    assert result["refused"][1]["error"] == "The draft's prompt is missing or isn't text."
+    assert approval_gate.pending_set(gate, "set_r") is None
+
+
+def test_propose_set_refuses_a_bad_list(gate: Any, known_concepts: None) -> None:
+    """[P1]: not a list, an empty list, or too many drafts."""
+    too_many: list[dict[str, Any]] = []
+    for number in range(approval_gate.MAX_SET_SIZE + 1):
+        too_many.append(draft("concept_ohms_law", OHMS_PROMPT + " " + str(number), "3 A"))
+    for drafts in ["a draft", [], too_many]:
+        result = approval_gate.propose_set(drafts, graph=gate)
+        assert result["ok"] is False
+        assert result["error"].startswith("propose_set needs 1 to")
+
+
+def test_propose_set_never_publishes_anything(gate: Any, known_concepts: None) -> None:
+    """Proposing only saves drafts: until the teacher approves, students see none of them."""
+    result = approval_gate.propose_set([draft("concept_ohms_law", OHMS_PROMPT, "3 A")], set_id="set_s", graph=gate)
+    assert status_of(result["question_ids"][0]) == "pending_approval"
+
+
+@pytest.fixture
+def shared_graph_in_tmp(bank: None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
+    """get_approval_graph() builds its graph on config.INDEX_DIR: point that at tmp_path, with a fresh holder."""
+    monkeypatch.setattr(config, "INDEX_DIR", tmp_path)
+    holder: dict[str, Any] = {"graph": None, "connection": None}
+    monkeypatch.setattr(approval_gate, "APPROVAL_GRAPH_HOLDER", holder)
+    yield holder
+    if holder["connection"] is not None:
+        holder["connection"].close()
+
+
+def test_get_approval_graph_is_one_shared_graph_on_the_app_checkpoint_file(shared_graph_in_tmp: Any, tmp_path: Path) -> None:
+    """The question setter and the teacher view get the SAME graph, so the view sees the sets the setter submits."""
+    first = approval_gate.get_approval_graph()
+    second = approval_gate.get_approval_graph()
+    assert first is second
+    submit(first, propose_two(), set_id="set_shared")
+    assert (tmp_path / "checkpoints.sqlite").exists()
+    assert approval_gate.pending_set(second, "set_shared") is not None
+
+
+def test_propose_set_uses_the_shared_graph_by_default(shared_graph_in_tmp: Any, known_concepts: None) -> None:
+    """Without a graph argument, propose_set submits to the shared graph, where the teacher view will look."""
+    result = approval_gate.propose_set([draft("concept_ohms_law", OHMS_PROMPT, "3 A")], set_id="set_default")
+    assert result["ok"] is True
+    assert approval_gate.pending_set(approval_gate.get_approval_graph(), "set_default") is not None
 
 
 # ---------------------------------------------------------------------------
