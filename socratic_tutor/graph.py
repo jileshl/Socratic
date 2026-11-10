@@ -40,6 +40,52 @@ def _extract_section_ids(*sources: Any) -> list[str]:
     return found
 
 
+CHAPTER_TITLE_TO_NUM: dict[str, str] = {
+    "Light - Reflection and Refraction": "9",
+    "Human Eye and the Colourful World": "10",
+    "Electricity": "11",
+}
+
+
+def _resolve_chapter(state: SocraticState) -> str | None:
+    """Resolve NCERT chapter number (e.g. '9', '10', '11') from state or active concept."""
+    # 1. Direct from state if specified
+    raw_chapter = state.get("chapter")
+    if raw_chapter is not None:
+        ch_str = str(raw_chapter).strip()
+        if ch_str in CHAPTER_TITLE_TO_NUM:
+            return CHAPTER_TITLE_TO_NUM[ch_str]
+        m = re.search(r"\b(9|10|11)\b", ch_str)
+        if m:
+            return m.group(1)
+
+    # 2. From active concept in ConceptGraph
+    concept_id = state.get("current_concept_id")
+    if concept_id:
+        cg = ConceptGraph()
+        concept = cg.concepts.get(concept_id, {})
+        ch_title = concept.get("chapter")
+        if ch_title in CHAPTER_TITLE_TO_NUM:
+            return CHAPTER_TITLE_TO_NUM[ch_title]
+        if ch_title:
+            m = re.search(r"\b(9|10|11)\b", str(ch_title))
+            if m:
+                return m.group(1)
+
+    # 3. From identified misconception
+    miscon = state.get("identified_misconception")
+    if isinstance(miscon, dict):
+        ch_title = miscon.get("chapter")
+        if ch_title in CHAPTER_TITLE_TO_NUM:
+            return CHAPTER_TITLE_TO_NUM[ch_title]
+        if ch_title:
+            m = re.search(r"\b(9|10|11)\b", str(ch_title))
+            if m:
+                return m.group(1)
+
+    return None
+
+
 # --- Node Definitions ---
 
 def node_input_guardrail(state: SocraticState) -> dict:
@@ -308,7 +354,8 @@ def node_diagnostician(state: SocraticState) -> dict:
 def node_tutor(state: SocraticState) -> dict:
     query = state.get("query", "")
     hint_tries = state.get("hint_tries", 0) + 1
-    passages = state.get("retrieved_sections") or textbook_kb.search_textbook(query, top_k=4)
+    chapter = _resolve_chapter(state)
+    passages = state.get("retrieved_sections") or textbook_kb.search_textbook(query, chapter=chapter, top_k=4)
 
     initial_citations = []
     for p in passages:
