@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import re
 import uuid
+import json
+import hashlib
 from typing import Any
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import interrupt, Command
@@ -181,9 +183,15 @@ def node_supervisor(state: SocraticState) -> dict:
     if last_concept and current_concept and last_concept != current_concept:
         hint_step = 1
 
-    # Hint progression: adjust once per turn at start of practice turn if stuck (N4)
+    last_qid = state.get("last_question_id")
+    qid = state.get("current_question_id")
+    if last_qid and qid and last_qid != qid:
+        hint_step = 1
+
+    # Hint progression: adjust once per turn at start of practice turn if continuing on same concept/question or stuck
     if mode == "practice" and not plan:
-        if stuck and not hint_raised and hint_step < config.MAX_HINT_STEPS:
+        is_continuing_practice = bool(last_concept and last_concept == current_concept)
+        if (stuck or is_continuing_practice) and not hint_raised and hint_step < config.MAX_HINT_STEPS:
             hint_step = min(hint_step + 1, config.MAX_HINT_STEPS)
             hint_raised = True
 
@@ -216,6 +224,7 @@ def node_supervisor(state: SocraticState) -> dict:
                     "hint_step": hint_step,
                     "hint_raised_this_turn": hint_raised,
                     "last_concept_id": current_concept,
+                    "last_question_id": qid,
                 }
 
             # Grader finished! Supervisor saves quiz result and replans
@@ -271,6 +280,7 @@ def node_supervisor(state: SocraticState) -> dict:
                 "hint_step": hint_step,
                 "hint_raised_this_turn": hint_raised,
                 "last_concept_id": current_concept,
+                "last_question_id": qid,
             }
 
     # Question Setter Mode:
@@ -285,6 +295,8 @@ def node_supervisor(state: SocraticState) -> dict:
             "teacher_alert_triggered": teacher_alert,
             "hint_step": hint_step,
             "hint_raised_this_turn": hint_raised,
+            "last_concept_id": current_concept,
+            "last_question_id": qid,
         }
 
     # Practice Mode:
@@ -301,6 +313,7 @@ def node_supervisor(state: SocraticState) -> dict:
             "hint_step": hint_step,
             "hint_raised_this_turn": hint_raised,
             "last_concept_id": current_concept,
+            "last_question_id": qid,
             "last_misconception_id": state.get("last_misconception_id"),
         }
 
@@ -339,6 +352,7 @@ def node_supervisor(state: SocraticState) -> dict:
             "hint_step": hint_step,
             "hint_raised_this_turn": hint_raised,
             "last_concept_id": current_concept,
+            "last_question_id": qid,
             "last_misconception_id": miscon_id or last_miscon,
         }
 
@@ -354,6 +368,7 @@ def node_supervisor(state: SocraticState) -> dict:
         "hint_step": hint_step,
         "hint_raised_this_turn": hint_raised,
         "last_concept_id": current_concept,
+        "last_question_id": qid,
     }
 
 
@@ -470,9 +485,11 @@ def node_output_guardrail(state: SocraticState) -> dict:
     expected_answer = None
     qid = state.get("current_question_id")
     if qid:
-        q = question_bank.get_approved_question(qid)
+        q = question_bank.get_approved_question(qid) or question_bank.get_question(qid)
         if q:
             expected_answer = q.get("gold_answer")
+    if not expected_answer:
+        expected_answer = state.get("gold_answer")
 
     leak = check_answer_leak(response, expected_answer)
 
@@ -550,31 +567,87 @@ def node_grader(state: SocraticState) -> dict:
     }
 
 
+def _compute_payload_hash(payload: dict) -> str:
+    canonical = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 def node_question_setter(state: SocraticState) -> dict:
     concept = state.get("current_concept_id", "concept_reflection_laws")
     res = question_setter.select_question(concept)
+    prompt_text = res.get("question_text", "State the laws of reflection.")
+    gold_answer = res.get("gold_answer", "")
+    difficulty = res.get("difficulty", "medium")
+
+    # Propose question to bank in pending_approval status
+    prop = question_bank.propose_question(
+        concept_id=concept,
+        difficulty=difficulty,
+        prompt=prompt_text,
+        gold_answer=gold_answer,
+    )
+    qid = prop["question_id"]
+    set_id = f"set_{uuid.uuid4().hex[:8]}"
+
+    payload_data = {
+        "set_id": set_id,
+        "question_id": qid,
+        "concept": concept,
+        "prompt": prompt_text,
+        "gold_answer": gold_answer,
+        "difficulty": difficulty,
+    }
+    payload_data["payload_hash"] = _compute_payload_hash(payload_data)
+
     return {
         "steps": ["question_setter"],
         "turn_steps": state.get("turn_steps", []) + ["question_setter"],
         "teacher_approval_required": True,
-        "teacher_approval_payload": {
-            "set_id": f"set_{uuid.uuid4().hex[:8]}",
-            "concept": concept,
-            "prompt": res.get("question_text", "State the laws of reflection."),
-            "gold_answer": res.get("gold_answer", "")
-        }
+        "teacher_approval_payload": payload_data,
     }
 
 
 def node_teacher_approval_gate(state: SocraticState) -> dict:
     payload = state.get("teacher_approval_payload", {})
     decision = interrupt({"payload": payload, "prompt": "Approve new question for shared bank?"})
-    approved = isinstance(decision, dict) and decision.get("action") == "approve"
+
+    is_dict = isinstance(decision, dict)
+    action = decision.get("action") if is_dict else None
+    decision_hash = decision.get("payload_hash") if is_dict else None
+
+    # Expected payload hash
+    raw_payload = {k: v for k, v in payload.items() if k != "payload_hash"}
+    expected_hash = payload.get("payload_hash") or _compute_payload_hash(raw_payload)
+
+    # Validate payload hash if provided
+    hash_valid = True
+    if decision_hash is not None:
+        hash_valid = (decision_hash == expected_hash)
+
+    approved = is_dict and (action == "approve") and hash_valid
+
+    qid = payload.get("question_id")
+    if approved:
+        if qid:
+            question_bank.publish_approved_question(qid)
+        else:
+            prop = question_bank.propose_question(
+                concept_id=payload.get("concept", "concept_reflection_laws"),
+                difficulty=payload.get("difficulty", "medium"),
+                prompt=payload.get("prompt", ""),
+                gold_answer=payload.get("gold_answer", ""),
+            )
+            qid = prop["question_id"]
+            question_bank.publish_approved_question(qid)
+        msg = "Question approved and published."
+    else:
+        msg = "Question proposal rejected."
+
     return {
         "steps": ["teacher_approval_gate"],
         "turn_steps": state.get("turn_steps", []) + ["teacher_approval_gate"],
         "teacher_approval_required": False,
-        "response": "Question approved and published." if approved else "Question proposal rejected."
+        "response": msg,
     }
 
 
