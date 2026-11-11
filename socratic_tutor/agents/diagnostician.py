@@ -8,20 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from socratic_tutor import config, llm
-
-DIAGNOSTICIAN_PROMPT = """You are an expert pedagogical diagnostician in NCERT Class 10 Science (Light, Eye, Electricity).
-Your role is to diagnose the underlying misconception in the student's reasoning or question.
-Do NOT give away the answer or write derivations.
-Analyze the student's question against the provided list of catalogued misconceptions.
-
-Output a valid JSON object matching:
-{
-  "identified_misconception_id": "<e.g. MISCON_LIGHT_03 or null>",
-  "identified_misconception_name": "<name of misconception or null>",
-  "confidence": <float between 0.0 and 1.0>,
-  "probing_question": "<ONE focused Socratic question targeting their mental model>"
-}
-"""
+from socratic_tutor.prompts import DIAGNOSTICIAN_PROMPT
 
 
 def _load_catalog() -> list[dict[str, Any]]:

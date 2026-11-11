@@ -3,12 +3,8 @@
 import re
 from typing import Any
 from socratic_tutor import llm, config
+from socratic_tutor.prompts import GRADER_PROMPT
 from socratic_tutor.tools import math_tools
-
-GRADER_PROMPT = """You are a grading evaluator for NCERT questions.
-Use the rubric to assess conceptual accuracy. For numerical calculations, respect the solver output.
-Provide constructive feedback and a score between 0.0 and 1.0.
-"""
 
 
 def extract_numeric_quantities(text: str) -> list[str]:

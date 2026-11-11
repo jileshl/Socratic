@@ -720,6 +720,21 @@ def test_concept_graph_prerequisite_and_recommendation_rules(tmp_path):
     assert graph.next_recommended({"reflection": 0.8}) == "mirror-rays"
 
 
+def test_centralized_prompts_registry():
+    from socratic_tutor import prompts
+    from socratic_tutor.agents import diagnostician, tutor, grader, question_setter
+
+    assert prompts.PROMPT_VERSION
+    for role in ("diagnostician", "tutor", "grader", "question_setter"):
+        prompt = prompts.get_prompt(role)
+        assert isinstance(prompt, str) and len(prompt) > 20
+
+    assert diagnostician.DIAGNOSTICIAN_PROMPT == prompts.DIAGNOSTICIAN_PROMPT
+    assert tutor.TUTOR_PROMPT == prompts.TUTOR_PROMPT
+    assert grader.GRADER_PROMPT == prompts.GRADER_PROMPT
+    assert question_setter.QUESTION_SETTER_PROMPT == prompts.QUESTION_SETTER_PROMPT
+
+
 def test_n1_quiz_result_filed_under_question_concept(monkeypatch, tmp_path):
     """Verify quiz results are filed under the question's own concept, not student's current concept (N1)."""
     from socratic_tutor.tools import question_bank

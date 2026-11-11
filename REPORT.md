@@ -125,6 +125,7 @@ The LangGraph `StateGraph` in `socratic_tutor/graph.py` implements the multi-age
 * **Parallel Resistor Remediation (Teacher Rule 2)**: Detects repeated failures on parallel resistor concepts and triggers an explicit three-step remediation path: Ohm's law ($V = IR$) review $\to$ current-division principle review $\to$ parallel equivalent resistance retry.
 * **Stuck Student Detection (Teacher Rule 3)**: Flags learners after 3 consecutive quiz failures on a concept or $>10$ minutes elapsed, raising `teacher_alert_triggered: True` to escalate to the teacher dashboard.
 * **Output Guardrail (Socratic Invariant)**: In practice mode, scans draft replies for numerical answers or direct formula substitutions against the gold solution. If a leak is detected, `answer_leak_flag: True` is flagged and the reply is replaced with an abstract conceptual scaffolding question.
+* **Centralized Prompts & Versioning (Phase 7)**: All specialist agent system instructions (`DIAGNOSTICIAN_PROMPT`, `TUTOR_PROMPT`, `GRADER_PROMPT`, `QUESTION_SETTER_PROMPT`) are unified under `socratic_tutor/prompts.py` tracked with `PROMPT_VERSION = "2026-11-09"`. This cleanly isolates runtime prompt evolution from evaluation datasets while maintaining strict backward compatibility across agent modules.
 
 ---
 
