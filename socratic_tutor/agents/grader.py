@@ -22,25 +22,54 @@ Flowchart (each [box] matches a comment in the code):
 """
 
 from typing import Any
-
+import re
 from socratic_tutor import llm, config
+from socratic_tutor.prompts import GRADER_PROMPT
 from socratic_tutor.tools import math_tools
-
-GRADER_PROMPT = """You are a grading evaluator for NCERT questions.
-Use the rubric to assess conceptual accuracy. For numerical calculations, respect the solver output.
-Return a JSON object with exactly these three keys, in this order:
-- "feedback": one or two sentences for the teacher that check the answer against the rubric, point by point.
-  The student never sees this text.
-- "is_correct": true only if the answer is fully correct, otherwise false.
-- "score": a number between 0.0 and 1.0; give partial credit for a partly correct explanation.
-"""
-# The keys are named because for_the_student() counts an answer as correct only when "is_correct" is exactly
-# true. A reply with just a score would always tell the student "not quite right". The reason comes before the
-# verdict, so the model checks first and decides second.
 
 # The only two sentences a student is ever shown by the grader. Neither depends on the answer key.
 CORRECT_FEEDBACK: str = "Correct! Well done."
 WRONG_FEEDBACK: str = "Not quite right. Let's review the concept."
+
+
+def extract_numeric_quantities(text: str) -> list[str]:
+    """Extract numeric quantity candidates from labelled or multi-part text."""
+    if not text:
+        return []
+
+    tidy = math_tools.tidy_answer_text(text)
+    if math_tools.read_quantity(tidy)["ok"]:
+        return [tidy]
+
+    results = []
+    # Split by clause separators
+    clauses = re.split(r"[;,()\n]", text)
+    for clause in clauses:
+        clause = clause.strip()
+        if not clause:
+            continue
+        tidy_c = math_tools.tidy_answer_text(clause)
+        if math_tools.read_quantity(tidy_c)["ok"]:
+            results.append(tidy_c)
+            continue
+
+        # Strip variable labels: e.g. "v =", "P =", "I =", "h' =", "Equivalent resistance ="
+        stripped = re.sub(r"^[a-zA-Z\s_\'\"’]+\s*=\s*", "", clause).strip()
+        if stripped:
+            tidy_s = math_tools.tidy_answer_text(stripped)
+            if math_tools.read_quantity(tidy_s)["ok"]:
+                results.append(tidy_s)
+                continue
+
+        # Handle chained equations e.g. "I = Q/t = 300/120 = 2.5 A"
+        if "=" in clause:
+            last_part = clause.split("=")[-1].strip()
+            tidy_last = math_tools.tidy_answer_text(last_part)
+            if math_tools.read_quantity(tidy_last)["ok"]:
+                results.append(tidy_last)
+                continue
+
+    return results
 
 
 def for_the_student(result: Any) -> dict[str, Any]:
@@ -94,6 +123,22 @@ def grade_answer(student_text: str, gold_answer: str, is_numeric: bool = False) 
             return for_the_student(
                 {"is_correct": correct, "score": 1.0 if correct else 0.0, "feedback": check["detail"]}
             )
+
+        # If direct check could not read the answer key or student attempt due to variable labels
+        # (e.g. "v = -37.5 cm", "P = +1.5 D", "I = 2.5 A"):
+        gold_candidates = extract_numeric_quantities(gold_answer)
+        student_candidates = extract_numeric_quantities(student_text)
+        if gold_candidates and student_candidates:
+            best_check = None
+            for s_cand in student_candidates:
+                for g_cand in gold_candidates:
+                    c = math_tools.check_numeric_answer(s_cand, g_cand)
+                    if c["ok"]:
+                        best_check = c
+                        if c["value"]:
+                            return for_the_student({"is_correct": True, "score": 1.0, "feedback": c["detail"]})
+            if best_check:
+                return for_the_student({"is_correct": False, "score": 0.0, "feedback": best_check["detail"]})
         # Only if the answer key itself cannot be read does grading fall back to the rubric below.
 
     # [G3] the LLM grades against the rubric. It sees the key, so its feedback goes to "detail" like the checker's.

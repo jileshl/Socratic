@@ -1,12 +1,7 @@
 """Question Setter Agent: Selects or drafts practice questions at appropriate difficulty."""
 
 from socratic_tutor import llm, config
-
-QUESTION_SETTER_PROMPT = """You are an NCERT Curriculum Question Setter.
-Select or create a question matching the target concept and difficulty.
-Do NOT reveal the answer in the question text.
-Return JSON with {concept_id, difficulty, question_text, gold_answer}.
-"""
+from socratic_tutor.prompts import QUESTION_SETTER_PROMPT
 
 
 def select_question(concept_id: str, difficulty: str = "medium") -> dict:

@@ -31,6 +31,10 @@ CACHE_DIR.mkdir(exist_ok=True)
 SUPERVISOR_MODEL = os.getenv("SUPERVISOR_MODEL", "openai/gpt-4.1-mini")
 SPECIALIST_MODEL = os.getenv("SPECIALIST_MODEL", "openai/gpt-4o-mini")
 JUDGE_MODEL = os.getenv("JUDGE_MODEL", "google/gemini-2.5-flash")
+# Guardrails (R4): Llama Guard 4 checks messages and replies for content unsafe for minors (capstone guide p.5).
+GUARD_MODEL = os.getenv("GUARD_MODEL", "meta-llama/llama-guard-4-12b")
+# "on" in the app. "off" skips the guard model and the pasted-homework reader (unit tests set it off).
+GUARD_MODELS = os.getenv("GUARD_MODELS", "on")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "baai/bge-m3")
 RERANKER_MODEL = os.getenv("RERANKER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
 
@@ -42,6 +46,15 @@ STUCK_FAILURE_COUNT = 3            # Consecutive below-threshold quiz results on
 STUCK_SESSION_COUNT = STUCK_FAILURE_COUNT  # Backward-compatible alias; counts failures, not sessions
 VERIFY_LEAK_THRESHOLD = 0.85       # Similarity threshold to flag potential answer leak
 RRF_K = 60                         # Reciprocal Rank Fusion parameter
+
+# Approval gate (R4): the server-only key that signs the teacher's decisions (socratic_tutor/approval_gate.py).
+# A secret: set it in .env (Docker gets it through env_file), never in git. Empty = no decision can be made.
+APPROVAL_SIGNING_KEY = os.getenv("APPROVAL_SIGNING_KEY", "")
+
+# Tool hooks (R4, socratic_tutor/tool_hooks.py): the budget for ONE student turn, shared by all agents.
+# Starting values, to be tuned from the "tool-hooks" log lines.
+MAX_TOOL_CALLS_PER_TURN = int(os.getenv("MAX_TOOL_CALLS_PER_TURN", "20"))     # the 21st tool call in a turn is blocked
+MAX_IDENTICAL_TOOL_CALLS = int(os.getenv("MAX_IDENTICAL_TOOL_CALLS", "2"))    # the same tool + same arguments a 3rd time is blocked
 
 # Curriculum Scope
 TARGET_CLASS = "10"
