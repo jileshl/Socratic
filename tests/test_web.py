@@ -110,12 +110,12 @@ def test_reply_says_what_the_tutor_saw(client):
 
 
 def test_quiz_questions_never_include_answer_keys(client):
-    qid = question_bank.propose_question("concept_ohms_law", "easy", "[TEST] 10 V across 5 ohm: current?", "2 A")["question_id"]
+    qid = question_bank.propose_question("concept_ohms_law", "easy", "Quiz check: 10 V across 5 ohm: current?", "2 A")["question_id"]
     assert all(i["question_id"] != qid for i in client.get("/api/quiz/questions").json()["items"])  # not approved yet
     question_bank.publish_approved_question(qid)
     response = client.get("/api/quiz/questions")
     item = next(i for i in response.json()["items"] if i["question_id"] == qid)
-    assert item["prompt"].startswith("[TEST]") and "gold_answer" not in item and "2 A" not in response.text.split(qid)[1][:300]
+    assert item["prompt"].startswith("Quiz check:") and "gold_answer" not in item and "2 A" not in response.text.split(qid)[1][:300]
 
 
 def test_student_progress_is_the_learner_record(client):
@@ -151,3 +151,69 @@ def test_alert_counters_start_at_zero(client):
     text = client.get("/metrics").text
     assert 'socratic_answer_leaks_total{source="live"}' in text and 'socratic_answer_leaks_total{source="synthetic"}' in text
     assert 'socratic_errors_total{where="chat"}' in text
+
+
+def test_suggested_plan_puts_the_foundation_first():
+    from socratic_tutor.web import study_plan
+
+    suggestion = study_plan.suggest({"concept_ohms_law": 0.6, "concept_parallel_combination": 0.3}, [])
+    ids = [s["concept_id"] for s in suggestion]
+    assert ids.index("concept_ohms_law") < ids.index("concept_parallel_combination")
+    assert all(s["reason"] for s in suggestion) and len(ids) == len(set(ids)) <= study_plan.MAX_SUGGESTIONS
+
+
+def test_teacher_names_a_student_and_assigns_a_plan(client):
+    assert TestClient(app).post("/api/teacher/students", json={"name": "Nila"}).status_code == 401
+    client.post("/api/teacher/login", json={"pin": "test-pin"})
+    added = client.post("/api/teacher/students", json={"name": "  Nila  "}).json()
+    sid = added["student_id"]
+    assert sid.startswith("stu_") and added["name"] == "Nila"
+    assert {"student_id": sid, "name": "Nila"} in client.get("/api/students").json()["items"]
+
+    bad = client.put(f"/api/teacher/students/{sid}/plan", json={"concepts": ["concept_made_up"]})
+    assert bad.status_code == 422
+    plan = ["concept_ohms_law", "concept_parallel_combination"]
+    client.put(f"/api/teacher/students/{sid}/plan", json={"concepts": plan, "note": "Ohm's law first", "due": "2026-11-20"})
+    seen = client.get(f"/api/student/{sid}/plan").json()
+    assert [i["concept_id"] for i in seen["assigned"]["items"]] == plan
+    assert seen["assigned"]["note"] == "Ohm's law first" and seen["next_up"]["concept_id"] == "concept_ohms_law"
+    assert all(i["concept_id"] not in plan for i in seen["suggested"])
+
+    row = next(s for s in client.get("/api/teacher/students").json()["items"] if s["student_id"] == sid)
+    assert row["name"] == "Nila" and row["plan_topics"] == 2 and row["plan_due"] == "2026-11-20"
+
+    client.post("/api/forget_me", json={"student_id": sid})
+    assert all(s["student_id"] != sid for s in client.get("/api/students").json()["items"])
+    assert client.get(f"/api/student/{sid}/plan").json()["assigned"] is None
+
+
+def test_alerts_show_the_students_name(client):
+    from socratic_tutor.web import api
+
+    client.post("/api/teacher/login", json={"pin": "test-pin"})
+    sid = client.post("/api/teacher/students", json={"name": "Tara"}).json()["student_id"]
+    api.ops.add_alert(sid, None, "stuck", "[TEST] stuck on lenses")
+    alert = next(a for a in client.get("/api/teacher/dashboard").json()["open_alerts"] if a["student_id"] == sid)
+    assert alert["student_name"] == "Tara"
+    client.post("/api/forget_me", json={"student_id": sid})
+
+
+def test_demo_class_has_names_and_a_plan(client, monkeypatch):
+    from socratic_tutor import config
+    from socratic_tutor.web import demo_data
+
+    monkeypatch.setattr(config, "OPS_DEMO", "1")
+    client.post("/api/teacher/login", json={"pin": "test-pin"})
+    client.post("/api/ops/demo-data", json={"action": "seed"})
+    names = {s["student_id"]: s["name"] for s in client.get("/api/students").json()["items"]}
+    assert all(names[sid].endswith(")") and "demo" in names[sid] for sid in demo_data.DEMO_NAMES)
+    plan_student = demo_data.DEMO_PLAN[0]
+    assert client.get(f"/api/student/{plan_student}/plan").json()["assigned"]["note"].startswith("[DEMO]")
+    client.post("/api/ops/demo-data", json={"action": "clear"})
+    assert not any(sid.startswith(demo_data.DEMO_PREFIX) for sid in (s["student_id"] for s in client.get("/api/students").json()["items"]))
+
+
+def test_test_questions_never_reach_the_quiz(client):
+    qid = question_bank.propose_question("concept_ohms_law", "easy", "[TEST] 10 V across 5 ohm: current?", "2 A")["question_id"]
+    question_bank.publish_approved_question(qid)
+    assert all(q["question_id"] != qid for q in client.get("/api/quiz/questions").json()["items"])

@@ -11,17 +11,13 @@
   <div class="brand"><span class="prism" aria-hidden="true"></span><div><h1>Socratic Tutor</h1><div class="sub">NCERT Class 10 Science</div></div></div>
   <nav class="topnav" aria-label="Sections">
     <button data-view="learn" class="on" onclick="go('learn')">Learn</button>
+    <button data-view="plan" onclick="go('plan')">My plan</button>
     <button data-view="quiz" onclick="go('quiz')">Quiz</button>
     <button data-view="progress" onclick="go('progress')">My progress</button>
   </nav>
-  <div class="row presenter-only">
-    <span class="presenter-badge">Presenter mode</span>
-    <label class="row" style="margin:0;gap:6px"><span class="muted">Asking as</span>
-      <select id="persona" onchange="setPersona(this.value)">
-        <option value="">A new student</option>
-        <option value="stu_demo_a">Demo student A</option>
-        <option value="stu_demo_b">Demo student B</option>
-      </select></label>
+  <div class="row">
+    <span class="presenter-badge presenter-only">Presenter mode</span>
+    <label class="picker hidden" id="pickerWrap"><span>Learning as</span><select id="persona" onchange="setPersona(this.value)" aria-label="Who is learning"></select></label>
   </div>
 </header>
 
@@ -34,6 +30,7 @@
         <h2>What are you studying today?</h2>
         <p>Ask anything from these chapters. Your tutor won't just hand you the answer: it asks you a question back, shows you the right page of your NCERT book, and gives a bigger hint whenever you need one.</p>
       </div>
+      <div id="nextUp"></div>
       <div class="chapters-grid" id="chapterCards"></div>
       <div class="consent-inline" id="consent">
         <span style="flex:1;min-width:240px">Can the tutor remember what you've mastered, so it helps you better next time? It uses a random ID, never your name. You can delete it any time.</span>
@@ -48,6 +45,12 @@
       </form>
     </div>
     <p class="footnote">Please don't share your name, phone number or school in the chat.</p>
+  </section>
+
+  <!-- ============ PLAN ============ -->
+  <section id="v-plan" class="view hidden">
+    <div class="hello"><h2>My plan</h2><p>What to work on next, in order. Your teacher's plan comes first. The tutor's suggestions come from your quiz results and change after every quiz.</p></div>
+    <div id="planBody"></div>
   </section>
 
   <!-- ============ QUIZ ============ -->
@@ -102,7 +105,9 @@ const STUDENT_STEP = {
   tutor: "Finding the right page in your book", grader: "Checking your answer", question_setter: "Choosing a practice question",
   teacher_approval_gate: "Asking your teacher", output_guardrail: "Making sure the hint doesn't give the answer away",
 };
-const LADDER = ["Idea", "Diagram", "Formula"];  // teacher rule 1: idea, then ray diagram, then formula
+// Hint size, not hint type: not every topic has a diagram or a formula (why the sky is blue has neither).
+// For numericals the tutor follows teacher rule 1 (idea, then diagram, then formula) inside these steps.
+const LADDER = ["Small hint", "Bigger hint", "Biggest hint"];
 const CHAPTERS = [
   { key: "light", name: "Light: reflection and refraction", topics: "Mirrors, lenses, refraction, sign convention", c: "var(--light)",
     ask: ["Why is the image in a concave mirror upside down?", "Why does a pencil look bent in water?"] },
@@ -113,10 +118,12 @@ const CHAPTERS = [
 ];
 const CHAPTER_KEY = { "Light - Reflection and Refraction": "light", "Human Eye and the Colourful World": "eye", "Electricity": "elec" };
 const PERSONAS = {
-  "": { label: "A new student" },
   stu_demo_a: { label: "Demo student A", note: "knows the laws of reflection well, but thinks a concave mirror always gives an upside-down image" },
   stu_demo_b: { label: "Demo student B", note: "is still unsure about the laws of reflection, which mirrors depend on" },
 };
+const CH_SHORT = { light: "Light", eye: "Human eye", elec: "Electricity" };
+let roster = {};  // student ID -> the name the teacher typed
+const label = id => !id ? (PRESENTER ? "A new student" : "Me, on this device") : (roster[id] || (PERSONAS[id] || {}).label || "A student");
 // Presenter scenarios. Every reply comes from the real tutor; nothing is scripted.
 const SCENARIOS = [
   { group: "Practice: hints, not answers", c: "var(--royal)", items: [
@@ -146,13 +153,14 @@ const SCENARIOS = [
 
 const store = { get(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }, set(k,v){ try { localStorage.setItem(k,v); } catch(e){} }, del(k){ try { localStorage.removeItem(k); } catch(e){} } };
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-let persona = "", sessions = {}, busy = false, quiz = [], lastTurn = null;
+let persona = "", sessions = {}, busy = false, quiz = [], lastTurn = null, quizFocus = null;
 
 // ---------- navigation ----------
 function go(view) {
   document.querySelectorAll(".topnav button").forEach(b => b.classList.toggle("on", b.dataset.view === view));
-  ["learn", "quiz", "progress"].forEach(v => document.getElementById("v-" + v).classList.toggle("hidden", v !== view));
-  if (view === "quiz") loadQuiz();
+  ["learn", "plan", "quiz", "progress"].forEach(v => document.getElementById("v-" + v).classList.toggle("hidden", v !== view));
+  if (view === "plan") loadPlan();
+  if (view === "quiz") { loadQuiz(quizFocus); quizFocus = null; }
   if (view === "progress") loadProgress();
 }
 function side(name) {
@@ -161,7 +169,7 @@ function side(name) {
 }
 
 // ---------- sessions ----------
-function giveConsent(yes) { store.set("consent", yes ? "yes" : "no"); document.getElementById("consent").classList.add("hidden"); }
+function giveConsent(yes) { store.set("consent", yes ? "yes" : "no"); consentStrip(); }
 function studentId() { return persona || store.get("student_id"); }
 async function session(mode) {
   const key = mode + ":" + persona;
@@ -172,10 +180,29 @@ async function session(mode) {
   if (!persona && consent) store.set("student_id", s.student_id);
   return (sessions[key] = s);
 }
-function setPersona(p) {
+function setPersona(p, quiet) {
   persona = p; document.getElementById("persona").value = p;
-  note(p ? `Now asking as ${PERSONAS[p].label}, who ${PERSONAS[p].note}.` : "Now asking as a new student.");
+  // On a shared device, one student's conversation is never left on screen for the next.
+  if (!PRESENTER) { if (p) store.set("picked", p); else store.del("picked"); logEl().innerHTML = ""; document.getElementById("welcome").classList.remove("hidden"); }
+  consentStrip();
+  if (!quiet && PRESENTER) note(p ? `Now learning as ${label(p)}${PERSONAS[p] ? ", who " + PERSONAS[p].note : ""}.` : `Now learning as ${label("")}.`);
+  refreshNextUp();
+  const open = document.querySelector(".topnav button.on").dataset.view;
+  if (open === "plan") loadPlan(); if (open === "progress") loadProgress();
 }
+// Names come from the teacher's class list. They are shown here only; chats use the random ID.
+async function loadRoster() {
+  try { (await (await fetch("/api/students")).json()).items.forEach(s => roster[s.student_id] = s.name); } catch (e) {}
+  const ids = Object.keys(roster);
+  if (PRESENTER) ["stu_demo_a", "stu_demo_b"].forEach(id => { if (!roster[id]) ids.unshift(id); });
+  const sel = document.getElementById("persona");
+  sel.innerHTML = `<option value="">${esc(label(""))}</option>` + ids.map(id => `<option value="${esc(id)}">${esc(label(id))}</option>`).join("");
+  document.getElementById("pickerWrap").classList.toggle("hidden", !ids.length && !PRESENTER);
+  const picked = store.get("picked");
+  if (!PRESENTER && picked && roster[picked]) setPersona(picked, true); else refreshNextUp();
+}
+// A student the teacher added is on the class list already, so the consent question is for "Me, on this device" only.
+function consentStrip() { document.getElementById("consent").classList.toggle("hidden", !!persona || !!store.get("consent")); }
 
 // ---------- chat ----------
 function logEl() { return document.getElementById("log"); }
@@ -184,7 +211,7 @@ function note(text, cls = "") { const d = document.createElement("div"); d.class
 function mine(text) {
   document.getElementById("welcome").classList.add("hidden");
   const d = document.createElement("div"); d.className = "msg me";
-  d.innerHTML = (persona ? `<div class="who">${esc(PERSONAS[persona].label)}</div>` : "") + `<div class="bubble">${esc(text)}</div>`;
+  d.innerHTML = (persona ? `<div class="who">${esc(label(persona))}</div>` : "") + `<div class="bubble">${esc(text)}</div>`;
   logEl().appendChild(d); scroll();
 }
 function thinking() {
@@ -196,20 +223,25 @@ function showSteps(holder, steps) {
   const seen = []; steps.forEach(s => { const t = STUDENT_STEP[s.node]; if (t && !seen.includes(t)) seen.push(t); });
   holder.querySelector(".thinking-steps").innerHTML = seen.map((t, i) => `<span class="${i === seen.length - 1 ? "now" : "done"}">${esc(t)}</span>`).join("");
 }
-function ladder(step) { return `<div class="ladder" title="Hint ${step} of 3">${LADDER.map((l, i) => `<span class="${i < step ? "on" : ""}">${l}</span>`).join("")}</div>`; }
+function ladder(step) { return `<div class="ladder" title="Hints get bigger each time you ask, up to 3">${LADDER.map((l, i) => `<span class="${i < step ? "on" : ""}">${l}</span>`).join("")}</div>`; }
+let lastMixup = {};  // per student: show the mix-up note when it is new, not on every reply
 function reply(ev, holder) {
   const body = [];
-  if (ev.misconception) body.push(`<div class="mixup"><b>Common mix-up:</b> ${esc(ev.misconception.name)}</div>`);
+  const mix = ev.misconception && ev.misconception.id; const fresh = mix && lastMixup[persona] !== mix; if (mix) lastMixup[persona] = mix;
+  if (fresh) body.push(`<div class="mixup"><b>Common mix-up:</b> ${esc(ev.misconception.name)}</div>`);
   body.push(`<div class="bubble">${esc(ev.text || "")}</div>`);
-  if (ev.hint_step) body.push(`<div class="row" style="gap:8px"><span class="muted">Hint ${ev.hint_step} of 3</span>${ladder(ev.hint_step)}</div>`);
+  const maxed = ev.hint_step && ev.hint_step >= (ev.max_hints || 3);
+  if (ev.hint_step) body.push(`<div class="row" style="gap:8px"><span class="muted">Hint ${ev.hint_step} of ${ev.max_hints || 3}</span>${ladder(ev.hint_step)}</div>`);
+  if (maxed) body.push(`<div class="maxed">That was the biggest hint. The tutor won't give the answer, so now it's your turn: write what you think, in your own words, and the tutor will check it.</div>`);
   const chips = [];
   (ev.citations || []).slice(0, 3).forEach(c => chips.push(`<span class="chip book">NCERT ${esc(c)}</span>`));
   if (ev.teacher_alerted) chips.push(`<span class="chip warn">Your teacher will check in with you</span>`);
   if (ev.error) chips.push(`<span class="chip bad">Something went wrong. Please try again.</span>`);
   if (chips.length) body.push(`<div class="chips">${chips.join("")}</div>`);
-  if (!ev.blocked && !ev.error && !ev.teacher_alerted) body.push(`<div class="quick"><button type="button" onclick="quick('Can I have another hint?')">Another hint</button><button type="button" onclick="quick('I don\\'t understand. Can you explain it differently?')">Explain differently</button><button type="button" onclick="quick('I think I\\'ve got it. Can you check my thinking?')">I think I've got it</button></div>`);
+  const quizBtn = ev.concept && ev.concept.id && hasQuiz(ev.concept.id) ? `<button type="button" onclick="quizOn('${esc(ev.concept.id)}')">Take the quiz on this</button>` : "";
+  if (!ev.blocked && !ev.error && !ev.teacher_alerted) body.push(`<div class="quick">${maxed ? "" : `<button type="button" onclick="quick('Can I have another hint?')">Another hint</button>`}<button type="button" onclick="quick('I don\\'t understand. Can you explain it differently?')">Explain differently</button><button type="button" class="${maxed ? "strong" : ""}" onclick="writeAnswer()">I think I've got it</button>${maxed ? quizBtn : ""}</div>`);
   holder.className = "msg tutor" + (ev.blocked ? " stopped" : "");
-  holder.innerHTML = `<div class="trow"><span class="avatar" aria-hidden="true"></span><div class="body">${persona ? `<div class="who">Tutor to ${esc(PERSONAS[persona].label)}</div>` : ""}${body.join("")}</div></div>`;
+  holder.innerHTML = `<div class="trow"><span class="avatar" aria-hidden="true"></span><div class="body">${persona ? `<div class="who">Tutor to ${esc(label(persona))}</div>` : ""}${body.join("")}</div></div>`;
   scroll();
 }
 async function stream(mode, text, questionId) {
@@ -249,19 +281,26 @@ async function send(e) {
   input.value = ""; await guarded(() => ask(text)); input.focus();
 }
 function quick(text) { if (!busy) guarded(() => ask(text)); }
+// "I think I've got it" opens the box for the student's own answer; sending an empty claim only gets another question back.
+function writeAnswer() { const i = document.getElementById("msg"); if (!i.value.trim()) i.value = "I think "; i.placeholder = "Say what you think and why, for example: the image is ... because ..."; i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
+let quizIds = null;
+function hasQuiz(conceptId) { return (quizIds || new Set()).has(conceptId); }
+fetch("/api/quiz/questions").then(r => r.json()).then(d => quizIds = new Set((d.items || []).map(q => q.concept_id))).catch(() => {});
 function startWith(i, j) { if (!busy) { go("learn"); guarded(() => ask(CHAPTERS[i].ask[j])); } }
 
 // ---------- quiz ----------
-async function loadQuiz() {
+async function loadQuiz(focus) {
   try { quiz = (await (await fetch("/api/quiz/questions")).json()).items || []; } catch (e) { quiz = []; }
-  document.getElementById("quizList").innerHTML = quiz.length ? quiz.map(q => {
+  const shown = focus ? quiz.filter(q => q.concept_id === focus) : quiz;
+  const head = focus && shown.length ? `<div class="row" style="justify-content:space-between;margin-bottom:10px"><b>Questions on ${esc(shown[0].concept)}</b><button class="ghost" onclick="loadQuiz()">Show all questions</button></div>` : "";
+  document.getElementById("quizList").innerHTML = head + (shown.length ? shown.map(q => {
     const c = CHAPTER_KEY[q.chapter] || "light";
     return `<div class="qcard" style="--c:var(--${c})" id="q-${esc(q.question_id)}">
       <div class="meta"><span class="ch ${c}">${esc(q.concept)}</span><span>${esc(q.difficulty)}</span></div>
       <div class="q">${esc(q.prompt.replace(/^\[DEMO\]\s*/, ""))}</div>
       <form onsubmit="checkAnswer(event,'${esc(q.question_id)}')"><input placeholder="Your answer, with its unit" aria-label="Your answer"><button class="primary">Check answer</button></form>
       <div data-result role="status"></div></div>`;
-  }).join("") : `<div class="panel empty"><h3>No quiz questions yet</h3><p>Your teacher approves every question before it appears here. Try the Learn tab in the meantime.</p></div>`;
+  }).join("") : `<div class="panel empty"><h3>No quiz questions yet</h3><p>Your teacher approves every question before it appears here. Try the Learn tab in the meantime.</p></div>`);
 }
 async function checkAnswer(e, qid) {
   e.preventDefault(); if (busy) return;
@@ -270,10 +309,51 @@ async function checkAnswer(e, qid) {
   await guarded(async () => {
     stream.onstep = steps => renderRay(steps);
     const ev = await stream("quiz", answer, qid); stream.onstep = null;
+    refreshNextUp();
     if (ev.grade) out.innerHTML = `<div class="result ${ev.grade.is_correct ? "ok" : "bad"}">${ev.grade.is_correct ? "Correct. Well done." : "Not yet. Check your sign convention and units, then try again, or ask for a hint in Learn."}</div>`;
     else out.innerHTML = `<div class="result bad">${esc(ev.text || "This answer couldn't be checked.")}</div>`;
   });
 }
+
+// ---------- plan ----------
+function statusText(it, passing) {
+  const pct = Math.round(it.mastery * 100);
+  return it.status === "mastered" ? `Mastered, ${pct}%` : it.status === "in_progress" ? `In progress, ${pct}% (passing is ${Math.round(passing * 100)}%)` : "Not started";
+}
+function planSteps(items, nextId, passing) {
+  return `<ol class="path">${items.map(it => {
+    const c = CHAPTER_KEY[it.chapter] || "light";
+    return `<li class="${it.status === "mastered" ? "mastered" : it.concept_id === nextId ? "next" : ""}"><div class="step-body">
+      <div class="row" style="gap:8px"><span class="ch ${c}">${esc(CH_SHORT[c])}</span>${it.concept_id === nextId ? `<span class="chip ok">Next</span>` : ""}</div>
+      <div class="t">${esc(it.title)}</div>${it.reason ? `<div class="why">${esc(it.reason)}</div>` : ""}
+      <div class="m"><span class="meter"><span style="width:${Math.round(it.mastery * 100)}%" class="${it.mastery >= passing ? "hi" : it.mastery >= .4 ? "mid" : "lo"}"></span></span><span>${statusText(it, passing)}</span></div>
+      <div class="acts"><button onclick="practise('${esc(it.concept_id)}')">Practise with the tutor</button>${it.has_quiz ? `<button onclick="quizOn('${esc(it.concept_id)}')">Take the quiz</button>` : ""}</div>
+    </div></li>`;
+  }).join("")}</ol>`;
+}
+let planCache = null;
+async function fetchPlan() {
+  const id = studentId(); if (!id) return (planCache = null);
+  try { return (planCache = await (await fetch("/api/student/" + encodeURIComponent(id) + "/plan")).json()); } catch (e) { return null; }
+}
+async function loadPlan() {
+  const el = document.getElementById("planBody");
+  const p = await fetchPlan();
+  if (!p) { el.innerHTML = `<div class="panel empty"><h3>No plan yet</h3><p>${Object.keys(roster).length ? "Pick your name at the top, or choose" : "Choose"} "Yes, remember me" on the Learn page and answer a few questions. Your plan will appear here.</p></div>`; return; }
+  const nextId = p.next_up && p.next_up.concept_id; const a = p.assigned; const parts = [];
+  if (a) parts.push(`<div class="panel"><div class="plan-head"><h2>From your teacher</h2><span class="muted">${a.done} of ${a.items.length} done${a.due ? `, <span class="due">due ${esc(new Date(a.due + "T00:00").toLocaleDateString(undefined, { day: "numeric", month: "short" }))}</span>` : ""}</span></div>
+    ${a.note ? `<div class="teacher-note"><b>Note:</b> ${esc(a.note.replace(/^\[DEMO\]\s*/, ""))}</div>` : ""}${planSteps(a.items, nextId, p.passing)}</div>`);
+  if (p.suggested.length) parts.push(`<div class="panel"><div class="plan-head"><h2>${a ? "Also suggested" : "Suggested for you"}</h2><span class="muted">Worked out by code from your quiz results</span></div>${planSteps(p.suggested, nextId, p.passing)}</div>`);
+  el.innerHTML = parts.join("") || `<div class="panel empty"><h3>Everything is mastered</h3><p>Nothing left on your plan. Ask your teacher for the next set of topics.</p></div>`;
+}
+async function refreshNextUp() {
+  const el = document.getElementById("nextUp"); const p = await fetchPlan(); const n = p && p.next_up;
+  el.innerHTML = n ? `<div class="nextup"><div class="t"><span class="muted">${p.assigned && p.assigned.items.some(i => i.concept_id === n.concept_id) ? "Next on your teacher's plan" : "Suggested next"}</span><b>${esc(n.title)}</b></div>
+    <button class="primary" onclick="practise('${esc(n.concept_id)}')">Practise it</button><button onclick="go('plan')">See my plan</button></div>` : "";
+}
+function conceptTitle(id) { const all = [...((planCache || {}).suggested || []), ...(((planCache || {}).assigned || {}).items || [])]; return (all.find(i => i.concept_id === id) || {}).title || id; }
+function practise(id) { if (busy) return; go("learn"); guarded(() => ask(`Can you help me practise ${conceptTitle(id)}? Ask me a question to start.`)); }
+function quizOn(id) { quizFocus = id; go("quiz"); }
 
 // ---------- progress ----------
 async function loadProgress() {
@@ -344,7 +424,8 @@ async function runScenario(gi, si) {
 
 // ---------- start ----------
 document.getElementById("chapterCards").innerHTML = CHAPTERS.map((c, i) => `<div class="chcard" style="--c:${c.c}"><h3>${esc(c.name)}</h3><div class="topics">${esc(c.topics)}</div>${c.ask.map((q, j) => `<button type="button" onclick="startWith(${i},${j})">${esc(q)}</button>`).join("")}</div>`).join("");
-if (store.get("consent")) document.getElementById("consent").classList.add("hidden");
+consentStrip();
+loadRoster();
 if (PRESENTER) { renderScenarios(); renderRay(); }
 </script>
 </body>

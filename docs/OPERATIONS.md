@@ -53,14 +53,22 @@ Alerts (`alert_rules` in `docker/docker-compose.yml`):
 ## Demo mode
 
 The student and teacher apps are separate and show only what each user needs:
-- **Student (`/`):** Learn (pick a chapter, then chat; hints climb idea, diagram, formula; NCERT sections cited), Quiz (teacher-approved questions, marked by the calculator) and My progress (mastery by chapter, mix-ups, delete my data).
-- **Teacher (`/teacher`):** what needs attention now, class overview, questions to review, alerts, and conversations to score for the judge.
+- **Student (`/`):** "Learning as" picks the student from the teacher's class list (or "Me, on this device" with a random ID). Learn (pick a chapter, then chat; hints climb idea, diagram, formula; NCERT sections cited; "Next on your plan" at the top), My plan (the teacher's plan in order with live progress, plus the tutor's suggestion), Quiz (teacher-approved questions, marked by the calculator) and My progress (mastery by chapter, mix-ups, delete my data).
+- **Teacher (`/teacher`):** what needs attention now, class overview, students and plans, questions to review, alerts (with the student's name), and conversations to score for the judge.
+
+### Students and study plans
+
+- **Names:** the teacher adds a student by first name or nickname ("Add a student" creates a random `stu_` ID) or names a student who already used the tutor. Names live only in the ops store's `roster` table and are shown only in the teacher view and the student picker; chats, traces and models see only the ID. "Delete my data" removes the name too.
+- **Study plan:** under Students and plans, the teacher picks a student from the Student list (or clicks a row), then builds the plan: add topics, reorder them, remove them, add a note and a due date, then "Assign plan". The tutor's suggestion sits next to it with the reason for each topic, and "Use all suggestions" copies it in.
+- **The suggestion is code, not a model** (`socratic_tutor/web/study_plan.py`): open mix-ups first, then weak topics with any weak topic they build on placed before them (the same "fix the foundation first" rule as the supervisor), then the next new topic in a chapter the student is already working on. It is recomputed on every request, so it changes after every quiz.
+- **Endpoints:** `GET /api/students`, `GET /api/student/{id}/plan`, `GET /api/concepts`, and the teacher-only `GET/POST /api/teacher/students`, `GET/PUT /api/teacher/students/{id}`, `PUT /api/teacher/students/{id}/plan`.
+- **Limit:** the class list is open to anyone who can reach the student page, as on a shared classroom device. A school deployment would replace the picker with the school's sign-in.
 
 For the live demo and the backup recording, add `?demo=1` to either address (**presenter mode**). It adds the guided scenarios, the Student A/B switch, an "under the hood" view of the agent team, and the teacher's Demo guide with demo data. Students and teachers never see these.
 
 - **Student view in presenter mode, "Scenarios":** one click runs a real conversation for each use case:
   - the concave-mirror misconception, "just tell me the answer", parallel resistors (teacher rule 2), informal English, changing topic mid-way;
-  - Student A and Student B asking the same question (Signature A; choose them in the "You / Demo student" menu);
+  - Student A and Student B asking the same question (Signature A; choose them in the "Learning as" menu);
   - a quiz answer checked by the calculator, right and with a sign slip;
   - "I'm the teacher", instructions hidden in pasted homework, a student in distress, personal details;
   - "My progress" (what is stored about the student), then "Forget my data".
@@ -71,6 +79,7 @@ For the live demo and the backup recording, add `?demo=1` to either address (**p
   - `[DEMO]` questions waiting for approval;
   - Student A and Student B;
   - six demo students with misconceptions and mastery;
+  - a name ending in "(demo)" for each demo student, and a `[DEMO]` study plan for Rohan (demo);
   - two `[DEMO]` alerts.
 
   All demo IDs start with `stu_demo_`, and the overview shows a banner while they are loaded. No sessions, costs or leaks are invented. The code is in `socratic_tutor/web/demo_data.py`.
