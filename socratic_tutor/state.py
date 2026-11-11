@@ -31,6 +31,7 @@ class SocraticState(TypedDict, total=False):
     effective_lesson_applied: str | None     # Reflexion playbook lesson applied
     hint_step: int                           # 1..MAX_HINT_STEPS
     hint_tries: int                          # Re-try counter for hint generation on leak
+    hint_raised_this_turn: bool              # Track whether hint was already escalated this turn
     last_concept_id: str | None              # Track previous concept for hint ladder reset
     last_misconception_id: str | None        # Track previous misconception for hint ladder progression
     

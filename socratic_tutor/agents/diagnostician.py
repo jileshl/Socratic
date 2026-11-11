@@ -63,6 +63,7 @@ def match_misconception_by_keywords(query: str, catalog: list[dict[str, Any]]) -
         return {
             "identified_misconception_id": best_match["id"],
             "identified_misconception_name": best_match["name"],
+            "chapter": best_match.get("chapter"),
             "confidence": min(1.0, 0.4 + 0.15 * best_score),
             "probing_question": best_match.get("diagnostic_probe", "Can you explain your reasoning step by step?"),
         }

@@ -105,6 +105,7 @@ def node_input_guardrail(state: SocraticState) -> dict:
         "grade_result": None,
         "answer_leak_flag": False,
         "hint_tries": 0,
+        "hint_raised_this_turn": False,
         "plan": [],
         "distress_detected": False,
         "teacher_alert_triggered": False,
@@ -175,14 +176,16 @@ def node_supervisor(state: SocraticState) -> dict:
     turn_steps = state.get("turn_steps", [])
 
     hint_step = state.get("hint_step", 1)
+    hint_raised = state.get("hint_raised_this_turn", False)
     last_concept = state.get("last_concept_id")
     if last_concept and current_concept and last_concept != current_concept:
         hint_step = 1
 
-    # Hint progression: adjust once per turn at start of practice turn if stuck
+    # Hint progression: adjust once per turn at start of practice turn if stuck (N4)
     if mode == "practice" and not plan:
-        if stuck and hint_step < config.MAX_HINT_STEPS:
+        if stuck and not hint_raised and hint_step < config.MAX_HINT_STEPS:
             hint_step = min(hint_step + 1, config.MAX_HINT_STEPS)
+            hint_raised = True
 
     # Quiz Mode:
     if mode == "quiz":
@@ -197,29 +200,65 @@ def node_supervisor(state: SocraticState) -> dict:
                 "next_recommended_concept": next_concept,
                 "teacher_alert_triggered": teacher_alert,
                 "hint_step": hint_step,
+                "hint_raised_this_turn": hint_raised,
             }
         else:
+            # N3: If grader encountered an error (e.g. unapproved question), do not run replan
+            if grade_res.get("error"):
+                return {
+                    "steps": ["supervisor"],
+                    "turn_steps": turn_steps + ["supervisor"],
+                    "plan": ["grade_error"],
+                    "mastery_map": mastery,
+                    "current_concept_id": current_concept,
+                    "next_recommended_concept": next_concept,
+                    "teacher_alert_triggered": True,
+                    "hint_step": hint_step,
+                    "hint_raised_this_turn": hint_raised,
+                    "last_concept_id": current_concept,
+                }
+
             # Grader finished! Supervisor saves quiz result and replans
             score = float(grade_res.get("score", 0.0))
-            if student_id and current_concept and not grade_res.get("error"):
-                quiz_res = store.record_quiz_result(student_id, current_concept, score)
+            # N1: quiz results filed under the question's own concept, not the student's current concept
+            quiz_concept = grade_res.get("concept_id")
+            if not quiz_concept:
+                qid = state.get("current_question_id")
+                if qid:
+                    q = question_bank.get_approved_question(qid)
+                    if q and q.get("concept_id"):
+                        quiz_concept = q.get("concept_id")
+            quiz_concept = quiz_concept or current_concept
+
+            concept_failures = 0
+            if student_id and quiz_concept:
+                quiz_res = store.record_quiz_result(student_id, quiz_concept, score)
                 if quiz_res.get("teacher_alert_triggered"):
                     teacher_alert = True
                 updated_profile = store.get_profile(student_id)
                 mastery = dict(updated_profile.get("mastery_map", {}))
                 failure_streaks = updated_profile.get("failure_streaks", {})
-                concept_failures = failure_streaks.get(current_concept or "", 0)
+                concept_failures = failure_streaks.get(quiz_concept or "", 0)
 
-            if score >= 0.7:
+            # N2: 'mastered' is decided by updated mastery, not by a single answer
+            concept_mastery = mastery.get(quiz_concept)
+            if concept_mastery is not None:
+                is_mastered = concept_mastery >= config.PASSING_MASTERY_THRESHOLD
+            else:
+                is_mastered = score >= config.PASSING_MASTERY_THRESHOLD
+
+            if is_mastered:
                 next_concept = cg.next_recommended(mastery)
                 current_concept = next_concept
                 hint_step = 1
             elif concept_failures >= 3:
-                prereqs = cg.get_prerequisites(current_concept)
+                prereqs = cg.get_prerequisites(quiz_concept)
                 if prereqs:
                     next_concept = prereqs[0]
                     current_concept = next_concept
                     hint_step = 1
+            else:
+                current_concept = quiz_concept
 
             return {
                 "steps": ["supervisor"],
@@ -230,6 +269,7 @@ def node_supervisor(state: SocraticState) -> dict:
                 "next_recommended_concept": next_concept,
                 "teacher_alert_triggered": teacher_alert,
                 "hint_step": hint_step,
+                "hint_raised_this_turn": hint_raised,
                 "last_concept_id": current_concept,
             }
 
@@ -244,6 +284,7 @@ def node_supervisor(state: SocraticState) -> dict:
             "next_recommended_concept": next_concept,
             "teacher_alert_triggered": teacher_alert,
             "hint_step": hint_step,
+            "hint_raised_this_turn": hint_raised,
         }
 
     # Practice Mode:
@@ -258,6 +299,7 @@ def node_supervisor(state: SocraticState) -> dict:
             "next_recommended_concept": next_concept,
             "teacher_alert_triggered": teacher_alert,
             "hint_step": hint_step,
+            "hint_raised_this_turn": hint_raised,
             "last_concept_id": current_concept,
             "last_misconception_id": state.get("last_misconception_id"),
         }
@@ -269,9 +311,11 @@ def node_supervisor(state: SocraticState) -> dict:
         last_miscon = state.get("last_misconception_id")
 
         # Raise hint ladder when the same concept and misconception returned (last hint didn't help)
+        # N4: Ensure hint can only be raised at most once per turn
         if miscon_id and last_miscon and miscon_id == last_miscon and last_concept == current_concept:
-            if hint_step < config.MAX_HINT_STEPS:
+            if not hint_raised and hint_step < config.MAX_HINT_STEPS:
                 hint_step = min(hint_step + 1, config.MAX_HINT_STEPS)
+                hint_raised = True
 
         if miscon_id:
             if student_id:
@@ -293,6 +337,7 @@ def node_supervisor(state: SocraticState) -> dict:
             "next_recommended_concept": next_concept,
             "teacher_alert_triggered": teacher_alert,
             "hint_step": hint_step,
+            "hint_raised_this_turn": hint_raised,
             "last_concept_id": current_concept,
             "last_misconception_id": miscon_id or last_miscon,
         }
@@ -307,6 +352,7 @@ def node_supervisor(state: SocraticState) -> dict:
         "next_recommended_concept": next_concept,
         "teacher_alert_triggered": teacher_alert,
         "hint_step": hint_step,
+        "hint_raised_this_turn": hint_raised,
         "last_concept_id": current_concept,
     }
 
@@ -332,9 +378,21 @@ def node_diagnostician(state: SocraticState) -> dict:
 
     miscon_id = None
     miscon_name = None
+    miscon_chapter = None
     if isinstance(diag_res, dict):
         miscon_id = diag_res.get("identified_misconception_id") or diag_res.get("id")
         miscon_name = diag_res.get("identified_misconception_name") or diag_res.get("name")
+        miscon_chapter = diag_res.get("chapter")
+
+    if miscon_id and not miscon_chapter:
+        try:
+            catalog = getattr(diagnostician, "_load_catalog", lambda: [])()
+            for m in catalog:
+                if m.get("id") == miscon_id:
+                    miscon_chapter = m.get("chapter")
+                    break
+        except Exception:
+            pass
 
     playbook = ReflexionPlaybook()
     effective_lesson = None
@@ -346,7 +404,11 @@ def node_diagnostician(state: SocraticState) -> dict:
     return {
         "steps": ["diagnostician"],
         "turn_steps": state.get("turn_steps", []) + ["diagnostician"],
-        "identified_misconception": {"id": miscon_id, "name": miscon_name} if miscon_id else None,
+        "identified_misconception": {
+            "id": miscon_id,
+            "name": miscon_name,
+            "chapter": miscon_chapter,
+        } if miscon_id else None,
         "effective_lesson_applied": effective_lesson,
     }
 
@@ -355,7 +417,13 @@ def node_tutor(state: SocraticState) -> dict:
     query = state.get("query", "")
     hint_tries = state.get("hint_tries", 0) + 1
     chapter = _resolve_chapter(state)
-    passages = state.get("retrieved_sections") or textbook_kb.search_textbook(query, chapter=chapter, top_k=4)
+    passages = state.get("retrieved_sections")
+    if not passages:
+        passages = textbook_kb.search_textbook(query, chapter=chapter, top_k=4)
+        if not passages and chapter:
+            # Fall back to unfiltered search if filtered search returned no relevant passages
+            passages = textbook_kb.search_textbook(query, top_k=4)
+    passages = passages or []
 
     initial_citations = []
     for p in passages:
@@ -464,11 +532,12 @@ def node_grader(state: SocraticState) -> dict:
         }
 
     gold_answer = q.get("gold_answer", "")
-    if not concept_id and q.get("concept_id"):
-        concept_id = q.get("concept_id")
+    # N1: question's own concept takes priority for grading and recording
+    question_concept = q.get("concept_id") or concept_id
 
     is_numeric = bool(re.search(r"\d", gold_answer))
     res = grader.grade_answer(attempt, gold_answer, is_numeric=is_numeric)
+    res["concept_id"] = question_concept
 
     feedback = res.get("feedback") or ("Correct! Well done." if res.get("is_correct") else "Not quite right. Let's review the concept.")
 
@@ -477,7 +546,7 @@ def node_grader(state: SocraticState) -> dict:
         "turn_steps": state.get("turn_steps", []) + ["grader"],
         "grade_result": res,
         "response": feedback,
-        "current_concept_id": concept_id or state.get("current_concept_id"),
+        "current_concept_id": question_concept or concept_id,
     }
 
 
