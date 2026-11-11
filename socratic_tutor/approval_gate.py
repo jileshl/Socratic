@@ -28,6 +28,7 @@ For the rest of the app:
                              and get the line to tell the student ("Your teacher will review N new ...")
     get_approval_graph()   - the one shared approval graph (on .index/checkpoints.sqlite), for the question
                              setter and the teacher view alike
+    waiting_sets(graph)    - every set waiting for the teacher, for the teacher view's list
 """
 
 import hashlib
@@ -635,6 +636,42 @@ def pending_set(graph: Any, set_id: str) -> dict[str, Any] | None:
                 "note": str(snapshot.values.get("note", "")),
             }
     return None
+
+
+def waiting_sets(graph: Any) -> list[dict[str, Any]]:
+    """[W1]-[W3] Every question set waiting for the teacher, the most recently active first (for the teacher view).
+
+    Each item is pending_set()'s {"set_id", "payload", "payload_hash", "note"}. Returns [] without a checkpointer.
+    """
+    # Flowchart (each [box] matches a comment below):
+    #
+    #   [W1] the graph's checkpointer                                   none -> []
+    #   [W2] every saved checkpoint: keep each NEW "qbset:" thread id (in the order listed: newest first)
+    #        FINISH this loop before [W3]
+    #   [W3] for each kept id: pending_set (still waiting?)              yes -> keep it
+    #   [R]  the waiting sets
+
+    # [W1] the checkpointer keeps every set's paused run.
+    checkpointer: Any = getattr(graph, "checkpointer", None)
+    if checkpointer is None:
+        return []
+    # [W2] the set threads, read in ONE pass. SqliteSaver.list() holds the saver's lock while it yields, and
+    # get_state (inside pending_set) takes the same lock, so calling pending_set inside this loop would wait
+    # forever. The ids are collected first, and only then is each set looked at.
+    thread_ids: list[str] = []
+    for saved in checkpointer.list(None):
+        thread_id: str = str(saved.config["configurable"]["thread_id"])
+        # The shared checkpoint file also holds the students' threads: only "qbset:" threads are sets.
+        if thread_id.startswith(THREAD_PREFIX) and thread_id not in thread_ids:
+            thread_ids.append(thread_id)
+    # [W3] the sets that are still waiting (a published, rejected or refused set has finished).
+    waiting: list[dict[str, Any]] = []
+    for thread_id in thread_ids:
+        found: dict[str, Any] | None = pending_set(graph, thread_id[len(THREAD_PREFIX):])
+        if found is not None:
+            waiting.append(found)
+    # [R] the waiting sets.
+    return waiting
 
 
 # ---------------------------------------------------------------------------
