@@ -43,6 +43,11 @@ STUCK_SESSION_COUNT = STUCK_FAILURE_COUNT  # Backward-compatible alias; counts f
 VERIFY_LEAK_THRESHOLD = 0.85       # Similarity threshold to flag potential answer leak
 RRF_K = 60                         # Reciprocal Rank Fusion parameter
 
+# Tool hooks (R4, socratic_tutor/tool_hooks.py): the budget for ONE student turn, shared by all agents.
+# Starting values, to be tuned from the "tool-hooks" log lines.
+MAX_TOOL_CALLS_PER_TURN = int(os.getenv("MAX_TOOL_CALLS_PER_TURN", "20"))     # the 21st tool call in a turn is blocked
+MAX_IDENTICAL_TOOL_CALLS = int(os.getenv("MAX_IDENTICAL_TOOL_CALLS", "2"))    # the same tool + same arguments a 3rd time is blocked
+
 # Curriculum Scope
 TARGET_CLASS = "10"
 TARGET_SUBJECT = "Science"
