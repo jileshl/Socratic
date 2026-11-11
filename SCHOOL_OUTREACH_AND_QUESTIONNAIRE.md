@@ -160,7 +160,7 @@ Prerequisites  Catalogue (8-12 / ch)     Hint Ladders   & Alerts/Approvals
 ---
 
 ### Module 4: Human Rubric Calibration for the LLM Judge (L13 & Cohen's $\kappa$)
-*Objective: Calibrate our automated LLM Judge (`gemini-2.5-flash` or `llama-3.3-70b-instruct`) against human teacher judgment.*
+*Objective: Calibrate our automated LLM Judge (`gemini-3.1-flash-lite` or `llama-3.3-70b-instruct`) against human teacher judgment.*
 
 **The Task for the Teacher:**
 We will present the teacher with **20 anonymized student responses** to conceptual board questions.  
