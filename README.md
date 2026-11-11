@@ -38,7 +38,36 @@ The current 35-chunk index also stores 47 stable IDs for numbered end-of-chapter
 
 ## Learner Memory Status
 
-`LearnerStore` can persist mastery, misconception/resolution records, effective lesson IDs, quiz history, and per-concept failure streaks. Quiz-derived mastery is the average of up to the latest three quiz scores; the explicit `update_mastery()` method sets a supplied score. The stuck threshold counts consecutive below-threshold quiz results on a concept, not distinct sessions. Session registration creates a profile row so session-only learners can expire. `purge_expired_profiles()` and `forget_me()` are implemented APIs, but expiry has no scheduler and the graph/app does not register sessions or expose a user-facing `/forget_me` route yet. See [MEMORY_POLICY.md](MEMORY_POLICY.md) for the implemented/planned boundary.
+`LearnerStore` can persist mastery, misconception/resolution records, effective lesson IDs, quiz history, and per-concept failure streaks. Quiz-derived mastery is the average of up to the latest three quiz scores; the explicit `update_mastery()` method sets a supplied score. The stuck threshold counts consecutive below-threshold quiz results on a concept, not distinct sessions. Session registration creates a profile row so session-only learners can expire. `purge_expired_profiles()` and `forget_me()` are implemented APIs, with session registration wired to active sessions and `node_supervisor`, and the web service providing `/api/forget_me` to purge checkpoint threads and learner profiles on demand. See [MEMORY_POLICY.md](MEMORY_POLICY.md) for the implemented/planned boundary.
+
+## Multi-Agent Orchestration (Supervisor Loop)
+
+The agent team is orchestrated in a cyclical LangGraph state machine (`socratic_tutor/graph.py`) implementing the **Supervisor Loop** from REPORT §1.1:
+
+```mermaid
+graph TD
+    START --> input_guardrail
+    input_guardrail -.-> END
+    input_guardrail -.-> supervisor
+    supervisor -.-> diagnostician
+    supervisor -.-> grader
+    supervisor -.-> question_setter
+    supervisor -.-> tutor
+    supervisor -.-> output_guardrail
+    diagnostician --> supervisor
+    grader --> supervisor
+    tutor --> supervisor
+    output_guardrail -.-> tutor
+    output_guardrail -.-> END
+    question_setter --> teacher_approval_gate
+    teacher_approval_gate --> END
+```
+
+1. **Supervisor Loop & Dynamic Planning**: The supervisor inspects what has run during the current turn, maintains a visible `plan: list[str]` object in `SocraticState`, and routes to the necessary specialist. Specialists (`diagnostician`, `tutor`, `grader`) return their results back to the `supervisor`, allowing dynamic replanning (e.g., updating mastery and concept recommendations after grading, or adjusting hint plans when no misconception is detected).
+2. **Self-Correction Cycle on Answer Leaks**: If `output_guardrail` flags an answer leak in practice mode, the graph routes back to `tutor` to rewrite the hint cleanly (up to `hint_tries < 2`), falling back to a safe conceptual scaffold if the leak persists.
+3. **Secure Answer Key Isolation**: In quiz mode, `node_grader` retrieves approved answer keys in code using `current_question_id` against the SQLite question bank; gold answer keys never sit in the shared `SocraticState`, mitigating prompt injection leaks.
+4. **Turn-to-Turn State Isolation**: Per-turn state fields (`response`, `citations`, `plan`, `hint_tries`, safety flags) are reset at the start of each turn in `node_input_guardrail`, while multi-turn conversational history is preserved in `messages` via `operator.add`.
+
 
 ---
 
