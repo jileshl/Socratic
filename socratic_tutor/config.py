@@ -47,6 +47,10 @@ STUCK_SESSION_COUNT = STUCK_FAILURE_COUNT  # Backward-compatible alias; counts f
 VERIFY_LEAK_THRESHOLD = 0.85       # Similarity threshold to flag potential answer leak
 RRF_K = 60                         # Reciprocal Rank Fusion parameter
 
+# Approval gate (R4): the server-only key that signs the teacher's decisions (socratic_tutor/approval_gate.py).
+# A secret: set it in .env (Docker gets it through env_file), never in git. Empty = no decision can be made.
+APPROVAL_SIGNING_KEY = os.getenv("APPROVAL_SIGNING_KEY", "")
+
 # Tool hooks (R4, socratic_tutor/tool_hooks.py): the budget for ONE student turn, shared by all agents.
 # Starting values, to be tuned from the "tool-hooks" log lines.
 MAX_TOOL_CALLS_PER_TURN = int(os.getenv("MAX_TOOL_CALLS_PER_TURN", "20"))     # the 21st tool call in a turn is blocked
