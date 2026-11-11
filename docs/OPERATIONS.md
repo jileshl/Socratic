@@ -30,7 +30,7 @@ One file: `socratic_tutor/config.py` holds every model ID, budget and threshold,
   - class misconceptions by concept, mastery by concept, cost per session
   - approvals and alerts
   - transcript labelling for the judge (the teacher's 1–5 rubric)
-- **Approvals tied to the exact payload:** each item shows its SHA-256 hash, and every decision must send the hash the teacher saw. An edit creates a new hash, so an approval carrying the old one is refused (HTTP 409, counted as a stale approval). `python -m scripts.seed_demo` adds three `[DEMO]` items for the demo until the question setter proposes its own.
+- **Approvals tied to the exact payload:** each item shows its SHA-256 hash, and every decision must send the hash the teacher saw. An edit creates a new hash, so an approval carrying the old one is refused (HTTP 409, counted as a stale approval). `python -m scripts.seed_demo` adds five `[DEMO]` items (keys computed by the calculator); once approved, they appear in the student's Quiz picker.
 - **Alerts:**
   - distress: immediately
   - stuck: 3 sessions on one concept, or 10+ minutes in a session without progress (both teacher-validated)
@@ -50,7 +50,31 @@ Alerts (`alert_rules` in `docker/docker-compose.yml`):
 - `TutorErrors`
 - `DistressAlertWaiting`
 
-Alert demo: set `OPS_DEMO=1`, sign in to the teacher view, then run `fetch('/api/ops/emit-test-leak?count=5', {method: 'POST'})` in the browser console. These leaks are labelled `source="synthetic"` and are kept out of the dashboard's leak count.
+## Demo mode
+
+The student and teacher apps are separate and show only what each user needs:
+- **Student (`/`):** Learn (pick a chapter, then chat; hints climb idea, diagram, formula; NCERT sections cited), Quiz (teacher-approved questions, marked by the calculator) and My progress (mastery by chapter, mix-ups, delete my data).
+- **Teacher (`/teacher`):** what needs attention now, class overview, questions to review, alerts, and conversations to score for the judge.
+
+For the live demo and the backup recording, add `?demo=1` to either address (**presenter mode**). It adds the guided scenarios, the Student A/B switch, an "under the hood" view of the agent team, and the teacher's Demo guide with demo data. Students and teachers never see these.
+
+- **Student view in presenter mode, "Scenarios":** one click runs a real conversation for each use case:
+  - the concave-mirror misconception, "just tell me the answer", parallel resistors (teacher rule 2), informal English, changing topic mid-way;
+  - Student A and Student B asking the same question (Signature A; choose them in the "You / Demo student" menu);
+  - a quiz answer checked by the calculator, right and with a sign slip;
+  - "I'm the teacher", instructions hidden in pasted homework, a student in distress, personal details;
+  - "My progress" (what is stored about the student), then "Forget my data".
+
+  Each scenario says what to watch for, and "Under the hood" shows the steps, the misconception spotted, the hint level (at most 3), the plan, the quiz check and the safety checks for the last turn. Every reply comes from the real graph.
+- **Teacher view in presenter mode, "Demo guide":** a numbered checklist for each teacher scenario (approve, an edit cancelling an earlier approval, reject, class misconceptions, alerts, the leak alert, stop and resume, labelling), with buttons that go there.
+- **Demo data** (only with `OPS_DEMO=1`, from the Demo guide or `python -m scripts.seed_demo --class`; remove with `--clear`):
+  - `[DEMO]` questions waiting for approval;
+  - Student A and Student B;
+  - six demo students with misconceptions and mastery;
+  - two `[DEMO]` alerts.
+
+  All demo IDs start with `stu_demo_`, and the overview shows a banner while they are loaded. No sessions, costs or leaks are invented. The code is in `socratic_tutor/web/demo_data.py`.
+- **Alert demo:** with `OPS_DEMO=1`, use "Fire the leak alert" in the Demo guide (or `POST /api/ops/emit-test-leak?count=5`). These leaks are labelled `source="synthetic"` and are kept out of the dashboard's leak count.
 
 ## Traces
 
