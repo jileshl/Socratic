@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import threading
 from collections import defaultdict
 
 from rank_bm25 import BM25Okapi
@@ -12,6 +13,7 @@ from socratic_tutor.index import NCERTIndex
 
 
 _TOKEN = re.compile(r"[a-z0-9]+")
+_CHROMA_LOCK = threading.Lock()
 
 
 def _tokenize(text: str) -> list[str]:
@@ -146,21 +148,22 @@ class HybridRetriever:
         if not query.strip() or top_k <= 0 or not self.index.chunks:
             return []
 
-        collection = self._get_dense_collection()
-        chunks_by_id = self._sync_dense_collection(collection)
-        result = collection.query(
-            query_texts=[query],
-            n_results=min(top_k, len(chunks_by_id)),
-            include=["distances"],
-        )
-        hit_ids = result.get("ids", [[]])[0]
-        distances = result.get("distances", [[]])[0]
-        hits = []
-        for chunk_id, distance in zip(hit_ids, distances):
-            chunk = chunks_by_id.get(chunk_id)
-            if chunk is not None:
-                hits.append(dict(chunk, dense_score=1.0 - distance))
-        return hits
+        with _CHROMA_LOCK:
+            collection = self._get_dense_collection()
+            chunks_by_id = self._sync_dense_collection(collection)
+            result = collection.query(
+                query_texts=[query],
+                n_results=min(top_k, len(chunks_by_id)),
+                include=["distances"],
+            )
+            hit_ids = result.get("ids", [[]])[0]
+            distances = result.get("distances", [[]])[0]
+            hits = []
+            for chunk_id, distance in zip(hit_ids, distances):
+                chunk = chunks_by_id.get(chunk_id)
+                if chunk is not None:
+                    hits.append(dict(chunk, dense_score=1.0 - distance))
+            return hits
 
     def search_hybrid(
         self,

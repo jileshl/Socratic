@@ -35,6 +35,7 @@ Human-judge calibration, assessment-material approval, question-bank rejection c
 ---
 
 ### Milestone 1 — TODO 1: Curriculum Data & Structured Ingestion (L4–L5)
+* **Owner**: **Aman** (R2: Knowledge & Memory Engineer) & **Anurag** (R1: Domain & Product Lead)
 * **Goal**: Ingest NCERT Class 10 Science (Light & Electricity) textbooks and exemplar problems without losing formulas, ray diagram descriptions, or exercise IDs.
 * **Files**:
   - `Socratic/socratic_tutor/kb.py`
@@ -51,6 +52,7 @@ Human-judge calibration, assessment-material approval, question-bank rejection c
 ---
 
 ### Milestone 2 — TODO 2: Hybrid Retrieval & Reranker (L5–L6)
+* **Owner**: **Aman** (R2: Knowledge & Memory Engineer)
 * **Goal**: Build hybrid search combining BM25 keyword matching and dense vector embeddings via Reciprocal Rank Fusion (RRF), followed by a cross-encoder reranker.
 * **Files**:
   - `Socratic/socratic_tutor/retrieval.py`
@@ -66,6 +68,7 @@ Human-judge calibration, assessment-material approval, question-bank rejection c
 ---
 
 ### Milestone 3 — TODO 3: FastMCP Deterministic Math Solvers (L7)
+* **Owner**: **Abhishek** (R4: Tools, Control & Security Engineer)
 * **Goal**: Ground all arithmetic and algebra in unit-tested Python/SymPy code. The LLM must never calculate numbers in its head.
 * **Files**:
   - `Socratic/socratic_tutor/tools/math_tools.py`
@@ -82,6 +85,7 @@ Human-judge calibration, assessment-material approval, question-bank rejection c
 ---
 
 ### Milestone 4 — TODO 4: Concept Graph & Learner Memory Store (L8–L10)
+* **Owner**: **Aman** (R2: Knowledge & Memory Engineer)
 * **Goal**: Implement persistent learner state tracking mastery by concept, misconceptions seen, and effective explanations.
 * **Files**:
   - `Socratic/socratic_tutor/concept_graph.py`
@@ -96,6 +100,7 @@ Human-judge calibration, assessment-material approval, question-bank rejection c
 ---
 
 ### Milestone 5 — TODO 5: Safety Guardrails & Answer-Leak Filter (L15)
+* **Owner**: **Abhishek** (R4: Tools, Control & Security Engineer) with **Aman** (co-owner R5d: Red-team attacks E2)
 * **Goal**: Enforce the Socratic invariant—never provide direct worked solutions in practice mode—and defend against prompt injection and student distress.
 * **Files**:
   - `Socratic/socratic_tutor/policy.py`
@@ -110,10 +115,12 @@ Human-judge calibration, assessment-material approval, question-bank rejection c
 ---
 
 ### Milestone 6 — TODO 6: LangGraph Multi-Agent Team (L8, L11)
+* **Owner**: **Jilesh** (R3: Agents & Orchestration Engineer) with **Abhishek** (R4) & **Anurag** (R1)
 * **Goal**: Orchestrate the Supervisor, Diagnostician, Tutor, Grader, and Question Setter in a typed StateGraph with conditional edges and checkpointing.
 * **Files**:
   - `Socratic/socratic_tutor/state.py`
   - `Socratic/socratic_tutor/graph.py`
+  - `Socratic/socratic_tutor/prompts.py`
   - `Socratic/socratic_tutor/agents/diagnostician.py`
   - `Socratic/socratic_tutor/agents/tutor.py`
   - `Socratic/socratic_tutor/agents/grader.py`
@@ -128,6 +135,7 @@ Human-judge calibration, assessment-material approval, question-bank rejection c
 ---
 
 ### Milestone 7 — TODO 7: Teacher Approval Gate & Hooks (L14)
+* **Owner**: **Abhishek** (R4: Tools, Control & Security Engineer) with **Jilesh** (R3: Agents & Orchestration Engineer)
 * **Goal**: Block unapproved question sets from entering the shared bank using LangGraph `interrupt()` and alert teachers when students are stuck.
 * **Files**:
   - `Socratic/socratic_tutor/graph.py`
@@ -141,6 +149,7 @@ Human-judge calibration, assessment-material approval, question-bank rejection c
 ---
 
 ### Milestone 8 — TODO 8: Simulated Students & Evaluation Harness (L13)
+* **Owner**: **Vidhya** (R6: Deployment & Ops / R5 Lead) with **Anurag** (R1) & **Aman** (R5a)
 * **Goal**: Build 40 simulated LLM student personas with hidden knowledge states to measure teaching effectiveness, plus an independent LLM judge calibrated against teacher labels.
 * **Files**:
   - `Socratic/evalkit/simulated_student.py`
@@ -157,6 +166,7 @@ Human-judge calibration, assessment-material approval, question-bank rejection c
 ---
 
 ### Milestone 9 — TODO 9: L12 Reflexion Improvement Loop
+* **Owner**: **Jilesh** (R3: Agents & Orchestration Engineer) with **Anurag** (R1) & **Aman** (R2)
 * **Goal**: Run a self-improvement loop over dev sessions: diagnose failed teaching turns, write actionable teaching lessons per misconception, human-review the playbook, and freeze before testing on held-out students.
 * **Files**:
   - `Socratic/socratic_tutor/reflexion.py`
@@ -171,6 +181,7 @@ Human-judge calibration, assessment-material approval, question-bank rejection c
 ---
 
 ### Milestone 10 — TODO 10: Full Stack Deployment & Grafana Ops (L16)
+* **Owner**: **Vidhya** (R6: Deployment & Ops Engineer)
 * **Goal**: Deliver a one-command runnable system with a responsive web interface, Prometheus metrics, and Grafana monitoring dashboards.
 * **Files**:
   - `Socratic/socratic_tutor/app.py`

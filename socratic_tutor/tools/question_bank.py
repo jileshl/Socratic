@@ -183,3 +183,27 @@ def _change_set(shown: list[dict], approved: list[dict], new_status: str, result
         raise
     finally:
         conn.close()
+
+
+def get_approved_question(question_id: str) -> dict | None:
+    """Retrieve an approved question by ID from the question bank."""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        cursor = conn.execute(
+            "SELECT id, concept_id, difficulty, prompt, gold_answer, status FROM questions WHERE id = ? AND status = 'approved'",
+            (question_id,)
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+
+def get_question(question_id: str) -> dict | None:
+    """Retrieve a question by ID from the question bank regardless of status."""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        cursor = conn.execute(
+            "SELECT id, concept_id, difficulty, prompt, gold_answer, status FROM questions WHERE id = ?",
+            (question_id,)
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None

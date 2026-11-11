@@ -24,11 +24,13 @@ from mcp import Client
 from socratic_tutor import config
 from socratic_tutor.tools import math_tools_server
 from socratic_tutor.tools import question_bank_server
+from socratic_tutor.tools import textbook_kb_server
 
 # Every MCP server in the project: name -> server object.
 SERVERS: dict[str, Any] = {
     "math-tools": math_tools_server.mcp,
     "question-bank": question_bank_server.mcp,
+    "textbook-kb": textbook_kb_server.mcp,
 }
 
 # [X2] The output folder comes from config.py, so all paths are set in one place.
