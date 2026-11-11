@@ -59,8 +59,7 @@ graph TD
     tutor --> supervisor
     output_guardrail -.-> tutor
     output_guardrail -.-> END
-    question_setter --> teacher_approval_gate
-    teacher_approval_gate --> END
+    question_setter --> END
 ```
 
 1. **Supervisor Loop & Dynamic Planning**: The supervisor inspects what has run during the current turn, maintains a visible `plan: list[str]` object in `SocraticState`, and routes to the necessary specialist. Specialists (`diagnostician`, `tutor`, `grader`) return their results back to the `supervisor`, allowing dynamic replanning (e.g., updating mastery and concept recommendations after grading, or adjusting hint plans when no misconception is detected).
@@ -153,7 +152,7 @@ or testing on the simulated students used for tuning.
 ## Web app, monitoring and evaluation (R5 + R6)
 
 ```bash
-cp .env.example .env                                   # add OPENROUTER_API_KEY, change TEACHER_PIN
+cp .env.example .env                                   # add OPENROUTER_API_KEY, change TEACHER_PIN, set APPROVAL_SIGNING_KEY (python -c "import secrets; print(secrets.token_hex(32))")
 docker compose -f docker/docker-compose.yml up --build # student :8000, teacher :8000/teacher, Grafana :3000, Prometheus :9090
 python -m evalkit.runner --list           # experiments E1–E4 (evalkit/experiments.py)
 python -m evalkit.runner e1_c2 --split dev
