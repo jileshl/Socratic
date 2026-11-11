@@ -70,3 +70,58 @@ def test_metrics_endpoint(client):
     text = client.get("/metrics").text
     for name in ("socratic_requests_total", "socratic_answer_leaks_total", "socratic_pending_approvals", "socratic_request_latency_seconds"):
         assert name in text
+
+
+# ---- richer demo UI (scenarios, progress, quiz picker, demo data)
+
+
+def test_reply_says_what_the_tutor_saw(client):
+    session = client.post("/api/session", json={"mode": "practice", "consent": True}).json()
+    reply = _events(client.post("/api/chat", json={"session_id": session["session_id"], "message": "Why is a concave mirror image inverted?"}))[-1]
+    for key in ("misconception", "concept", "hint_step", "max_hints", "plan", "mastery_delta", "grade", "answer_leak_flagged"):
+        assert key in reply
+    assert reply["grade"] is None  # practice mode: nothing is graded
+
+
+def test_quiz_questions_never_include_answer_keys(client):
+    qid = question_bank.propose_question("concept_ohms_law", "easy", "[TEST] 10 V across 5 ohm: current?", "2 A")["question_id"]
+    assert all(i["question_id"] != qid for i in client.get("/api/quiz/questions").json()["items"])  # not approved yet
+    question_bank.publish_approved_question(qid)
+    response = client.get("/api/quiz/questions")
+    item = next(i for i in response.json()["items"] if i["question_id"] == qid)
+    assert item["prompt"].startswith("[TEST]") and "gold_answer" not in item and "2 A" not in response.text.split(qid)[1][:300]
+
+
+def test_student_progress_is_the_learner_record(client):
+    from socratic_tutor.web.api import learners
+
+    learners.update_mastery("stu_progress_test", "concept_ohms_law", 0.6)
+    learners.record_misconception("stu_progress_test", "MISCON_ELEC_04")
+    out = client.get("/api/student/stu_progress_test/progress").json()
+    assert out["mastery"][0]["concept_id"] == "concept_ohms_law" and out["mastery"][0]["mastery"] == 0.6
+    assert out["misconceptions"][0]["id"] == "MISCON_ELEC_04" and out["misconceptions"][0]["name"]
+    assert client.get("/api/student/someone_else/progress").status_code == 404
+
+
+def test_demo_data_is_switched_off_by_default_and_labelled(client, monkeypatch):
+    from socratic_tutor import config
+
+    assert client.post("/api/teacher/login", json={"pin": "test-pin"}).status_code == 200
+    monkeypatch.setattr(config, "OPS_DEMO", "0")
+    assert client.post("/api/ops/demo-data", json={"action": "seed"}).status_code == 403
+    monkeypatch.setattr(config, "OPS_DEMO", "1")
+    sessions_before = client.get("/api/teacher/dashboard").json()["sessions"]
+    out = client.post("/api/ops/demo-data", json={"action": "seed"}).json()
+    assert out["students"] == 8 and out["questions_proposed"] == 5
+    dash = client.get("/api/teacher/dashboard").json()
+    assert dash["demo_students"] == 8 and dash["sessions"] == sessions_before  # no sessions invented
+    assert all(a["detail"].startswith("[DEMO]") for a in dash["open_alerts"] if a["student_id"].startswith("stu_demo_"))
+    assert client.post("/api/ops/demo-data", json={"action": "clear"}).json()["students_removed"] == 8
+    assert client.get("/api/teacher/dashboard").json()["demo_students"] == 0
+
+
+def test_alert_counters_start_at_zero(client):
+    """AnswerLeakSpike uses increase(): the counters must exist at 0 before the first leak."""
+    text = client.get("/metrics").text
+    assert 'socratic_answer_leaks_total{source="live"}' in text and 'socratic_answer_leaks_total{source="synthetic"}' in text
+    assert 'socratic_errors_total{where="chat"}' in text
