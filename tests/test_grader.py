@@ -51,6 +51,27 @@ def _block_the_llm(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(grader.llm, "chat_json", no_llm)
 
 
+def test_the_llm_is_asked_for_is_correct(monkeypatch: pytest.MonkeyPatch) -> None:
+    """[G3] The system prompt names all three keys. Without "is_correct", [F2] would mark every LLM-graded answer wrong."""
+    system_prompts_seen: list[str] = []
+
+    def chat_json(prompt: str, system_prompt: str, **kwargs: Any) -> dict[str, Any]:
+        # Record the system prompt that the LLM path really sends.
+        system_prompts_seen.append(system_prompt)
+        return {"feedback": "Matches the rubric.", "is_correct": True, "score": 1.0}
+
+    monkeypatch.setattr(grader.llm, "chat_json", chat_json)
+    result: dict[str, Any] = grader.grade_answer("Real and inverted.", "Real and inverted.")
+    # The LLM path ran once, with the grader's own system prompt.
+    assert len(system_prompts_seen) == 1
+    # Each key is named in quotes, as the JSON reply must spell it.
+    for key in ('"feedback"', '"is_correct"', '"score"'):
+        assert key in system_prompts_seen[0], "The grader prompt doesn't ask for " + key
+    # A reply in that shape is read as correct.
+    assert result["is_correct"] is True
+    assert result["feedback"] == grader.CORRECT_FEEDBACK
+
+
 def fake_llm(reply: Any, prompts_seen: list[str]) -> Callable[..., Any]:
     """A stand-in for llm.chat_json that returns `reply`, and records each prompt in `prompts_seen`."""
     def chat_json(prompt: str, system_prompt: str, **kwargs: Any) -> Any:

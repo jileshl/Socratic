@@ -28,8 +28,15 @@ from socratic_tutor.tools import math_tools
 
 GRADER_PROMPT = """You are a grading evaluator for NCERT questions.
 Use the rubric to assess conceptual accuracy. For numerical calculations, respect the solver output.
-Provide constructive feedback and a score between 0.0 and 1.0.
+Return a JSON object with exactly these three keys, in this order:
+- "feedback": one or two sentences for the teacher that check the answer against the rubric, point by point.
+  The student never sees this text.
+- "is_correct": true only if the answer is fully correct, otherwise false.
+- "score": a number between 0.0 and 1.0; give partial credit for a partly correct explanation.
 """
+# The keys are named because for_the_student() counts an answer as correct only when "is_correct" is exactly
+# true. A reply with just a score would always tell the student "not quite right". The reason comes before the
+# verdict, so the model checks first and decides second.
 
 # The only two sentences a student is ever shown by the grader. Neither depends on the answer key.
 CORRECT_FEEDBACK: str = "Correct! Well done."
