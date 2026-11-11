@@ -215,13 +215,15 @@ MARKDOWN_IMAGE = re.compile(r"!\[[^\]]*\](\([^)]*\)|\[[^\]]*\])")
 MARKDOWN_LINK_DEFINITION = re.compile(r"(?m)^\s*\[[^\]]+\]:\s*\S+.*$")
 MARKDOWN_LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
 ANGLE_LINK = re.compile(r"<\s*(https?|ftp)://[^>]*>", re.IGNORECASE)
-HTML_TAG = re.compile(r"<\s*/?\s*(img|iframe|script|object|embed|link|a|svg|video|audio|source|style)\b[^>]*>", re.IGNORECASE)
+# The tag name must follow "<" (or "</") directly, as in real HTML, so physics text such as
+# "is the total R < a single resistor's value, or > it?" is not mistaken for an <a ...> tag.
+HTML_TAG = re.compile(r"</?(img|iframe|script|object|embed|link|a|svg|video|audio|source|style)\b[^>]*>", re.IGNORECASE)
 CSS_URL = re.compile(r"url\s*\([^)]*\)", re.IGNORECASE)
 BARE_URL = re.compile(
     r"\b(https?|ftp)://\S+"                        # http://, https://, ftp://
     r"|\bwww\.\S+"                                 # www.example.com
     r"|(?<![\w:/])//[\w-]+(\.[\w-]+)+\S*"          # //example.com/picture.png
-    r"|\bdata:\S+"                                 # data: addresses
+    r"|\bdata:[a-z]+/\S*"                          # data: addresses (data:image/png;...), not "data: u = -30 cm"
     r"|\b[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}/\S*",  # example.com/answers (a name ending in letters, then "/")
     re.IGNORECASE,
 )
