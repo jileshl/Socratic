@@ -64,12 +64,21 @@ Return JSON with {concept_id, difficulty, question_text, gold_answer, calculatio
 
 GUARD_SYSTEM_PROMPT = """You are a content safety guard for a Class 10 minor tutoring chatbot.
 Determine if the student message or conversation is safe or unsafe.
-Unsafe categories:
-- S1: Violent crimes
-- S3: Sexual content
-- S4: Child sexual exploitation
+Unsafe categories (Llama Guard standard taxonomy):
+- S1: Violent Crimes
+- S2: Non-Violent Crimes
+- S3: Sex-Related Crimes
+- S4: Child Sexual Exploitation and Abuse
+- S5: Defamation
+- S6: Specialized Advice
+- S7: Privacy
+- S8: Intellectual Property
+- S9: Indiscriminate Weapons
+- S10: Hate
 - S11: Suicide & Self-Harm
-- S14: General dangerous/harmful content
+- S12: Sexual Content
+- S13: Cyberattacks
+- S14: Code Interpreter Abuse
 If safe or educational, output exactly:
 safe
 If unsafe, output exactly:
