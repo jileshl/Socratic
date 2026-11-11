@@ -9,9 +9,9 @@
 # The local virtual environment and Python caches: the image installs its own packages.
 .venv/
 venv/
-__pycache__/
-*.pyc
-.pytest_cache/
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
 
 # Local data made while running: the image builds its own index on first start (see the Dockerfile CMD),
 # and docker compose keeps the databases and traces on volumes.
