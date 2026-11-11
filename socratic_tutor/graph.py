@@ -765,10 +765,12 @@ def _calculate_or_verify_answer(
 
     # 6. Regex fallback: Lens power (supports metres and cm, catches unexpected errors)
     if "power" in prompt_text.lower() and ("focal length" in prompt_text.lower() or " dioptre" in prompt_text.lower() or " d\b" in prompt_text.lower() or " d." in prompt_text.lower()):
+        # A concave (diverging) lens has a negative focal length, so a negative power.
+        sign = -1.0 if "concave" in prompt_text.lower() else 1.0
         f_m = re.search(r"focal\s+length.*?(\d+(?:\.\d+)?)\s*m\b", prompt_text, re.I)
         if f_m:
             try:
-                res = math_tools_server.solve_optics("lens_power", {"f": float(f_m.group(1))}, length_unit="m")
+                res = math_tools_server.solve_optics("lens_power", {"f": sign * float(f_m.group(1))}, length_unit="m")
                 if res.get("ok"):
                     return f"{res['value']:g} D", True
             except Exception:
@@ -776,7 +778,7 @@ def _calculate_or_verify_answer(
         f_cm = re.search(r"focal\s+length.*?(\d+(?:\.\d+)?)\s*cm\b", prompt_text, re.I)
         if f_cm:
             try:
-                res = math_tools_server.solve_optics("lens_power", {"f": float(f_cm.group(1))}, length_unit="cm")
+                res = math_tools_server.solve_optics("lens_power", {"f": sign * float(f_cm.group(1))}, length_unit="cm")
                 if res.get("ok"):
                     return f"{res['value']:g} D", True
             except Exception:

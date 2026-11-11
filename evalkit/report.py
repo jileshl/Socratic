@@ -211,8 +211,9 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.stub:
+        # Stand-in runs test the plumbing only: they are logged but never counted in the
+        # report tables unless --include-stub is asked for explicitly.
         os.environ["EVAL_STUB"] = "1"
-        args.include_stub = True
 
     # Execute requested evaluations
     if args.run:
