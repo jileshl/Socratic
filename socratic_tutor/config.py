@@ -31,6 +31,10 @@ CACHE_DIR.mkdir(exist_ok=True)
 SUPERVISOR_MODEL = os.getenv("SUPERVISOR_MODEL", "openai/gpt-4.1-mini")
 SPECIALIST_MODEL = os.getenv("SPECIALIST_MODEL", "openai/gpt-4o-mini")
 JUDGE_MODEL = os.getenv("JUDGE_MODEL", "google/gemini-2.5-flash")
+# Guardrails (R4): Llama Guard 4 checks messages and replies for content unsafe for minors (capstone guide p.5).
+GUARD_MODEL = os.getenv("GUARD_MODEL", "meta-llama/llama-guard-4-12b")
+# "on" in the app. "off" skips the guard model and the pasted-homework reader (unit tests set it off).
+GUARD_MODELS = os.getenv("GUARD_MODELS", "on")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "baai/bge-m3")
 RERANKER_MODEL = os.getenv("RERANKER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
 
