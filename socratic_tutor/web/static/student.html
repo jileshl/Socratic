@@ -77,11 +77,15 @@ async function loadQuizQuestion() {
   try {
     // A quiz question belongs to a session, so make sure there is one (in quiz mode).
     const s = await ensureSession();
+    // The student left quiz mode while we waited: show nothing.
+    if (!s || mode !== "quiz") return;
     // Ask for the question after the one just asked, so the student doesn't get the same one twice in a row.
     let url = "/api/quiz/next?session_id=" + encodeURIComponent(s.session_id);
     if (currentQuestionId) { url = url + "&previous_id=" + encodeURIComponent(currentQuestionId); }
     const r = await fetch(url);
     const q = await r.json();
+    // Same check after the second wait.
+    if (mode !== "quiz") return;
     // No approved question yet: say so, and keep no id.
     if (!q.question_id) { currentQuestionId = null; add("note", q.note || "No quiz questions yet."); return; }
     // Remember which question is on screen, and show it.
@@ -92,9 +96,14 @@ async function loadQuizQuestion() {
 function giveConsent(yes) { store.set("consent", yes ? "yes" : "no"); document.getElementById("consent").classList.add("hidden"); }
 async function ensureSession() {
   if (session) return session;
+  // The mode this session is for. If the student switches mode while we wait, this session is for the old
+  // mode, so it is dropped (returns null) instead of quietly becoming the new mode's session.
+  const askedMode = mode;
   const consent = store.get("consent") === "yes";
-  const r = await fetch("/api/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode, consent, student_id: consent ? store.get("student_id") : null }) });
-  session = await r.json();
+  const r = await fetch("/api/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: askedMode, consent, student_id: consent ? store.get("student_id") : null }) });
+  const created = await r.json();
+  if (mode !== askedMode) return null;
+  session = created;
   if (consent) store.set("student_id", session.student_id);
   return session;
 }
@@ -105,8 +114,12 @@ async function send(ev) {
   busy = true; document.getElementById("sendBtn").disabled = true; input.value = "";
   add("me", text); renderPipeline();
   const lit = {};
+  // The tutor's reply event for this message (to know whether a quiz answer was really graded).
+  let lastReply = null;
   try {
     const s = await ensureSession();
+    // The mode changed while the session was being made: ask the student to send again.
+    if (!s) { add("note", "The mode changed. Please send your message again."); busy = false; document.getElementById("sendBtn").disabled = false; return; }
     // The message, and in quiz mode the id of the question being answered (null in practice mode).
     const body = { session_id: s.session_id, message: text };
     if (mode === "quiz") { body.current_question_id = currentQuestionId; }
@@ -126,13 +139,16 @@ async function send(ev) {
           if (ev.teacher_alerted) chips.push("a teacher has been told");
           if (ev.pending_approval) chips.push("waiting for teacher approval");
           add("tutor", ev.text || "(no reply)", chips);
+          lastReply = ev;
         }
       }
     }
   } catch (e) { add("note", "Couldn't reach the tutor. Please try again."); }
+  // Quiz mode: show the next question only after a real grade (not after a refusal, a distress reply or an
+  // error, where the student should still see their unanswered question). Wait for it before unlocking Send,
+  // so a quick second answer can't go to the old question.
+  if (mode === "quiz" && lastReply && lastReply.graded) { await loadQuizQuestion(); }
   busy = false; document.getElementById("sendBtn").disabled = false; input.focus();
-  // Quiz mode: once an answer has been checked, show the next question.
-  if (mode === "quiz") { loadQuizQuestion(); }
 }
 async function forgetMe() {
   const id = store.get("student_id");
