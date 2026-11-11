@@ -30,9 +30,13 @@ CACHE_DIR.mkdir(exist_ok=True)
 # Model definitions (OpenRouter default)
 SUPERVISOR_MODEL = os.getenv("SUPERVISOR_MODEL", "openai/gpt-4.1-mini")
 SPECIALIST_MODEL = os.getenv("SPECIALIST_MODEL", "openai/gpt-4o-mini")
-JUDGE_MODEL = os.getenv("JUDGE_MODEL", "google/gemini-2.5-flash")
-# Guardrails (R4): Llama Guard 4 checks messages and replies for content unsafe for minors (capstone guide p.5).
-GUARD_MODEL = os.getenv("GUARD_MODEL", "meta-llama/llama-guard-4-12b")
+# The course's OpenRouter key allows only some models (google/gemini-2.5-flash isn't one of them), so the judge is
+# gemini-3.1-flash-lite: a different family from the agents, as in the L13 hands-on notebook and the guide (p.5).
+JUDGE_MODEL = os.getenv("JUDGE_MODEL", "google/gemini-3.1-flash-lite")
+# Guardrails (R4): the content guard for minors. The guide suggests Llama Guard 4 (p.5), but the course key doesn't
+# allow it, so a general model from a different family is prompted with Llama Guard's categories (guard_models.py).
+# A model whose ID contains "llama-guard" is still sent the conversation as it is, if a key allows it.
+GUARD_MODEL = os.getenv("GUARD_MODEL", "google/gemini-3.1-flash-lite")
 # "on" in the app. "off" skips the guard model and the pasted-homework reader (unit tests set it off).
 GUARD_MODELS = os.getenv("GUARD_MODELS", "on")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "baai/bge-m3")
