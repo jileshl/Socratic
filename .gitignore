@@ -5,9 +5,9 @@ __pycache__/
 .DS_Store
 
 # Copyrighted/local curriculum sources and generated retrieval index
-*.pdf
 data/source_pdfs/
 .index/
+jesc1dd/*
 
 # C extensions
 *.so

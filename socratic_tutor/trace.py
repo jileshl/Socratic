@@ -20,6 +20,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from langchain_core.callbacks import BaseCallbackHandler
+
+from socratic_tutor import config
+
 _PHONE = re.compile(r"(?<!\d)(?:\+?91[\s-]?)?\d{10}(?!\d)")
 _EMAIL = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,7}\b")
 _NAME = re.compile(r"(?i)\b(my name is|i am called|this is)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)")
@@ -40,8 +44,6 @@ def scrub(value: Any) -> Any:
 
 
 def traces_dir() -> Path:
-    from socratic_tutor import config
-
     path = config.TRACES_DIR
     path.mkdir(parents=True, exist_ok=True)
     return path
@@ -81,9 +83,7 @@ class SocraticTracer:
 class TraceCallback:
     """LangChain callback that writes a scrubbed record for every LLM and tool call."""
 
-    def __new__(cls, session_id: str | None = None):  # built lazily so importing this module stays cheap
-        from langchain_core.callbacks import BaseCallbackHandler
-
+    def __new__(cls, session_id: str | None = None):
         class _Handler(BaseCallbackHandler):
             def __init__(self, sid: str | None):
                 self.sid = sid
@@ -140,8 +140,6 @@ class CostMeter:
     """
 
     def __new__(cls):
-        from langchain_core.callbacks import BaseCallbackHandler
-
         class _Meter(_MeterBase, BaseCallbackHandler):
             pass
 

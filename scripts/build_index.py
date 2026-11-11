@@ -22,8 +22,8 @@ CHAPTERS = (
 
 EXEMPLARS = (
     ("9", ["exemplar_ch9.pdf"]),
-    ("10", [ "exemplar_ch10.pdf" ]),
-    ("11", ["exemplar_ch11"]),
+    ("10", ["exemplar_ch10.pdf"]),
+    ("11", ["exemplar_ch11.pdf"]),
 )
 
 

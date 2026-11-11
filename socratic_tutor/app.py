@@ -4,14 +4,14 @@
     make app                              # same
 """
 
-import os
+import uvicorn
+
+from socratic_tutor import config
 
 
 def main() -> None:
-    import uvicorn
-
-    host = os.getenv("HOST", "127.0.0.1")
-    port = int(os.getenv("PORT", "8000"))
+    host = config.HOST
+    port = config.PORT
     print(f"Socratic Tutor: student view http://{host}:{port}/  ·  teacher view http://{host}:{port}/teacher")
     uvicorn.run("socratic_tutor.web.server:app", host=host, port=port, log_level="info")
 

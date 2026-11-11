@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import statistics
 import subprocess
 import time
@@ -205,8 +206,6 @@ def main() -> None:
     parser.add_argument("--stub", action="store_true", help="use the offline stand-in model (plumbing check; never reported)")
     args = parser.parse_args()
     if args.stub:
-        import os
-
         os.environ["EVAL_STUB"] = "1"
 
     if args.list or not args.experiment:

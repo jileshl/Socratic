@@ -7,6 +7,10 @@ import re
 from dataclasses import asdict, dataclass
 from functools import lru_cache
 
+import numpy as np
+from pypdf import PdfReader
+from rapidocr_onnxruntime import RapidOCR
+
 
 SECTION_TITLES: dict[str, str] = {
     "9.1": "Reflection of Light",
@@ -107,10 +111,6 @@ _DUPLICATE_OCR_OVERLAP = 0.35
 
 @lru_cache(maxsize=1)
 def _load_ocr_engine():
-    try:
-        from rapidocr_onnxruntime import RapidOCR
-    except ImportError as exc:  # pragma: no cover - environment-specific message
-        raise RuntimeError("Image OCR requires rapidocr-onnxruntime; install requirements.txt") from exc
     return RapidOCR()
 
 
@@ -146,7 +146,6 @@ def _ocr_page_images(page: object, native_text: str, ocr_engine=None) -> list[st
 
             if ocr_engine is None:
                 ocr_engine = _load_ocr_engine()
-            import numpy as np
 
             image = image.convert("RGB")
             image.thumbnail((2400, 2400))
@@ -185,11 +184,6 @@ def _ocr_page_images(page: object, native_text: str, ocr_engine=None) -> list[st
 
 def extract_pdf_text(pdf_bytes: bytes, ocr_engine=None) -> str:
     """Extract native text and targeted OCR text without persisting the source PDF."""
-    try:
-        from pypdf import PdfReader
-    except ImportError as exc:  # pragma: no cover - environment-specific message
-        raise RuntimeError("PDF ingestion requires pypdf; install requirements.txt") from exc
-
     reader = PdfReader(io.BytesIO(pdf_bytes))
     pages = []
     for page in reader.pages:

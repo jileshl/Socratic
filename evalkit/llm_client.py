@@ -21,8 +21,9 @@ from typing import Any
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
+from langchain_openai import ChatOpenAI
 
-from socratic_tutor import config
+from socratic_tutor import config, llm as team_llm
 from socratic_tutor.trace import CostMeter
 from evalkit.prompts import JUDGE_DIMENSIONS as JUDGE_CRITERIA  # teacher's rubric
 
@@ -83,13 +84,12 @@ def make_chat(model: str, temperature: float, role: str = "generic") -> BaseChat
     """Chat model for the harness's own calls (simulated student, judge, baselines)."""
     if stub_mode():
         return StubChatModel(role=role)
-    from langchain_openai import ChatOpenAI
 
     return ChatOpenAI(
         model=model,
         temperature=temperature,
-        api_key=os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENAI_API_KEY"),
-        base_url=os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
+        api_key=os.getenv("OPENROUTER_API_KEY", config.OPENROUTER_API_KEY) or os.getenv("OPENAI_API_KEY", config.OPENAI_API_KEY),
+        base_url=os.getenv("OPENROUTER_BASE_URL", config.OPENROUTER_BASE_URL),
         timeout=90,
         max_retries=2,
         extra_body={"usage": {"include": True}},  # OpenRouter returns the call's cost
@@ -127,6 +127,5 @@ def patch_team_llm_for_stub() -> None:
     """In stub mode, route the tutor's own LLM helper to the stand-in too."""
     if not stub_mode():
         return
-    from socratic_tutor import llm as team_llm
 
     team_llm.get_llm = lambda model=config.SPECIALIST_MODEL, temperature=0.2: StubChatModel(role="grader")  # type: ignore[assignment]

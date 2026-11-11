@@ -1,7 +1,8 @@
 """FastMCP Tool Server: question-bank (propose, publish behind approval gate)."""
 
-import sqlite3
 import json
+import sqlite3
+import uuid
 from pathlib import Path
 from socratic_tutor import config
 
@@ -28,7 +29,6 @@ _init_db()
 
 def propose_question(concept_id: str, difficulty: str, prompt: str, gold_answer: str) -> dict:
     """Propose a new practice question for teacher approval."""
-    import uuid
     qid = f"Q_{uuid.uuid4().hex[:8]}"
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute(

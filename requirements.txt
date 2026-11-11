@@ -18,10 +18,12 @@ rank-bm25>=0.2.2          # lexical search
 pypdf>=5,<7               # local NCERT PDF text extraction
 fonttools>=4.0            # improves extraction from embedded CFF fonts
 pillow>=10                # decode embedded PDF images for targeted OCR
+numpy>=1.24               # image array operations for OCR
 rapidocr-onnxruntime>=1.4,<2  # CPU OCR fallback for text-bearing figures/pages
 opencv-python>=4.8,<4.11  # stable image backend for RapidOCR on supported CPUs
 
 # orchestration
+pydantic>=2.0
 langgraph>=0.2,<2         # classic StateGraph API; 0.2.x and 1.x both work
 langgraph-checkpoint-sqlite>=2,<4  # SqliteSaver used by socratic_tutor.graph
 langchain-core>=0.3

@@ -10,8 +10,6 @@ from __future__ import annotations
 import re
 from typing import Any, Iterable
 
-from evalkit import answer_keys
-
 # ---------------------------------------------------------------- numbers
 
 _NUMBER = re.compile(r"(?<![\w.])([+\-−]?\s?\d+(?:\.\d+)?(?:\s?[x×]\s?10\^?\s?[+\-−]?\d+)?)")
@@ -35,6 +33,9 @@ def numbers_in(text: str) -> list[float]:
         if float(denominator):
             values.append(float(numerator.replace("−", "-")) / float(denominator))
     return values
+
+
+from evalkit import answer_keys
 
 
 def answer_value(answer: dict[str, Any]) -> float | None:
