@@ -3,6 +3,7 @@
 import json
 import sqlite3
 import uuid
+from typing import Any
 from pathlib import Path
 from socratic_tutor import config
 
@@ -207,3 +208,30 @@ def get_question(question_id: str) -> dict | None:
         )
         row = cursor.fetchone()
         return dict(row) if row else None
+
+
+def list_approved_for_students(concept_id: str | None = None, limit: int = 50) -> list[dict]:
+    """Approved questions a student may be asked, WITHOUT their answer keys (for the quiz page).
+
+    concept_id: only questions of this concept; None means approved questions of any concept.
+    Returns [{"id", "concept_id", "difficulty", "prompt"}, ...] in a fixed order (by id), at most `limit`.
+    The gold answer is never selected here, so it can't reach the student's browser by mistake.
+    """
+    # The query reads only the four columns a student may see; gold_answer is deliberately left out.
+    sql: str = "SELECT id, concept_id, difficulty, prompt FROM questions WHERE status = 'approved'"
+    # The values for the ? placeholders, in order (never pasted into the SQL text).
+    values: list[Any] = []
+    # Narrow it to one concept when one is asked for.
+    if concept_id is not None:
+        sql = sql + " AND concept_id = ?"
+        values.append(concept_id)
+    # A fixed order, so "the next question" is the same every time for the same bank.
+    sql = sql + " ORDER BY id LIMIT ?"
+    values.append(limit)
+    # One row becomes one plain dict.
+    found: list[dict] = []
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        for row in conn.execute(sql, values):
+            found.append(dict(row))
+    return found
