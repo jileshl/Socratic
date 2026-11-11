@@ -1,0 +1,26 @@
+# Files Docker must NOT copy into the image (the Dockerfile does `COPY . .`).
+
+# Secrets: API keys and the teacher PIN live in .env, which docker compose reads at run time (env_file).
+# Copied into the image, anyone with the image could read them.
+.env
+.env.*
+!.env.example
+
+# The local virtual environment and Python caches: the image installs its own packages.
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local data made while running: the image builds its own index on first start (see the Dockerfile CMD),
+# and docker compose keeps the databases and traces on volumes.
+.index/
+.cache/
+evalkit/results/
+
+# Git history and editor folders aren't needed to run the app.
+.git/
+.github/
+.vscode/
+.idea/
