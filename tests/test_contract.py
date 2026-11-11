@@ -1214,3 +1214,74 @@ def test_output_guardrail_uses_question_gold_answer_not_student_attempt(monkeypa
     assert out_no_leak["answer_leak_flag"] is False
 
 
+def test_question_setter_structured_calculation():
+    """Verify structured calculation from question setter computes answer with math-tools and marks verified."""
+    from socratic_tutor import graph
+
+    # Optics: mirror formula
+    ans1, ver1 = graph._calculate_or_verify_answer(
+        "An object is placed 30 cm in front of a concave mirror of focal length 15 cm.",
+        "-30 cm",
+        "concept_mirror_formula",
+        calculation={"formula": "mirror", "u": -30, "f": -15, "find": "v", "length_unit": "cm"},
+    )
+    assert ver1 is True
+    assert ans1 == "-30 cm"
+
+    # Electricity: parallel resistance
+    ans2, ver2 = graph._calculate_or_verify_answer(
+        "Two resistors of 4 ohm and 6 ohm in parallel.",
+        "2.4 ohm",
+        "concept_resistors_parallel",
+        calculation={"formula": "parallel", "resistors": [4, 6]},
+    )
+    assert ver2 is True
+    assert ans2 == "2.4 ohm"
+
+
+def test_parallel_resistors_with_battery_voltage_not_counted():
+    """Verify 12 V battery is not counted as a resistor in parallel/series calculation."""
+    from socratic_tutor import graph
+
+    prompt = "Two resistors of 4 ohm and 6 ohm are connected in parallel to a 12 V battery. Find the equivalent resistance."
+    ans, ver = graph._calculate_or_verify_answer(prompt, "2.4 ohm", "concept_resistors_parallel")
+    assert ver is True
+    assert ans == "2.4 ohm"
+
+
+def test_lens_power_calculation_no_typeerror():
+    """Verify lens power calculation calls solve_lens_power with correct signature without TypeError."""
+    from socratic_tutor import graph
+
+    prompt = "A convex lens has a focal length of 0.5 m. Find its power."
+    ans, ver = graph._calculate_or_verify_answer(prompt, "2 D", "concept_lens_formula")
+    assert ver is True
+    assert ans == "2 D"
+
+
+def test_unmatched_conceptual_question_marked_unverified(monkeypatch, tmp_path):
+    """Verify questions with LLM-computed gold_answer without solver verification are marked unverified in payload."""
+    from socratic_tutor import graph
+    from socratic_tutor.tools import question_bank
+
+    monkeypatch.setattr(question_bank, "DB_PATH", tmp_path / "qb_unverified.db")
+    question_bank._init_db()
+
+    prompt = "State the laws of reflection of light."
+    raw_ans = "1. Angle of incidence equals angle of reflection. 2. Incident ray, normal, and reflected ray lie in same plane."
+    ans, ver = graph._calculate_or_verify_answer(prompt, raw_ans, "concept_reflection_laws")
+    assert ver is False
+    assert ans == raw_ans
+
+    setter_state = {
+        "current_concept_id": "concept_reflection_laws",
+        "turn_steps": [],
+        "steps": [],
+    }
+    setter_res = graph.node_question_setter(setter_state)
+    payload = setter_res["teacher_approval_payload"]
+    assert payload["verified"] is False
+    assert payload["solver_verified"] is False
+
+
+

@@ -49,7 +49,17 @@ Return a JSON object with exactly these three keys, in this order:
 QUESTION_SETTER_PROMPT = """You are an NCERT Curriculum Question Setter.
 Select or create a question matching the target concept and difficulty.
 Do NOT reveal the answer in the question text.
-Return JSON with {concept_id, difficulty, question_text, gold_answer}.
+For numerical questions, return the formula and given values as structured fields in "calculation" so math-tools can compute the answer key deterministically:
+- "calculation": {"formula": "<formula_name>", ...given parameters with signs/units...}
+Common formulas:
+- mirror_formula: u (negative), f (negative for concave, positive for convex), length_unit ("cm")
+- lens_formula: u (negative), f (positive for convex, negative for concave), length_unit ("cm")
+- lens_power: f, length_unit ("m" or "cm")
+- parallel_resistance: resistors=[r1, r2, ...]
+- series_resistance: resistors=[r1, r2, ...]
+- ohms_law: v, r, i
+- joule_heating: i, r, t
+Return JSON with {concept_id, difficulty, question_text, gold_answer, calculation (optional)}.
 """
 
 GUARD_SYSTEM_PROMPT = """You are a content safety guard for a Class 10 minor tutoring chatbot.

@@ -6,7 +6,7 @@ from typing import Any
 from socratic_tutor import llm, config
 from socratic_tutor.prompts import QUESTION_SETTER_PROMPT
 
-CONCEPT_FALLBACK_QUESTIONS: dict[str, dict[str, str]] = {
+CONCEPT_FALLBACK_QUESTIONS: dict[str, dict[str, Any]] = {
     "concept_reflection_laws": {
         "question_text": "State the laws of reflection of light.",
         "gold_answer": "1. The angle of incidence is equal to the angle of reflection. 2. The incident ray, normal to the mirror at the point of incidence, and reflected ray all lie in the same plane.",
@@ -16,11 +16,13 @@ CONCEPT_FALLBACK_QUESTIONS: dict[str, dict[str, str]] = {
         "question_text": "An object is placed 20 cm in front of a concave mirror of focal length 15 cm. Find the distance of the image from the mirror.",
         "gold_answer": "-60 cm",
         "difficulty": "medium",
+        "calculation": {"formula": "mirror_formula", "u": -20, "f": -15, "length_unit": "cm", "find": "v"},
     },
     "concept_mirror_formula": {
         "question_text": "An object is placed 30 cm in front of a concave mirror of focal length 20 cm. Find the image distance using the mirror formula.",
         "gold_answer": "-60 cm",
         "difficulty": "medium",
+        "calculation": {"formula": "mirror_formula", "u": -30, "f": -20, "length_unit": "cm", "find": "v"},
     },
     "concept_refraction_laws": {
         "question_text": "State Snell's law of refraction.",
@@ -31,21 +33,25 @@ CONCEPT_FALLBACK_QUESTIONS: dict[str, dict[str, str]] = {
         "question_text": "A convex lens of focal length 20 cm produces an image of an object placed 30 cm in front of it. Find the image distance.",
         "gold_answer": "60 cm",
         "difficulty": "medium",
+        "calculation": {"formula": "lens_formula", "u": -30, "f": 20, "length_unit": "cm", "find": "v"},
     },
     "concept_ohms_law": {
         "question_text": "A potential difference of 12 V is applied across a 4 ohm resistor. Find the current flowing through it.",
         "gold_answer": "3 A",
         "difficulty": "easy",
+        "calculation": {"formula": "ohms_law", "v": 12, "r": 4, "find": "i"},
     },
     "concept_resistors_parallel": {
         "question_text": "Two resistors of 6 ohm and 3 ohm are connected in parallel across a 6 V battery. Calculate the effective resistance and current in the 3 ohm resistor.",
         "gold_answer": "Equivalent resistance is 2 ohm; current in 3 ohm resistor is 2 A.",
         "difficulty": "medium",
+        "calculation": {"formula": "parallel_resistance", "resistors": [6, 3]},
     },
     "concept_joule_heating": {
         "question_text": "A 20 ohm resistor carries a current of 5 A for 30 seconds. Calculate the heat produced in joules.",
         "gold_answer": "15000 J",
         "difficulty": "medium",
+        "calculation": {"formula": "joule_heating", "r": 20, "i": 5, "t": 30, "find": "h"},
     },
 }
 
@@ -66,10 +72,13 @@ def select_question(concept_id: str, difficulty: str = "medium") -> dict[str, An
             "difficulty": difficulty,
         },
     )
-    return {
+    result = {
         "concept_id": concept_id,
         "difficulty": fallback.get("difficulty", difficulty),
         "question_text": fallback["question_text"],
         "gold_answer": fallback["gold_answer"],
     }
+    if "calculation" in fallback:
+        result["calculation"] = fallback["calculation"]
+    return result
 
