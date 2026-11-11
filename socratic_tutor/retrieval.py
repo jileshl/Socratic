@@ -71,7 +71,7 @@ class HybridRetriever:
         if self._dense_collection is None:
             try:
                 import chromadb
-            except ImportError as exc:  # pragma: no cover - environment-specific
+            except ImportError as exc:
                 raise RuntimeError("Dense search requires chromadb; install requirements.txt") from exc
 
             client = chromadb.PersistentClient(path=str(config.INDEX_DIR / "chroma"))

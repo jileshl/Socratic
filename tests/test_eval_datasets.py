@@ -74,8 +74,6 @@ def test_quiz_items_and_practice_answers():
 
 def test_every_answer_key_is_computed_by_math_tools():
     """No formula is written twice: every key is a call into the team's calculator."""
-    import json
-
     specs = [s for q in GOLD for s in q["answer_specs"]]
     specs += [c["practice_problem"]["answer"]["spec"] for c in CARDS if c["practice_problem"]["answer"]["type"] == "numeric"]
     specs += [i["answer_spec"] for i in datasets.quiz_bank().values() if i.get("answer_spec")]

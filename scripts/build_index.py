@@ -7,7 +7,7 @@ from pathlib import Path
 
 from socratic_tutor import config
 from socratic_tutor.index import NCERTIndex
-from socratic_tutor.kb import chunk_ncert_pdf
+from socratic_tutor.kb import chunk_ncert_pdf, extract_exemplar_problems
 
 
 CHAPTERS = (
@@ -18,6 +18,12 @@ CHAPTERS = (
         "ch10-The-Human-Eye-and-the-Colourful-World .pdf",
     ),
     ("11", "Electricity", "ch11-Electricity.pdf"),
+)
+
+EXEMPLARS = (
+    ("9", ["exemplar_ch9.pdf"]),
+    ("10", ["exemplar_ch10.pdf"]),
+    ("11", ["exemplar_ch11.pdf"]),
 )
 
 
@@ -61,6 +67,27 @@ def main() -> None:
 
     index.save(chunks)
     print(f"Indexed {len(chunks)} NCERT section chunks in {config.INDEX_DIR}.")
+
+    # Ingest NCERT Exemplar problems if present in source_dir
+    exemplars: list[dict] = []
+    for chapter_num, candidate_filenames in EXEMPLARS:
+        found_path = None
+        for fn in candidate_filenames:
+            p = args.source_dir / fn
+            if p.exists():
+                found_path = p
+                break
+        if found_path:
+            pdf_bytes = found_path.read_bytes()
+            extracted = extract_exemplar_problems(pdf_bytes, chapter_num)
+            exemplars.extend(extracted)
+            print(f"Chapter {chapter_num} Exemplar: extracted {len(extracted)} problems from {found_path.name}")
+        else:
+            print(f"Chapter {chapter_num} Exemplar: no exemplar PDF found (checked {candidate_filenames})")
+
+    if exemplars:
+        index.save_exemplars(exemplars)
+        print(f"Saved {len(exemplars)} NCERT Exemplar problems in {index.exemplars_path}.")
 
 
 if __name__ == "__main__":

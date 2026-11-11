@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from evalkit.checkers import numbers_in
 from socratic_tutor.tools import math_tools
 
 
@@ -29,8 +30,6 @@ def solve(spec: dict[str, Any]) -> float:
 
 def givens(spec: dict[str, Any]) -> list[float]:
     """The numbers the problem itself states (ignored when looking for leaked answers)."""
-    from evalkit.checkers import numbers_in
-
     out: list[float] = []
     for value in spec.get("args", {}).values():
         if isinstance(value, bool):

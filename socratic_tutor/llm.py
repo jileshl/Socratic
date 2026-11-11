@@ -10,8 +10,8 @@ from socratic_tutor import config
 
 def get_llm(model: str = config.SPECIALIST_MODEL, temperature: float = 0.2) -> ChatOpenAI:
     """Return an initialized ChatOpenAI client configured for OpenRouter."""
-    api_key = os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENAI_API_KEY", "placeholder")
-    base_url = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+    api_key = config.OPENROUTER_API_KEY or config.OPENAI_API_KEY or "placeholder"
+    base_url = config.OPENROUTER_BASE_URL
     return ChatOpenAI(
         model=model,
         temperature=temperature,

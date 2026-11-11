@@ -109,7 +109,7 @@ _DUPLICATE_OCR_OVERLAP = 0.35
 def _load_ocr_engine():
     try:
         from rapidocr_onnxruntime import RapidOCR
-    except ImportError as exc:  # pragma: no cover - environment-specific message
+    except ImportError as exc:
         raise RuntimeError("Image OCR requires rapidocr-onnxruntime; install requirements.txt") from exc
     return RapidOCR()
 
@@ -146,6 +146,7 @@ def _ocr_page_images(page: object, native_text: str, ocr_engine=None) -> list[st
 
             if ocr_engine is None:
                 ocr_engine = _load_ocr_engine()
+
             import numpy as np
 
             image = image.convert("RGB")
@@ -187,7 +188,7 @@ def extract_pdf_text(pdf_bytes: bytes, ocr_engine=None) -> str:
     """Extract native text and targeted OCR text without persisting the source PDF."""
     try:
         from pypdf import PdfReader
-    except ImportError as exc:  # pragma: no cover - environment-specific message
+    except ImportError as exc:
         raise RuntimeError("PDF ingestion requires pypdf; install requirements.txt") from exc
 
     reader = PdfReader(io.BytesIO(pdf_bytes))
@@ -273,3 +274,81 @@ def chunk_ncert_text(text: str, chapter_num: str, chapter_title: str) -> list[Te
 def chunk_ncert_pdf(pdf_bytes: bytes, chapter_num: str, chapter_title: str) -> list[TextChunk]:
     """Extract and chunk one NCERT chapter PDF."""
     return chunk_ncert_text(extract_pdf_text(pdf_bytes), chapter_num, chapter_title)
+
+
+def _infer_section_for_exemplar(text: str, chapter_num: str) -> str:
+    """Map an exemplar question to its closest chapter section."""
+    ch = str(int(chapter_num))
+    t = text.lower()
+    if ch == "9":
+        if "lens" in t:
+            if "power" in t or "dioptre" in t or " d " in t or " d)" in t:
+                return "9.3.8"
+            if any(w in t for w in ["focal", "distance", "magnif", "formula"]):
+                return "9.3.7"
+            if "ray diagram" in t or "image formed" in t:
+                return "9.3.5"
+            return "9.3.4"
+        if "mirror" in t:
+            if any(w in t for w in ["focal", "formula", "distance", "magnif", "radius of curvature"]):
+                return "9.2.4"
+            if "ray" in t or "image" in t:
+                return "9.2.2"
+            return "9.2.1"
+        if "refract" in t or "medium" in t or "glass slab" in t or "speed of light" in t:
+            return "9.3.2"
+        return "9.1"
+    elif ch == "10":
+        if any(w in t for w in ["myopia", "hypermetropia", "presbyopia", "defect", "power", "distinctly", "spectacle", "blackboard"]):
+            return "10.2"
+        if any(w in t for w in ["prism", "spectrum", "dispersion", "angle of prism", "rainbow"]):
+            return "10.4"
+        if any(w in t for w in ["twinkl", "star", "apparent position", "advance sunrise"]):
+            return "10.5"
+        if any(w in t for w in ["sky", "blue", "danger", "sunset", "tyndall", "scatter"]):
+            return "10.6"
+        return "10.1"
+    elif ch == "11":
+        if any(w in t for w in ["series", "parallel", "combination", "equivalent resistance", "resistor"]):
+            if "parallel" in t:
+                return "11.6.2"
+            if "series" in t:
+                return "11.6.1"
+            return "11.6"
+        if any(w in t for w in ["heat", "joule", "fuse", "calorie"]):
+            return "11.7"
+        if any(w in t for w in ["power", "watt", "kwh", "bulb", "energy"]):
+            return "11.8"
+        if any(w in t for w in ["ohm", "v = ir", "resistance of a conductor", "length", "cross-section", "resistivity"]):
+            return "11.4"
+        if any(w in t for w in ["potential difference", "volt", "battery", "voltmeter"]):
+            return "11.2"
+        return "11.1"
+    return f"{ch}.1"
+
+
+def extract_exemplar_problems(pdf_bytes: bytes, chapter_num: str) -> list[dict]:
+    """Extract individual NCERT Exemplar problems from an exemplar chapter PDF."""
+    text = extract_pdf_text(pdf_bytes)
+    text = re.sub(r"(?i)exemplar\s+problems\s*–?\s*science", "", text)
+    text = re.sub(r"(?i)\d+\s+exemplar\s+problems", "", text)
+
+    pattern = r"(?m)^\s*(\d{1,2})\.\s+(.*?)(?=(?:^\s*\d{1,2}\.\s+)|\Z)"
+    matches = list(re.finditer(pattern, text, re.DOTALL))
+
+    ch_str = str(int(chapter_num))
+    results: list[dict] = []
+    for m in matches:
+        q_num = m.group(1)
+        q_text = re.sub(r"\s+", " ", m.group(2)).strip()
+        if len(q_text) < 15:
+            continue
+        sec_id = _infer_section_for_exemplar(q_text, ch_str)
+        q_id = f"exemplar_{ch_str}_{q_num}"
+        results.append({
+            "exemplar_id": q_id,
+            "chapter_num": ch_str,
+            "section_id": sec_id,
+            "problem": q_text,
+        })
+    return results

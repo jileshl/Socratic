@@ -49,6 +49,15 @@ def test_red_team_pii_never_reaches_traces():
     assert trace.scrub("call 9876543210 or mail x@y.com, my name is Riya Sharma") == "call [PHONE] or mail [EMAIL], my name is [NAME]"
 
 
+def test_two_students_signature_challenge_divergence():
+    from scripts.demo_two_students import run_comparison
+    res = run_comparison(interactive=False)
+    assert res["novice"]["next_concept"] == "concept_reflection_laws"
+    assert res["advanced"]["next_concept"] == "concept_concave_ray_diagrams"
+    assert res["novice"]["response"]
+    assert res["advanced"]["response"]
+
+
 def test_poisoned_passage_is_removed_after_the_case():
     from socratic_tutor.tools import textbook_kb
 

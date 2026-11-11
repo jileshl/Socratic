@@ -20,10 +20,16 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from langchain_core.messages import HumanMessage
+from langchain_core.tools import tool
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.prebuilt import create_react_agent
+from pydantic import BaseModel, Field
 
-from evalkit import datasets, llm_client
-from socratic_tutor import config
-from socratic_tutor import policy
+from evalkit import datasets, llm_client, prompts
+from socratic_tutor import config, policy
+from socratic_tutor.graph import build_graph
+from socratic_tutor.learner_store import LearnerStore
+from socratic_tutor.tools import math_tools, textbook_kb
 
 REFUSAL = "I cannot fulfill this request as entered. Let's focus on our NCERT study goals."
 
@@ -70,14 +76,10 @@ class GraphSystem(TutorSystem):
     name = "c2"
 
     def __init__(self) -> None:
-        from langgraph.checkpoint.memory import InMemorySaver
-
-        from socratic_tutor.graph import build_graph
-
         self.app = build_graph(checkpointer=InMemorySaver())
 
     def turn(self, message: str, callbacks: list | None = None) -> TurnResult:
-        thread = {"configurable": {"thread_id": self.session_id}, "callbacks": callbacks or [], "recursion_limit": 2 * config.MAX_LLM_CALLS_PER_TURN + 5}
+        thread = {"configurable": {"thread_id": self.session_id}, "callbacks": callbacks or [], "recursion_limit": config.GRAPH_RECURSION_LIMIT}
         before = self.app.get_state(thread).values.get("steps", []) if self.history else []
         state_in = {
             "session_id": self.session_id,
@@ -128,8 +130,6 @@ def _history_text(history: list[tuple[str, str]]) -> str:
 
 
 def _prompt(name: str) -> str:
-    from evalkit import prompts
-
     return {"baseline_c0": prompts.BASELINE_C0, "baseline_c1": prompts.BASELINE_C1, "baseline_direct": prompts.BASELINE_DIRECT}[name]
 
 
@@ -139,8 +139,6 @@ class RetrievalPromptSystem(TutorSystem):
     def __init__(self, prompt_name: str, name: str) -> None:
         self.prompt_name = prompt_name
         self.name = name
-        from socratic_tutor.tools import textbook_kb
-
         self.kb = textbook_kb
 
     def turn(self, message: str, callbacks: list | None = None) -> TurnResult:
@@ -180,14 +178,6 @@ class SingleAgentSystem(TutorSystem):
         self._fallback.start(student_id, mode)
 
     def _build(self):  # noqa: ANN202
-        from langchain_core.tools import tool
-        from langgraph.checkpoint.memory import InMemorySaver
-        from langgraph.prebuilt import create_react_agent
-        from pydantic import BaseModel, Field
-
-        from socratic_tutor.learner_store import LearnerStore
-        from socratic_tutor.tools import math_tools, textbook_kb
-
         @tool
         def search_textbook(query: str) -> list[dict]:
             """Search NCERT Class 10 Science (chapters 9-11). Returns sections with IDs."""
@@ -265,7 +255,7 @@ class SingleAgentSystem(TutorSystem):
         if blocked:
             self.history.append((message, blocked.text))
             return blocked
-        cfg = {"configurable": {"thread_id": self.session_id}, "callbacks": callbacks or [], "recursion_limit": 2 * config.MAX_LLM_CALLS_PER_TURN + 1}
+        cfg = {"configurable": {"thread_id": self.session_id}, "callbacks": callbacks or [], "recursion_limit": config.GRAPH_RECURSION_LIMIT}
         out = self._agent.invoke({"messages": [HumanMessage(content=f"(student id {self.student_id}, mode {self.mode})\n{clean}")]}, config=cfg)
         structured = out.get("structured_response")
         tools_used = [m.name for m in out.get("messages", []) if getattr(m, "type", "") == "tool"]

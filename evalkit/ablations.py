@@ -17,6 +17,10 @@ import sys
 from contextlib import ExitStack, contextmanager
 from typing import Any, Iterator
 
+from socratic_tutor import policy
+from socratic_tutor.learner_store import LearnerStore
+from socratic_tutor.reflexion import ReflexionPlaybook
+
 
 def _swap(stack: ExitStack, target: Any, name: str, replacement: Any) -> None:
     if not hasattr(target, name):
@@ -46,8 +50,6 @@ def _ignore_write(self: Any, *args: Any, **kwargs: Any) -> None:
 def applied(defences: bool = True, memory: bool = True, playbook: bool = False) -> Iterator[None]:
     with ExitStack() as stack:
         if not defences:
-            from socratic_tutor import policy
-
             _swap(stack, policy, "check_input_guardrails", _pass_input)
             _swap(stack, policy, "check_answer_leak", _no_leak)
             for module in list(sys.modules.values()):  # modules that did `from policy import ...`
@@ -57,15 +59,11 @@ def applied(defences: bool = True, memory: bool = True, playbook: bool = False) 
                     if getattr(module, "check_answer_leak", None) is not None:
                         _swap(stack, module, "check_answer_leak", _no_leak)
         if not memory:
-            from socratic_tutor.learner_store import LearnerStore
-
             _swap(stack, LearnerStore, "get_profile", _empty_profile)
             for name in dir(LearnerStore):
                 if name.startswith(("update_", "record_", "add_", "set_")):
                     _swap(stack, LearnerStore, name, _ignore_write)
         if not playbook:
-            from socratic_tutor.reflexion import ReflexionPlaybook
-
             _swap(stack, ReflexionPlaybook, "get_lessons_for_misconception", lambda self, misconception_id: [])
         yield
 

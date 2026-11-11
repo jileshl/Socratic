@@ -94,8 +94,13 @@ async function loadApprovals() {
   const { body } = await api("/api/teacher/approvals");
   document.getElementById("apprList").innerHTML = body.items.length ? body.items.map(item => {
     const p = item.payload;
+    const vBadge = (p.verified === false || p.solver_verified === false)
+      ? `<span class="badge" style="background:#fef7e0;color:#b06000;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;">⚠️ unverified answer key</span>`
+      : (p.verified === true || p.solver_verified === true)
+        ? `<span class="badge" style="background:#e6f4ea;color:#137333;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;">✓ solver-verified</span>`
+        : "";
     return `<div class="panel" id="item-${esc(item.item_id)}">
-      <div class="row" style="justify-content:space-between"><b>${esc(p.concept_id || "question")}</b><span class="hash">hash ${esc(item.payload_hash.slice(0, 12))}…</span></div>
+      <div class="row" style="justify-content:space-between;align-items:center;"><b>${esc(p.concept_id || p.concept || "question")}</b>${vBadge}<span class="hash">hash ${esc(item.payload_hash.slice(0, 12))}…</span></div>
       <label class="muted">Question</label><textarea rows="2" data-k="prompt">${esc(p.prompt ?? JSON.stringify(p))}</textarea>
       <label class="muted">Answer key</label><textarea rows="1" data-k="gold_answer">${esc(p.gold_answer ?? "")}</textarea>
       <div class="row" style="margin-top:8px">

@@ -8,6 +8,7 @@ __pycache__/
 *.pdf
 data/source_pdfs/
 .index/
+jesc1dd/*
 
 # C extensions
 *.so

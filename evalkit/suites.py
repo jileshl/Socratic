@@ -13,17 +13,24 @@ teaching quality, and it is calibrated against human labels (calibrate.py).
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import time
 from contextlib import contextmanager
 from typing import Any, Iterator
 
-from evalkit import checkers, datasets, judge, llm_client
+from langchain_core.runnables import RunnableLambda
+
+from evalkit import answer_keys, checkers, datasets, judge, llm_client
 from evalkit.metrics import compute_learning_gain, compute_recall_at_k
 from evalkit.simulated_student import SimulatedStudentAgent, StudentProfileCard
 from evalkit.systems import TutorSystem
 from socratic_tutor import config, trace
+from socratic_tutor.agents.grader import grade_answer
 from socratic_tutor.kb import SECTION_TITLES
+from socratic_tutor.learner_store import LearnerStore
+from socratic_tutor.retrieval import HybridRetriever
+from socratic_tutor.tools import question_bank, textbook_kb
 
 VALID_SECTIONS = set(SECTION_TITLES)
 
@@ -125,9 +132,6 @@ def run_session_case(card_record: dict[str, Any], system: TutorSystem, split: st
 
 
 def run_gold_case(question: dict[str, Any], options: dict[str, Any]) -> dict[str, Any]:
-    from socratic_tutor.agents.grader import grade_answer
-    from socratic_tutor.tools import textbook_kb
-
     meter = llm_client.Meter()
     started = time.perf_counter()
     hits = textbook_kb.search_textbook(question["prompt"], top_k=5)
@@ -139,8 +143,6 @@ def run_gold_case(question: dict[str, Any], options: dict[str, Any]) -> dict[str
     for sample in question.get("sample_answers", []):
         try:
             # Run inside a Runnable so the grader's own LLM calls inherit the meter.
-            from langchain_core.runnables import RunnableLambda
-
             # is_numeric lets the team's grader check numbers with units in code (math_tools.check_numeric_answer)
             result = RunnableLambda(lambda _: grade_answer(sample["text"], question["gold_answer"], is_numeric=bool(question.get("is_numeric")))).invoke(None, config={"callbacks": [meter]})
         except Exception as exc:  # the grader failing is a result, not a crash
@@ -150,8 +152,6 @@ def run_gold_case(question: dict[str, Any], options: dict[str, Any]) -> dict[str
 
     reference = []
     for spec in question.get("answer_specs", []):
-        from evalkit import answer_keys
-
         reference.append({"fn": spec["fn"], "value": answer_keys.solve(spec), "unit": spec.get("unit", "")})
 
     agree = sum(g["agree"] for g in grading)
@@ -199,36 +199,25 @@ def _fixtures(attack: dict[str, Any]) -> Iterator[None]:
     planted = None
     try:
         if name and name in fixtures["poisoned_chunks"]:
-            from socratic_tutor.tools import textbook_kb
-
             added_chunk = dict(fixtures["poisoned_chunks"][name])
             textbook_kb.retriever.index.chunks.append(added_chunk)
         if name == "planted_learner_record":
-            from socratic_tutor.learner_store import LearnerStore
-
             planted = fixtures["planted_learner_record"]
             store = LearnerStore()
             for concept, score in planted["mastery_map"].items():
                 store.update_mastery(planted["student_id"], concept, score)
-            import json
 
             with sqlite3.connect(store.db_path) as conn:
                 conn.execute("UPDATE learners SET misconceptions_json = ? WHERE student_id = ?", (json.dumps(planted["misconceptions"]), planted["student_id"]))
         yield
     finally:
         if added_chunk is not None:
-            from socratic_tutor.tools import textbook_kb
-
             textbook_kb.retriever.index.chunks[:] = [c for c in textbook_kb.retriever.index.chunks if c.get("chunk_id") != added_chunk["chunk_id"]]
         if planted is not None:
-            from socratic_tutor.learner_store import LearnerStore
-
             LearnerStore().forget_student(planted["student_id"])
 
 
 def _approved_questions() -> int:
-    from socratic_tutor.tools import question_bank
-
     with sqlite3.connect(question_bank.DB_PATH) as conn:
         return conn.execute("SELECT COUNT(*) FROM questions WHERE status = 'approved'").fetchone()[0]
 
@@ -256,8 +245,6 @@ def _opening_with_problem(attack: dict[str, Any], first_turn: str) -> str:
 
 
 def run_redteam_case(attack: dict[str, Any], system: TutorSystem, run_tag: str) -> dict[str, Any]:
-    from socratic_tutor.learner_store import LearnerStore
-
     meter = llm_client.Meter()
     fixtures = datasets.redteam_fixtures()
     student_id = f"RT-{attack['id']}-{run_tag}"
@@ -344,8 +331,6 @@ def run_clean_case(case: dict[str, Any], system: TutorSystem, run_tag: str) -> d
 
 
 def run_retrieval(split: str, top_k: int = 5) -> list[dict[str, Any]]:
-    from socratic_tutor.retrieval import HybridRetriever
-
     retriever = HybridRetriever()
     if not retriever.index.chunks:
         raise SystemExit("NCERT index is empty: run: python -m scripts.build_index --force")
