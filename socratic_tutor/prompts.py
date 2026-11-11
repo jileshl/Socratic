@@ -7,7 +7,7 @@ and evaluators can identify which prompt revision was active.
 
 from __future__ import annotations
 
-PROMPT_VERSION = "2026-11-09"
+PROMPT_VERSION = "2026-11-12"
 
 DIAGNOSTICIAN_PROMPT = """You are an expert pedagogical diagnostician in NCERT Class 10 Science (Light, Eye, Electricity).
 Your role is to diagnose the underlying misconception in the student's reasoning or question.
@@ -46,20 +46,24 @@ Return a JSON object with exactly these three keys, in this order:
 - "score": a number between 0.0 and 1.0; give partial credit for a partly correct explanation.
 """
 
-QUESTION_SETTER_PROMPT = """You are an NCERT Curriculum Question Setter.
-Select or create a question matching the target concept and difficulty.
-Do NOT reveal the answer in the question text.
-For numerical questions, return the formula and given values as structured fields in "calculation" so math-tools can compute the answer key deterministically:
-- "calculation": {"formula": "<formula_name>", ...given parameters with signs/units...}
-Common formulas:
-- mirror_formula: u (negative), f (negative for concave, positive for convex), length_unit ("cm")
-- lens_formula: u (negative), f (positive for convex, negative for concave), length_unit ("cm")
-- lens_power: f, length_unit ("m" or "cm")
-- parallel_resistance: resistors=[r1, r2, ...]
-- series_resistance: resistors=[r1, r2, ...]
-- ohms_law: v, r, i
-- joule_heating: i, r, t
-Return JSON with {concept_id, difficulty, question_text, gold_answer, calculation (optional)}.
+QUESTION_SETTER_PROMPT = """You are an NCERT Class 10 Science question setter (Chapter 9 Light, Chapter 10 The Human Eye, Chapter 11 Electricity).
+Write ONE new numerical practice question for the given concept and difficulty.
+Do NOT work out the answer: code computes the answer key from your calculation.
+Do NOT put the answer in the question text.
+
+Return JSON only, with exactly these keys:
+{"question_text": "<the question, with every given value and its unit>",
+ "calculation": {"formula": "<one formula name from the list>",
+                 "values": {"<input name>": <number>},
+                 "length_unit": "<cm or m: the unit of the distances, optics only>",
+                 "find": "<the quantity the question asks for>"}}
+
+Rules:
+- Use only a formula name and its input names from the list you are given. The question must need only that one formula.
+- Every number in "values" must also be written in question_text.
+- Optics: use the New Cartesian sign convention. u is negative; a concave mirror or lens has a negative f, a convex one a positive f.
+- Electricity: every value in SI units (V, A, ohm, s, C, J, W, m).
+- "find" is the input you left out, or the fixed result named in the list.
 """
 
 GUARD_SYSTEM_PROMPT = """You are a content safety guard for a Class 10 minor tutoring chatbot.

@@ -51,7 +51,8 @@ class SocraticState(TypedDict, total=False):
     output_blocked_by: str | None            # Which reply check replaced the reply (policy.check_reply), or None
     answer_leak_flag: bool                   # Triggered if practice response gave direct answer
     teacher_approval_required: bool
-    teacher_approval_payload: dict | None    # Question proposal payload for interrupt()
+    question_set_size: int                   # How many questions the teacher asked the question setter for (PR-2)
+    proposed_set: dict | None                # The set sent to the teacher: ok, set id, question ids, refusals; never a key
     teacher_alert_triggered: bool            # Student stuck or in distress
     
     # --- Final Output ---------------------------------------------------------

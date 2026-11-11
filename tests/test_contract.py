@@ -54,9 +54,12 @@ def test_graph_draw_mermaid_shows_all_edges_and_supervisor_loop():
     """Verify that build_graph().get_graph().draw_mermaid() includes all edges with supervisor loops."""
     app = build_graph()
     g = app.get_graph()
-    assert len(g.edges) == 15
+    # 14 since PR-2: the question setter's set waits on the approval gate's own thread, so the setter ends the run.
+    assert len(g.edges) == 14
 
     mermaid = g.draw_mermaid()
+    assert "question_setter --> __end__" in mermaid
+    assert "teacher_approval_gate" not in mermaid
     assert "input_guardrail -.-> supervisor" in mermaid
     assert "input_guardrail -.-> __end__" in mermaid
     assert "supervisor -.-> grader" in mermaid
@@ -1035,72 +1038,6 @@ def test_quiz_attempt_recorded_exactly_once(monkeypatch, tmp_path):
     assert streak == 1, f"Expected failure streak of 1, got {streak}"
 
 
-def test_approval_gate_persists_on_approve_and_leaves_unapproved_on_reject(monkeypatch, tmp_path):
-    """Verify approval gate publishes to question bank on approve with valid hash, but does not on reject or bad hash."""
-    from socratic_tutor.tools import question_bank
-    from socratic_tutor import graph
-
-    monkeypatch.setattr(question_bank, "DB_PATH", tmp_path / "qb_approval.db")
-    question_bank._init_db()
-
-    # Step 1: node_question_setter proposes question
-    setter_state = {
-        "current_concept_id": "concept_reflection_laws",
-        "turn_steps": [],
-        "steps": [],
-    }
-    setter_res = graph.node_question_setter(setter_state)
-    payload = setter_res["teacher_approval_payload"]
-    qid = payload["question_id"]
-    p_hash = payload["payload_hash"]
-
-    # Verify initially pending, not approved
-    assert question_bank.get_approved_question(qid) is None
-    assert question_bank.get_question(qid) is not None
-
-    # Case A: Approve with matching payload hash
-    gate_state_approve = {
-        "teacher_approval_payload": payload,
-        "turn_steps": [],
-        "steps": [],
-    }
-    monkeypatch.setattr(graph, "interrupt", lambda req: {"action": "approve", "payload_hash": p_hash})
-    approve_res = graph.node_teacher_approval_gate(gate_state_approve)
-    assert "approved and published" in approve_res["response"]
-    assert question_bank.get_approved_question(qid) is not None
-
-    # Case B: Propose another question and Reject
-    setter_res2 = graph.node_question_setter(setter_state)
-    payload2 = setter_res2["teacher_approval_payload"]
-    qid2 = payload2["question_id"]
-    p_hash2 = payload2["payload_hash"]
-
-    gate_state_reject = {
-        "teacher_approval_payload": payload2,
-        "turn_steps": [],
-        "steps": [],
-    }
-    monkeypatch.setattr(graph, "interrupt", lambda req: {"action": "reject", "payload_hash": p_hash2})
-    reject_res = graph.node_teacher_approval_gate(gate_state_reject)
-    assert "rejected" in reject_res["response"]
-    assert question_bank.get_approved_question(qid2) is None
-
-    # Case C: Tampered hash refuses approval
-    setter_res3 = graph.node_question_setter(setter_state)
-    payload3 = setter_res3["teacher_approval_payload"]
-    qid3 = payload3["question_id"]
-
-    gate_state_tampered = {
-        "teacher_approval_payload": payload3,
-        "turn_steps": [],
-        "steps": [],
-    }
-    monkeypatch.setattr(graph, "interrupt", lambda req: {"action": "approve", "payload_hash": "bad_hash_12345"})
-    tamper_res = graph.node_teacher_approval_gate(gate_state_tampered)
-    assert "rejected" in tamper_res["response"]
-    assert question_bank.get_approved_question(qid3) is None
-
-
 def test_hint_ladder_progression_across_multiturn_practice(monkeypatch):
     """Verify that an ordinary learner progresses through hint levels 1, 2, and 3 across turns."""
     from socratic_tutor import graph
@@ -1218,144 +1155,125 @@ def test_output_guardrail_uses_question_gold_answer_not_student_attempt(monkeypa
     assert out_no_leak["answer_leak_flag"] is False
 
 
-def test_question_setter_structured_calculation():
-    """Verify structured calculation from question setter computes answer with math-tools and marks verified."""
-    from socratic_tutor import graph
+def test_question_setter_structured_calculation() -> None:
+    """The setter's structured calculation is computed by math-tools (PR-2: through solver_key, decision I2)."""
+    from socratic_tutor import solver_key
 
-    # Optics: mirror formula
-    ans1, ver1 = graph._calculate_or_verify_answer(
+    # Optics: the mirror formula, with #53's flat shape and short formula name.
+    mirror: dict = solver_key.solve_answer_key(
         "An object is placed 30 cm in front of a concave mirror of focal length 15 cm.",
-        "-30 cm",
-        "concept_mirror_formula",
-        calculation={"formula": "mirror", "u": -30, "f": -15, "find": "v", "length_unit": "cm"},
+        {"formula": "mirror", "u": -30, "f": -15, "find": "v", "length_unit": "cm"},
     )
-    assert ver1 is True
-    assert ans1 == "-30 cm"
+    assert mirror["ok"] is True
+    assert mirror["gold_answer"] == "-30 cm"
 
-    # Electricity: parallel resistance
-    ans2, ver2 = graph._calculate_or_verify_answer(
+    # Electricity: parallel resistance.
+    parallel: dict = solver_key.solve_answer_key(
         "Two resistors of 4 ohm and 6 ohm in parallel.",
-        "2.4 ohm",
-        "concept_resistors_parallel",
-        calculation={"formula": "parallel", "resistors": [4, 6]},
+        {"formula": "parallel", "resistors": [4, 6]},
     )
-    assert ver2 is True
-    assert ans2 == "2.4 ohm"
+    assert parallel["ok"] is True
+    assert parallel["gold_answer"] == "2.4 ohm"
 
 
-def test_parallel_resistors_with_battery_voltage_not_counted():
-    """Verify 12 V battery is not counted as a resistor in parallel/series calculation."""
+def test_parallel_resistors_with_battery_voltage_not_counted() -> None:
+    """The 12 V battery is not a resistor: the solver uses the calculation's resistors, never numbers read off the text."""
+    from socratic_tutor import solver_key
+
+    prompt: str = "Two resistors of 4 ohm and 6 ohm are connected in parallel to a 12 V battery. Find the equivalent resistance."
+    keyed: dict = solver_key.solve_answer_key(prompt, {"formula": "parallel_resistance", "values": {"resistors": [4, 6]}})
+    assert keyed["ok"] is True
+    assert keyed["gold_answer"] == "2.4 ohm"
+    # Without a calculation there is no key at all (PR-2, P2-4): nothing is read off the text by a regex any more.
+    made: dict = solver_key.draft_from_model_reply("concept_resistors_parallel", "easy", {"question_text": prompt})
+    assert made["ok"] is False
+
+
+def test_lens_power_calculation_no_typeerror() -> None:
+    """Lens power goes through solve_optics with its real arguments: no TypeError, P = 1/f = 2 D."""
+    from socratic_tutor import solver_key
+
+    prompt: str = "A convex lens has a focal length of 0.5 m. Find its power."
+    keyed: dict = solver_key.solve_answer_key(
+        prompt, {"formula": "lens_power", "values": {"f": 0.5}, "length_unit": "m", "find": "p"}
+    )
+    assert keyed["ok"] is True
+    assert keyed["gold_answer"] == "2 D"
+
+
+def test_unmatched_conceptual_question_is_refused_not_proposed(monkeypatch, tmp_path) -> None:
+    """A question the solver can't key (a text answer) is refused (PR-2, P2-4): nothing reaches the bank or the teacher."""
     from socratic_tutor import graph
-
-    prompt = "Two resistors of 4 ohm and 6 ohm are connected in parallel to a 12 V battery. Find the equivalent resistance."
-    ans, ver = graph._calculate_or_verify_answer(prompt, "2.4 ohm", "concept_resistors_parallel")
-    assert ver is True
-    assert ans == "2.4 ohm"
-
-
-def test_lens_power_calculation_no_typeerror():
-    """Verify lens power calculation calls solve_lens_power with correct signature without TypeError."""
-    from socratic_tutor import graph
-
-    prompt = "A convex lens has a focal length of 0.5 m. Find its power."
-    ans, ver = graph._calculate_or_verify_answer(prompt, "2 D", "concept_lens_formula")
-    assert ver is True
-    assert ans == "2 D"
-
-
-def test_unmatched_conceptual_question_marked_unverified(monkeypatch, tmp_path):
-    """Verify questions with LLM-computed gold_answer without solver verification are marked unverified in payload."""
-    from socratic_tutor import graph
-    from socratic_tutor.tools import question_bank
+    from socratic_tutor.tools import question_bank, question_bank_server
 
     monkeypatch.setattr(question_bank, "DB_PATH", tmp_path / "qb_unverified.db")
     question_bank._init_db()
 
-    prompt = "State the laws of reflection of light."
-    raw_ans = "1. Angle of incidence equals angle of reflection. 2. Incident ray, normal, and reflected ray lie in same plane."
-    ans, ver = graph._calculate_or_verify_answer(prompt, raw_ans, "concept_reflection_laws")
-    assert ver is False
-    assert ans == raw_ans
+    def known_concepts() -> list[str]:
+        return ["concept_reflection_laws"]
 
-    monkeypatch.setattr(
-        graph.question_setter.llm,
-        "chat_json",
-        lambda *a, **kw: {
-            "concept_id": "concept_reflection_laws",
-            "difficulty": "easy",
-            "question_text": prompt,
-            "gold_answer": raw_ans,
-        },
-    )
+    monkeypatch.setattr(question_bank_server, "load_concept_ids", known_concepts)
 
-    setter_state = {
-        "current_concept_id": "concept_reflection_laws",
-        "turn_steps": [],
-        "steps": [],
-    }
-    setter_res = graph.node_question_setter(setter_state)
-    payload = setter_res["teacher_approval_payload"]
-    assert payload["verified"] is False
-    assert payload["solver_verified"] is False
+    prompt: str = "State the laws of reflection of light."
+    raw_ans: str = "1. Angle of incidence equals angle of reflection. 2. Incident ray, normal, and reflected ray lie in same plane."
+
+    def text_only_reply(*args, **kwargs) -> dict:
+        return {"concept_id": "concept_reflection_laws", "difficulty": "easy", "question_text": prompt, "gold_answer": raw_ans}
+
+    monkeypatch.setattr(graph.question_setter.llm, "chat_json", text_only_reply)
+
+    setter_state: dict = {"current_concept_id": "concept_reflection_laws", "turn_steps": [], "steps": []}
+    setter_res: dict = graph.node_question_setter(setter_state)
+    assert setter_res["proposed_set"]["ok"] is False
+    assert len(setter_res["proposed_set"]["refused"]) == graph.QUESTION_SET_SIZE
+    # No row was saved, and the model's text key appears nowhere in the node's output.
+    with sqlite3.connect(question_bank.DB_PATH) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM questions").fetchone()[0] == 0
+    assert raw_ans not in json.dumps(setter_res)
 
 
-def test_parallel_resistors_fallback_split_into_two_single_value_questions():
-    """Verify fallback parallel questions are split into clean single-value keys (2 ohm and 2 A)."""
+def test_parallel_resistors_fallback_split_into_two_single_value_questions() -> None:
+    """Jilesh's fallback parallel questions are keyed by the solver as 2 ohm and 2 A, and grade as correct."""
+    from socratic_tutor import solver_key
     from socratic_tutor.agents import question_setter, grader
+
+    # Easy: equivalent resistance (2 ohm).
+    q_easy: dict = question_setter.CONCEPT_FALLBACK_QUESTIONS["concept_resistors_parallel"][0]
+    made_easy: dict = solver_key.draft_from_model_reply("concept_resistors_parallel", "easy", q_easy)
+    assert made_easy["ok"] is True
+    assert made_easy["draft"]["gold_answer"] == "2 ohm"
+    assert grader.grade_answer("2 ohm", made_easy["draft"]["gold_answer"], is_numeric=True)["is_correct"] is True
+
+    # Medium: branch current (2 A).
+    q_med: dict = question_setter.CONCEPT_FALLBACK_QUESTIONS["concept_resistors_parallel"][1]
+    made_med: dict = solver_key.draft_from_model_reply("concept_resistors_parallel", "medium", q_med)
+    assert made_med["ok"] is True
+    assert made_med["draft"]["gold_answer"] == "2 A"
+    assert grader.grade_answer("2 A", made_med["draft"]["gold_answer"], is_numeric=True)["is_correct"] is True
+
+
+def test_skip_proposing_when_no_question_or_fallback_for_concept(monkeypatch, tmp_path) -> None:
+    """The model fails and the concept has no fallback: nothing is proposed, and the run ends at the setter."""
     from socratic_tutor import graph
-
-    # Easy: equivalent resistance (2 ohm)
-    q_easy = question_setter.CONCEPT_FALLBACK_QUESTIONS["concept_resistors_parallel"][0]
-    assert q_easy["gold_answer"] == "2 ohm"
-    ans_easy, ver_easy = graph._calculate_or_verify_answer(
-        q_easy["question_text"], q_easy["gold_answer"], "concept_resistors_parallel", calculation=q_easy["calculation"]
-    )
-    assert ver_easy is True
-    assert ans_easy == "2 ohm"
-    grade_easy = grader.grade_answer("2 ohm", q_easy["gold_answer"], is_numeric=True)
-    assert grade_easy["is_correct"] is True
-
-    # Medium: branch current (2 A)
-    q_med = question_setter.CONCEPT_FALLBACK_QUESTIONS["concept_resistors_parallel"][1]
-    assert q_med["gold_answer"] == "2 A"
-    ans_med, ver_med = graph._calculate_or_verify_answer(
-        q_med["question_text"], q_med["gold_answer"], "concept_resistors_parallel", calculation=q_med["calculation"]
-    )
-    assert ver_med is True
-    assert ans_med == "2 A"
-    grade_med = grader.grade_answer("2 A", q_med["gold_answer"], is_numeric=True)
-    assert grade_med["is_correct"] is True
-
-
-def test_skip_proposing_when_no_question_or_fallback_for_concept(monkeypatch, tmp_path):
-    """Verify question setter skips proposing and approval gate when no question/fallback exists."""
-    from socratic_tutor import graph
-    from socratic_tutor.tools import question_bank
+    from socratic_tutor.tools import question_bank, question_bank_server
 
     monkeypatch.setattr(question_bank, "DB_PATH", tmp_path / "qb_skip.db")
     question_bank._init_db()
 
-    # When LLM fails to generate and no fallback exists for the concept
-    monkeypatch.setattr(
-        graph.question_setter.llm,
-        "chat_json",
-        lambda *a, **kw: {"error": "LLM generation unavailable"},
-    )
+    def known_concepts() -> list[str]:
+        return ["concept_non_existent_placeholder"]
 
-    state = {
-        "current_concept_id": "concept_non_existent_placeholder",
-        "turn_steps": [],
-        "steps": [],
-    }
-    setter_out = graph.node_question_setter(state)
+    monkeypatch.setattr(question_bank_server, "load_concept_ids", known_concepts)
+
+    def failed_call(*args, **kwargs) -> dict:
+        return {"error": "LLM generation unavailable"}
+
+    monkeypatch.setattr(graph.question_setter.llm, "chat_json", failed_call)
+
+    state: dict = {"current_concept_id": "concept_non_existent_placeholder", "turn_steps": [], "steps": []}
+    setter_out: dict = graph.node_question_setter(state)
     assert setter_out["teacher_approval_required"] is False
-    assert setter_out["teacher_approval_payload"] is None
-
-    # Gate handles non-proposal without interrupt
-    gate_out = graph.node_teacher_approval_gate(setter_out)
-    assert gate_out["teacher_approval_required"] is False
-
-
-
-
-
+    assert setter_out["proposed_set"]["ok"] is False
+    assert setter_out["proposed_set"]["set_id"] == ""
+    # The graph has no gate node of its own any more: the setter ends the run.
+    assert "teacher_approval_gate" not in build_graph().get_graph().nodes
