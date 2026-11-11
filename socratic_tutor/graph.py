@@ -13,7 +13,7 @@ from langchain_core.messages import AnyMessage, AIMessage, HumanMessage
 
 from socratic_tutor import config
 from socratic_tutor.state import SocraticState
-from socratic_tutor.policy import check_input_guardrails, check_answer_leak, check_reply
+from socratic_tutor.policy import check_input_guardrails, check_answer_leak, check_reply, keep_retrieved_citations
 from socratic_tutor.concept_graph import ConceptGraph
 from socratic_tutor.learner_store import LearnerStore
 from socratic_tutor.reflexion import ReflexionPlaybook
@@ -121,7 +121,7 @@ def node_input_guardrail(state: SocraticState) -> dict:
 
     # Flowchart of the blocked case (each [box] matches a comment below):
     #
-    #   [IG1] start the two new per-turn safety facts empty
+    #   [IG1] start the three new per-turn safety facts empty
     #          |
     #          v
     #   [IG2] did the guardrail stop the message?                    no -> carry on to the supervisor
@@ -548,11 +548,11 @@ def node_output_guardrail(state: SocraticState) -> dict:
     #   [OG1] the answer key and the question text (if the student is on a bank question)
     #          |
     #          v
-    #   [OG2] leak check: the key, the question's own numbers, and the student's message
+    #   [OG2] leak check: the key and the question's own numbers (free questions: rule off, see below)
     #          |
     #          |-- leak in practice mode -> retry the hint, or the scaffold question (unchanged)
     #          v
-    #   [OG3] reply check (R4's check_reply): links out, only retrieved citations, content guard
+    #   [OG3] reply check (R4's check_reply, practice mode): links out, retrieved citations only, guard
     #          |
     #          v
     #        the reply the student sees
@@ -569,17 +569,26 @@ def node_output_guardrail(state: SocraticState) -> dict:
     if not expected_answer:
         expected_answer = state.get("gold_answer")
 
-    # [OG2] The student's own message. With it, check_answer_leak can also catch a leak on a FREE question
-    # (no bank question, so no key): a new number with a unit in the reply counts as giving the answer away.
-    # Without it (as before), a free question could never be flagged.
+    # [OG2] The leak check: the key, and the question's own numbers (which a hint may repeat).
+    # The student's message is NOT passed here on purpose. With it, check_answer_leak would also judge FREE
+    # questions (no key) by "a new number with a unit leaks", and in a review that flagged normal hints:
+    # "Remember that 1 m = 100 cm", "the near point is about 25 cm", or a second turn that repeats the numbers
+    # from the first. That rule stays off until the E1 runs have measured it.
+    leak: bool = check_answer_leak(response, expected_answer, question_text=question_text)
+    # The student's message still goes to the reply check below, as context for the content guard.
     student_text: str = str(state.get("query") or "")
-    leak = check_answer_leak(response, expected_answer, question_text=question_text, student_text=student_text)
 
-    # Validate citations against retrieved sections (checking grounded in NCERT)
-    retrieved = state.get("retrieved_sections", [])
-    valid_secs = {str(p.get("section_id")) for p in retrieved if p.get("section_id")}
-    citations = state.get("citations", [])
-    validated_citations = [c for c in citations if not valid_secs or c in valid_secs]
+    # The sections that were really retrieved, and the citations kept from them (the same rule everywhere:
+    # a citation of a section that was never retrieved was made up, so it is dropped).
+    retrieved: list[dict] = state.get("retrieved_sections", [])
+    citations: list[str] = state.get("citations", [])
+    retrieved_ids: list[str] = []
+    for passage in retrieved:
+        # Each retrieved passage carries the NCERT section it came from, e.g. "9.2.4".
+        section_id: Any = passage.get("section_id")
+        if section_id:
+            retrieved_ids.append(str(section_id))
+    validated_citations: list[str] = keep_retrieved_citations(citations, retrieved_ids)
 
     # Socratic Invariant: If leak occurs in practice mode
     if leak and state.get("mode", "practice") == "practice":
@@ -610,13 +619,12 @@ def node_output_guardrail(state: SocraticState) -> dict:
     #     made up);
     #   - when the guard models are on, the content guard reads the reply (unsafe for a minor -> a safe fallback).
     # It never raises: if a check breaks, the student gets the safe fallback reply (fail closed).
-    retrieved_ids: list[str] = []
-    for passage in retrieved:
-        # Each retrieved passage carries the NCERT section it came from, e.g. "9.2.4".
-        section_id = passage.get("section_id")
-        if section_id:
-            retrieved_ids.append(str(section_id))
-    checked: dict[str, Any] = check_reply(response, citations, retrieved_ids, student_text)
+    # In quiz mode the reply is the grader's fixed feedback ("Correct! Well done."), written by code, so the
+    # check is skipped: the content guard would cost a model call for nothing, and if the guard were down its
+    # practice-mode fallback would replace the student's right/wrong verdict.
+    checked: dict[str, Any] = {"reply": response, "citations": validated_citations, "blocked_by": None}
+    if state.get("mode", "practice") != "quiz":
+        checked = check_reply(response, citations, retrieved_ids, student_text)
 
     return {
         "steps": ["output_guardrail"],
