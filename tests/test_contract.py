@@ -1284,4 +1284,33 @@ def test_unmatched_conceptual_question_marked_unverified(monkeypatch, tmp_path):
     assert payload["solver_verified"] is False
 
 
+def test_parallel_resistors_fallback_split_into_two_single_value_questions():
+    """Verify fallback parallel questions are split into clean single-value keys (2 ohm and 2 A)."""
+    from socratic_tutor.agents import question_setter, grader
+    from socratic_tutor import graph
+
+    # Easy: equivalent resistance (2 ohm)
+    q_easy = question_setter.CONCEPT_FALLBACK_QUESTIONS["concept_resistors_parallel"][0]
+    assert q_easy["gold_answer"] == "2 ohm"
+    ans_easy, ver_easy = graph._calculate_or_verify_answer(
+        q_easy["question_text"], q_easy["gold_answer"], "concept_resistors_parallel", calculation=q_easy["calculation"]
+    )
+    assert ver_easy is True
+    assert ans_easy == "2 ohm"
+    grade_easy = grader.grade_answer("2 ohm", q_easy["gold_answer"], is_numeric=True)
+    assert grade_easy["is_correct"] is True
+
+    # Medium: branch current (2 A)
+    q_med = question_setter.CONCEPT_FALLBACK_QUESTIONS["concept_resistors_parallel"][1]
+    assert q_med["gold_answer"] == "2 A"
+    ans_med, ver_med = graph._calculate_or_verify_answer(
+        q_med["question_text"], q_med["gold_answer"], "concept_resistors_parallel", calculation=q_med["calculation"]
+    )
+    assert ver_med is True
+    assert ans_med == "2 A"
+    grade_med = grader.grade_answer("2 A", q_med["gold_answer"], is_numeric=True)
+    assert grade_med["is_correct"] is True
+
+
+
 

@@ -41,12 +41,34 @@ CONCEPT_FALLBACK_QUESTIONS: dict[str, dict[str, Any]] = {
         "difficulty": "easy",
         "calculation": {"formula": "ohms_law", "v": 12, "r": 4, "find": "i"},
     },
-    "concept_resistors_parallel": {
-        "question_text": "Two resistors of 6 ohm and 3 ohm are connected in parallel across a 6 V battery. Calculate the effective resistance and current in the 3 ohm resistor.",
-        "gold_answer": "Equivalent resistance is 2 ohm; current in 3 ohm resistor is 2 A.",
-        "difficulty": "medium",
-        "calculation": {"formula": "parallel_resistance", "resistors": [6, 3]},
-    },
+    "concept_resistors_parallel": [
+        {
+            "question_text": "Two resistors of 6 ohm and 3 ohm are connected in parallel across a 6 V battery. Calculate the effective resistance.",
+            "gold_answer": "2 ohm",
+            "difficulty": "easy",
+            "calculation": {"formula": "parallel_resistance", "resistors": [6, 3]},
+        },
+        {
+            "question_text": "Two resistors of 6 ohm and 3 ohm are connected in parallel across a 6 V battery. Calculate the current in the 3 ohm resistor.",
+            "gold_answer": "2 A",
+            "difficulty": "medium",
+            "calculation": {"formula": "ohms_law", "v": 6, "r": 3, "find": "i"},
+        },
+    ],
+    "concept_parallel_combination": [
+        {
+            "question_text": "Two resistors of 6 ohm and 3 ohm are connected in parallel across a 6 V battery. Calculate the effective resistance.",
+            "gold_answer": "2 ohm",
+            "difficulty": "easy",
+            "calculation": {"formula": "parallel_resistance", "resistors": [6, 3]},
+        },
+        {
+            "question_text": "Two resistors of 6 ohm and 3 ohm are connected in parallel across a 6 V battery. Calculate the current in the 3 ohm resistor.",
+            "gold_answer": "2 A",
+            "difficulty": "medium",
+            "calculation": {"formula": "ohms_law", "v": 6, "r": 3, "find": "i"},
+        },
+    ],
     "concept_joule_heating": {
         "question_text": "A 20 ohm resistor carries a current of 5 A for 30 seconds. Calculate the heat produced in joules.",
         "gold_answer": "15000 J",
@@ -64,7 +86,7 @@ def select_question(concept_id: str, difficulty: str = "medium") -> dict[str, An
         res.setdefault("difficulty", difficulty)
         return res
 
-    fallback = CONCEPT_FALLBACK_QUESTIONS.get(
+    fallback_entry = CONCEPT_FALLBACK_QUESTIONS.get(
         concept_id,
         {
             "question_text": "State the fundamental law or definition governing this concept and give one practical example.",
@@ -72,6 +94,12 @@ def select_question(concept_id: str, difficulty: str = "medium") -> dict[str, An
             "difficulty": difficulty,
         },
     )
+    if isinstance(fallback_entry, list):
+        matching = [q for q in fallback_entry if q.get("difficulty") == difficulty]
+        fallback = matching[0] if matching else fallback_entry[0]
+    else:
+        fallback = fallback_entry
+
     result = {
         "concept_id": concept_id,
         "difficulty": fallback.get("difficulty", difficulty),
