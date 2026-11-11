@@ -61,6 +61,8 @@ def test_forget_me_deletes_history(client):
     client.post("/api/chat", json={"session_id": session["session_id"], "message": "What is refraction?"})
     out = client.post("/api/forget_me", json={"student_id": session["student_id"]}).json()
     assert out["checkpoint_threads_deleted"] == 1 and out["ops_rows_deleted"]["sessions"] == 1
+    assert "erasure_receipt" in out and out["erasure_receipt"]["algorithm"] == "HMAC-SHA256"
+    assert out["erasure_receipt"]["student_id"] == session["student_id"]
     assert client.get(f"/api/session/{session['session_id']}/state").status_code == 404
 
 

@@ -595,12 +595,75 @@ def _compute_payload_hash(payload: dict) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def _calculate_or_verify_answer(prompt_text: str, gold_answer: str, concept: str) -> str:
+    """Ground and calculate numerical answer keys using deterministic math_tools before showing/proposing."""
+    # 1. Parallel combination
+    if "parallel" in prompt_text.lower() and any(w in prompt_text.lower() for w in ["ohm", "ω", "resistor"]):
+        vals = [float(x) for x in re.findall(r"(\d+(?:\.\d+)?)\s*(?:ohm|Ω|\b)", prompt_text, re.I)]
+        if len(vals) >= 2:
+            res = math_tools.solve_parallel_resistance(vals[:5])
+            if res.get("ok"):
+                return f"{res['value']:g} ohm"
+
+    # 2. Series combination
+    if "series" in prompt_text.lower() and any(w in prompt_text.lower() for w in ["ohm", "ω", "resistor"]):
+        vals = [float(x) for x in re.findall(r"(\d+(?:\.\d+)?)\s*(?:ohm|Ω|\b)", prompt_text, re.I)]
+        if len(vals) >= 2:
+            res = math_tools.solve_series_resistance(vals[:5])
+            if res.get("ok"):
+                return f"{res['value']:g} ohm"
+
+    # 3. Spherical mirror formula
+    if "mirror" in prompt_text.lower() and "cm" in prompt_text.lower():
+        u_m = re.search(r"(\d+(?:\.\d+)?)\s*cm\s+(?:in\s+front|from)", prompt_text, re.I) or re.search(r"object.*?(\d+(?:\.\d+)?)\s*cm", prompt_text, re.I)
+        f_m = re.search(r"focal\s+length.*?(\d+(?:\.\d+)?)\s*cm", prompt_text, re.I)
+        if u_m and f_m:
+            u_val = -abs(float(u_m.group(1)))
+            is_concave = "concave" in prompt_text.lower()
+            f_val = -abs(float(f_m.group(1))) if is_concave else abs(float(f_m.group(1)))
+            res = math_tools.solve_mirror_formula("cm", u=u_val, f=f_val)
+            if res.get("ok"):
+                return f"v = {res['value']:g} cm"
+
+    # 4. Spherical lens formula
+    if "lens" in prompt_text.lower() and "cm" in prompt_text.lower():
+        u_m = re.search(r"(\d+(?:\.\d+)?)\s*cm\s+(?:in\s+front|from)", prompt_text, re.I) or re.search(r"object.*?(\d+(?:\.\d+)?)\s*cm", prompt_text, re.I)
+        f_m = re.search(r"focal\s+length.*?(\d+(?:\.\d+)?)\s*cm", prompt_text, re.I)
+        if u_m and f_m:
+            u_val = -abs(float(u_m.group(1)))
+            is_convex = "convex" in prompt_text.lower()
+            f_val = abs(float(f_m.group(1))) if is_convex else -abs(float(f_m.group(1)))
+            res = math_tools.solve_lens_formula("cm", u=u_val, f=f_val)
+            if res.get("ok"):
+                return f"v = {res['value']:g} cm"
+
+    # 5. Lens power
+    if "power" in prompt_text.lower() and ("focal length" in prompt_text.lower() or " dioptre" in prompt_text.lower() or " d" in prompt_text.lower()):
+        f_m = re.search(r"focal\s+length.*?(\d+(?:\.\d+)?)\s*m\b", prompt_text, re.I)
+        if f_m:
+            res = math_tools.solve_lens_power(f_m=float(f_m.group(1)))
+            if res.get("ok"):
+                return f"P = {res['value']:g} D"
+
+    # 6. Fallback: clean and standardize numeric answer if readable by math_tools
+    if gold_answer:
+        tidy = math_tools.tidy_answer_text(gold_answer)
+        q = math_tools.read_quantity(tidy)
+        if q.get("ok"):
+            return tidy
+
+    return gold_answer
+
+
 def node_question_setter(state: SocraticState) -> dict:
     concept = state.get("current_concept_id", "concept_reflection_laws")
     res = question_setter.select_question(concept)
     prompt_text = res.get("question_text", "State the laws of reflection.")
-    gold_answer = res.get("gold_answer", "")
+    raw_gold_answer = res.get("gold_answer", "")
     difficulty = res.get("difficulty", "medium")
+
+    # Step 5: Solver calculates or grounds numeric answers before the question is proposed/shown
+    gold_answer = _calculate_or_verify_answer(prompt_text, raw_gold_answer, concept)
 
     # Propose question to bank in pending_approval status
     prop = question_bank.propose_question(

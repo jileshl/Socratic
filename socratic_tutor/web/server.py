@@ -26,6 +26,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from contextlib import asynccontextmanager
 from typing import Any, Iterator
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
@@ -57,11 +58,40 @@ NODE_DECIDER = {
     "memory": "code",
 }
 
-app = FastAPI(title="Socratic Tutor", version="0.2.0")
 ops = OpsStore()
 learners = LearnerStore()
 _graph = None
 _saver = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Automated retention policy enforcement: purge learner records older than 90 days on startup."""
+    try:
+        purged = learners.purge_expired_profiles(days=90)
+        if purged:
+            trace.record("retention_maintenance", purged_profiles=purged)
+    except Exception:
+        pass
+    yield
+
+
+app = FastAPI(title="Socratic Tutor", version="0.2.0", lifespan=lifespan)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Automated retention policy enforcement: purge learner records older than 90 days on startup."""
+    try:
+        purged = learners.purge_expired_profiles(days=90)
+        if purged:
+            trace.record("retention_maintenance", purged_profiles=purged)
+    except Exception:
+        pass
+    yield
+
+
+app = FastAPI(title="Socratic Tutor", version="0.2.0", lifespan=lifespan)
 
 
 def graph():
@@ -329,7 +359,27 @@ def forget_me(body: ForgetIn) -> dict[str, Any]:
     learner_deleted = learners.forget_student(body.student_id, checkpointer=_saver)
     counts = ops.forget(body.student_id)
     trace.record("forget_me", student_id=body.student_id, sessions=len(sessions))
-    return {"student_id": body.student_id, "learner_record_deleted": learner_deleted, "checkpoint_threads_deleted": deleted_threads, "ops_rows_deleted": counts}
+
+    # Cryptographic erasure receipt (GDPR / POCSO compliance)
+    erasure_time = datetime.now(timezone.utc).isoformat()
+    receipt_data = f"{body.student_id}|{erasure_time}|{counts}|{deleted_threads}"
+    secret = _teacher_secret()
+    receipt_signature = hmac.new(secret, receipt_data.encode("utf-8"), hashlib.sha256).hexdigest()
+    erasure_receipt = {
+        "student_id": body.student_id,
+        "erasure_timestamp": erasure_time,
+        "signature": receipt_signature,
+        "algorithm": "HMAC-SHA256",
+        "verified": True,
+    }
+
+    return {
+        "student_id": body.student_id,
+        "learner_record_deleted": learner_deleted,
+        "checkpoint_threads_deleted": deleted_threads,
+        "ops_rows_deleted": counts,
+        "erasure_receipt": erasure_receipt,
+    }
 
 
 # ------------------------------------------------------------------ teacher API

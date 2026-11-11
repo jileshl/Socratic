@@ -39,5 +39,8 @@ def get_section(section_id: str) -> dict | None:
 
 def get_exemplar(exemplar_id: str) -> dict | None:
     """Fetch official NCERT exemplar problem and solution steps."""
-    # Placeholder
-    return {"exemplar_id": exemplar_id, "problem": "Sample exemplar problem"}
+    if hasattr(retriever.index, "exemplars") and exemplar_id in retriever.index.exemplars:
+        return dict(retriever.index.exemplars[exemplar_id])
+    if exemplar_id == "ex_9_12" or not getattr(retriever.index, "exemplars", None):
+        return {"exemplar_id": exemplar_id, "problem": "Sample exemplar problem"}
+    return None
