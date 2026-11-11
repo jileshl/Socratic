@@ -32,32 +32,32 @@
     "rejection_reason": "Violates Socratic Invariant (Teacher Rule 1) and answer leak policy by giving direct numerical values instead of scaffolding Cartesian sign rules."
   },
   {
-    "lesson_id": "LESSON_ELEC_01",
-    "misconception_id": "MISCON_ELEC_01",
+    "lesson_id": "LESSON_ELEC_06",
+    "misconception_id": "MISCON_ELEC_06",
     "lesson": "Ask the student to treat current like continuous water flow through a pipe without leaks; charge cannot accumulate, so current remains constant through every series component.",
     "rationale": "Common misconception that electric current is consumed or gets weaker as it passes along a series circuit.",
     "approved_by_human": true,
     "rejection_reason": null
   },
   {
-    "lesson_id": "LESSON_ELEC_02",
-    "misconception_id": "MISCON_ELEC_02",
+    "lesson_id": "LESSON_ELEC_07",
+    "misconception_id": "MISCON_ELEC_07",
     "lesson": "Guide the student to apply Ohm's law (I = V/R) across each parallel branch with equal potential difference V; higher resistance branches draw proportionally less current.",
     "rationale": "Learners believe parallel branches always split current equally regardless of individual branch resistances.",
     "approved_by_human": true,
     "rejection_reason": null
   },
   {
-    "lesson_id": "LESSON_ELEC_03",
-    "misconception_id": "MISCON_ELEC_03",
+    "lesson_id": "LESSON_ELEC_08",
+    "misconception_id": "MISCON_ELEC_08",
     "lesson": "Prompt the student to consider each parallel branch as an additional open lane on a highway, which increases total current flow and therefore lowers overall equivalent resistance.",
     "rationale": "Learners assume adding more parallel resistors increases total resistance like in series circuits.",
     "approved_by_human": true,
     "rejection_reason": null
   },
   {
-    "lesson_id": "LESSON_EYE_01",
-    "misconception_id": "MISCON_EYE_01",
+    "lesson_id": "LESSON_EYE_11",
+    "misconception_id": "MISCON_EYE_11",
     "lesson": "Have the student trace where distant rays converge (in front of the retina); prompt them on which lens type diverges rays before entering the eye so the focal point moves back onto the retina.",
     "rationale": "Learners confuse myopia with hypermetropia and suggest convex corrective lenses.",
     "approved_by_human": true,

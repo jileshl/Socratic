@@ -5,10 +5,13 @@ import sqlite3
 from datetime import datetime, timezone
 
 import pytest
+from langchain_core.messages import HumanMessage
+from socratic_tutor import config
 from socratic_tutor.graph import build_graph
 from socratic_tutor.tools import math_tools
 from socratic_tutor.concept_graph import ConceptGraph
 from socratic_tutor.learner_store import LearnerStore
+from socratic_tutor.reflexion import ReflexionPlaybook
 
 
 class _MemoryCheckpointer:
@@ -730,4 +733,484 @@ def test_centralized_prompts_registry():
     assert tutor.TUTOR_PROMPT == prompts.TUTOR_PROMPT
     assert grader.GRADER_PROMPT == prompts.GRADER_PROMPT
     assert question_setter.QUESTION_SETTER_PROMPT == prompts.QUESTION_SETTER_PROMPT
+
+
+def test_n1_quiz_result_filed_under_question_concept(monkeypatch, tmp_path):
+    """Verify quiz results are filed under the question's own concept, not student's current concept (N1)."""
+    from socratic_tutor.tools import question_bank
+    from socratic_tutor import graph
+
+    db_path = tmp_path / "learner_n1.sqlite"
+    store = LearnerStore(db_path)
+    monkeypatch.setattr(graph, "LearnerStore", lambda *args, **kwargs: store)
+
+    monkeypatch.setattr(question_bank, "DB_PATH", tmp_path / "qb_n1.db")
+    question_bank._init_db()
+
+    prop = question_bank.propose_question(
+        concept_id="concept_ohms_law",
+        difficulty="easy",
+        prompt="12 V across 4 ohm: find current",
+        gold_answer="3 A",
+    )
+    qid = prop["question_id"]
+    question_bank.publish_approved_question(qid)
+
+    app = build_graph()
+    state = {
+        "session_id": "sess_n1",
+        "student_id": "stu_n1",
+        "mode": "quiz",
+        "current_question_id": qid,
+        "current_concept_id": "concept_reflection_laws",  # Different from question's concept!
+        "query": "3 A",
+        "student_attempt": "3 A",
+        "messages": [],
+        "steps": [],
+    }
+    output = app.invoke(state)
+    assert output["grade_result"]["is_correct"] is True
+
+    # Check store: attempt must be recorded under concept_ohms_law, not concept_reflection_laws
+    profile = store.get_profile("stu_n1")
+    assert "concept_ohms_law" in profile["mastery_map"]
+    assert "concept_reflection_laws" not in profile["mastery_map"]
+
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute("SELECT concept_id, score FROM quiz_attempts WHERE student_id = 'stu_n1'").fetchone()
+        assert row[0] == "concept_ohms_law"
+        assert row[1] == 1.0
+
+
+def test_n2_mastered_decided_by_updated_mastery_not_single_score(monkeypatch, tmp_path):
+    """Verify advancement depends on updated rolling mastery >= 0.70, not a single score >= 0.7 (N2)."""
+    from socratic_tutor.tools import question_bank
+    from socratic_tutor import graph
+
+    db_path = tmp_path / "learner_n2.sqlite"
+    store = LearnerStore(db_path)
+    monkeypatch.setattr(graph, "LearnerStore", lambda *args, **kwargs: store)
+
+    monkeypatch.setattr(question_bank, "DB_PATH", tmp_path / "qb_n2.db")
+    question_bank._init_db()
+
+    prop = question_bank.propose_question(
+        concept_id="concept_reflection_laws",
+        difficulty="easy",
+        prompt="State reflection law",
+        gold_answer="equal",
+    )
+    qid = prop["question_id"]
+    question_bank.publish_approved_question(qid)
+
+    # Student has two prior failures: scores [0.0, 0.0]
+    store.record_quiz_result("stu_n2", "concept_reflection_laws", 0.0)
+    store.record_quiz_result("stu_n2", "concept_reflection_laws", 0.0)
+
+    app = build_graph()
+
+    # Attempt 3: student gets 0.8 (single attempt >= 0.7, but window is [0.0, 0.0, 0.8] -> mastery = 0.27)
+    state = {
+        "session_id": "sess_n2",
+        "student_id": "stu_n2",
+        "mode": "quiz",
+        "current_question_id": qid,
+        "current_concept_id": "concept_reflection_laws",
+        "query": "equal",
+        "student_attempt": "equal",
+        "messages": [],
+        "steps": [],
+    }
+    monkeypatch.setattr(graph.grader, "grade_answer", lambda *a, **kw: {"is_correct": True, "score": 0.8, "feedback": "Good"})
+
+    output = app.invoke(state)
+    assert output["grade_result"]["score"] == 0.8
+    # Should NOT advance because mastery = 0.27 < 0.70
+    assert output["current_concept_id"] == "concept_reflection_laws"
+
+    # Now record high scores to bring rolling mastery >= 0.70
+    store.record_quiz_result("stu_n2", "concept_reflection_laws", 1.0)
+    # Window is now [0.0, 0.8, 1.0] -> 0.60. Next attempt in graph with 1.0 makes window [0.8, 1.0, 1.0] -> 0.93
+    monkeypatch.setattr(graph.grader, "grade_answer", lambda *a, **kw: {"is_correct": True, "score": 1.0, "feedback": "Great"})
+    output2 = app.invoke(state)
+    # Now mastery >= 0.70, so student advances to the next concept
+    assert output2["current_concept_id"] == "concept_spherical_mirrors"
+
+
+def test_n3_unapproved_question_does_not_run_replan(monkeypatch, tmp_path):
+    """Verify that an unavailable question does not trigger replan (N3)."""
+    from socratic_tutor import graph
+
+    db_path = tmp_path / "learner_n3.sqlite"
+    store = LearnerStore(db_path)
+    monkeypatch.setattr(graph, "LearnerStore", lambda *args, **kwargs: store)
+
+    # Student has 3 failures on concept_spherical_mirrors
+    store.record_quiz_result("stu_n3", "concept_spherical_mirrors", 0.0)
+    store.record_quiz_result("stu_n3", "concept_spherical_mirrors", 0.0)
+    store.record_quiz_result("stu_n3", "concept_spherical_mirrors", 0.0)
+
+    app = build_graph()
+    state = {
+        "session_id": "sess_n3",
+        "student_id": "stu_n3",
+        "mode": "quiz",
+        "current_question_id": "nonexistent_question",
+        "current_concept_id": "concept_spherical_mirrors",
+        "query": "something",
+        "student_attempt": "something",
+        "messages": [],
+        "steps": [],
+    }
+    output = app.invoke(state)
+    assert output["grade_result"]["error"] == "unapproved_question"
+    assert output["plan"] == ["grade_error"]
+    # Does not run replan / fallback
+    assert output["current_concept_id"] == "concept_spherical_mirrors"
+
+
+def test_n4_hint_step_at_most_raises_once_per_turn(monkeypatch, tmp_path):
+    """Verify that stuck check and repeated misconception do not both increment hint_step in one turn (N4)."""
+    from socratic_tutor import graph
+
+    db_path = tmp_path / "learner_n4.sqlite"
+    store = LearnerStore(db_path)
+    monkeypatch.setattr(graph, "LearnerStore", lambda *args, **kwargs: store)
+
+    # Mock diagnostician to return MISCON_LIGHT_01
+    monkeypatch.setattr(
+        graph.diagnostician,
+        "diagnose_response",
+        lambda *a, **kw: {"identified_misconception_id": "MISCON_LIGHT_01", "name": "Angle error", "chapter": "Light - Reflection and Refraction"},
+    )
+    monkeypatch.setattr(graph.tutor, "generate_hint", lambda **kw: "Check the normal line.")
+
+    # Student is stuck: 3 failures
+    store.record_quiz_result("stu_n4", "concept_reflection_laws", 0.0)
+    store.record_quiz_result("stu_n4", "concept_reflection_laws", 0.0)
+    store.record_quiz_result("stu_n4", "concept_reflection_laws", 0.0)
+
+    app = build_graph()
+    state = {
+        "session_id": "sess_n4",
+        "student_id": "stu_n4",
+        "mode": "practice",
+        "current_concept_id": "concept_reflection_laws",
+        "last_concept_id": "concept_reflection_laws",
+        "last_misconception_id": "MISCON_LIGHT_01",  # Same misconception as diagnostician returns!
+        "query": "What is the angle?",
+        "messages": [],
+        "steps": [],
+        "hint_step": 1,
+    }
+    output = app.invoke(state)
+    # Both triggers fired (stuck + repeat misconception), but hint_step must only increase by 1 (1 -> 2, not 3)
+    assert output["hint_step"] == 2
+
+
+def test_diagnostician_stores_chapter_and_resolves_in_real_run(monkeypatch):
+    """Verify node_diagnostician attaches chapter to identified_misconception so _resolve_chapter reaches branch 3."""
+    from socratic_tutor import graph
+
+    diag_output = graph.node_diagnostician({
+        "query": "A ray strikes a plane mirror making 30° with the mirror surface.",
+        "messages": [],
+        "turn_steps": [],
+    })
+    miscon = diag_output["identified_misconception"]
+    assert miscon is not None
+    assert miscon.get("chapter") == "Light - Reflection and Refraction"
+
+    resolved = graph._resolve_chapter({"identified_misconception": miscon})
+    assert resolved == "9"
+
+
+def test_node_tutor_falls_back_to_unfiltered_search_when_filtered_empty(monkeypatch):
+    """Verify node_tutor falls back to unfiltered search if filtered search finds no passages."""
+    from socratic_tutor import graph
+
+    calls = []
+
+    def mock_search(query, chapter=None, top_k=4):
+        calls.append({"query": query, "chapter": chapter})
+        if chapter == "9":
+            return []  # Filtered search finds nothing (e.g. cross-chapter question)
+        return [{"section_id": "11.2", "title": "Ohm's Law", "content": "V = IR"}]
+
+    monkeypatch.setattr(graph.textbook_kb, "search_textbook", mock_search)
+    monkeypatch.setattr(graph.tutor, "generate_hint", lambda **kw: "Use Ohm's law.")
+
+    state = {
+        "query": "What is Ohm's law?",
+        "current_concept_id": "concept_reflection_laws",  # Chapter 9
+    }
+    out = graph.node_tutor(state)
+    assert len(calls) == 2
+    assert calls[0]["chapter"] == "9"
+    assert calls[1]["chapter"] is None
+    assert "11.2" in out["citations"]
+
+
+def test_reflexion_playbook_alignment_with_catalogue():
+    """Verify all lessons in reflexion_playbook.json are aligned with data/misconceptions.json."""
+    misconceptions_path = config.DATA_DIR / "misconceptions.json"
+    with open(misconceptions_path, "r", encoding="utf-8") as f:
+        catalog = json.load(f)
+    catalog_ids = {m["id"] for m in catalog}
+
+    playbook = ReflexionPlaybook()
+    assert len(playbook.lessons) > 0
+
+    for lesson in playbook.lessons:
+        mid = lesson.get("misconception_id")
+        assert mid in catalog_ids, f"Misconception {mid} not in catalog"
+
+    # Specific assertions for the 4 corrected lessons
+    elec_06 = [l for l in playbook.lessons if l.get("misconception_id") == "MISCON_ELEC_06"]
+    assert elec_06, "Missing lesson for MISCON_ELEC_06"
+    assert "series" in elec_06[0]["lesson"].lower() or "pipe" in elec_06[0]["lesson"].lower()
+
+    elec_07 = [l for l in playbook.lessons if l.get("misconception_id") == "MISCON_ELEC_07"]
+    assert elec_07, "Missing lesson for MISCON_ELEC_07"
+    assert "parallel" in elec_07[0]["lesson"].lower() and "branch" in elec_07[0]["lesson"].lower()
+
+    elec_08 = [l for l in playbook.lessons if l.get("misconception_id") == "MISCON_ELEC_08"]
+    assert elec_08, "Missing lesson for MISCON_ELEC_08"
+    assert "parallel" in elec_08[0]["lesson"].lower() and ("resistance" in elec_08[0]["lesson"].lower() or "lane" in elec_08[0]["lesson"].lower())
+
+    eye_11 = [l for l in playbook.lessons if l.get("misconception_id") == "MISCON_EYE_11"]
+    assert eye_11, "Missing lesson for MISCON_EYE_11"
+    assert "myopia" in eye_11[0]["rationale"].lower() or "diverges" in eye_11[0]["lesson"].lower() or "retina" in eye_11[0]["lesson"].lower()
+
+
+def test_quiz_attempt_recorded_exactly_once(monkeypatch, tmp_path):
+    """Verify that a single quiz answer produces exactly one quiz_attempts entry and increments failure streak once."""
+    from socratic_tutor.tools import question_bank
+    from socratic_tutor import graph
+
+    db_path = tmp_path / "learner_single.sqlite"
+    store = LearnerStore(db_path)
+    monkeypatch.setattr(graph, "LearnerStore", lambda *args, **kwargs: store)
+
+    monkeypatch.setattr(question_bank, "DB_PATH", tmp_path / "qb_single.db")
+    question_bank._init_db()
+
+    prop = question_bank.propose_question(
+        concept_id="concept_ohms_law",
+        difficulty="easy",
+        prompt="12 V across 4 ohm: find current",
+        gold_answer="3 A",
+    )
+    qid = prop["question_id"]
+    question_bank.publish_approved_question(qid)
+
+    app = build_graph()
+    state = {
+        "session_id": "sess_single_attempt",
+        "student_id": "stu_single",
+        "mode": "quiz",
+        "current_question_id": qid,
+        "current_concept_id": "concept_ohms_law",
+        "query": "10 A",  # Incorrect answer
+        "student_attempt": "10 A",
+        "messages": [],
+        "steps": [],
+    }
+
+    output = app.invoke(state)
+    assert output["grade_result"]["is_correct"] is False
+
+    # Check store: exactly ONE attempt record must exist in quiz_attempts
+    with sqlite3.connect(db_path) as conn:
+        count = conn.execute("SELECT COUNT(*) FROM quiz_attempts WHERE student_id = 'stu_single'").fetchone()[0]
+        assert count == 1, f"Expected exactly 1 quiz attempt row, found {count}"
+
+    # Check failure streak is exactly 1, not 2
+    profile = store.get_profile("stu_single")
+    streak = profile["failure_streaks"].get("concept_ohms_law", 0)
+    assert streak == 1, f"Expected failure streak of 1, got {streak}"
+
+
+def test_approval_gate_persists_on_approve_and_leaves_unapproved_on_reject(monkeypatch, tmp_path):
+    """Verify approval gate publishes to question bank on approve with valid hash, but does not on reject or bad hash."""
+    from socratic_tutor.tools import question_bank
+    from socratic_tutor import graph
+
+    monkeypatch.setattr(question_bank, "DB_PATH", tmp_path / "qb_approval.db")
+    question_bank._init_db()
+
+    # Step 1: node_question_setter proposes question
+    setter_state = {
+        "current_concept_id": "concept_reflection_laws",
+        "turn_steps": [],
+        "steps": [],
+    }
+    setter_res = graph.node_question_setter(setter_state)
+    payload = setter_res["teacher_approval_payload"]
+    qid = payload["question_id"]
+    p_hash = payload["payload_hash"]
+
+    # Verify initially pending, not approved
+    assert question_bank.get_approved_question(qid) is None
+    assert question_bank.get_question(qid) is not None
+
+    # Case A: Approve with matching payload hash
+    gate_state_approve = {
+        "teacher_approval_payload": payload,
+        "turn_steps": [],
+        "steps": [],
+    }
+    monkeypatch.setattr(graph, "interrupt", lambda req: {"action": "approve", "payload_hash": p_hash})
+    approve_res = graph.node_teacher_approval_gate(gate_state_approve)
+    assert "approved and published" in approve_res["response"]
+    assert question_bank.get_approved_question(qid) is not None
+
+    # Case B: Propose another question and Reject
+    setter_res2 = graph.node_question_setter(setter_state)
+    payload2 = setter_res2["teacher_approval_payload"]
+    qid2 = payload2["question_id"]
+    p_hash2 = payload2["payload_hash"]
+
+    gate_state_reject = {
+        "teacher_approval_payload": payload2,
+        "turn_steps": [],
+        "steps": [],
+    }
+    monkeypatch.setattr(graph, "interrupt", lambda req: {"action": "reject", "payload_hash": p_hash2})
+    reject_res = graph.node_teacher_approval_gate(gate_state_reject)
+    assert "rejected" in reject_res["response"]
+    assert question_bank.get_approved_question(qid2) is None
+
+    # Case C: Tampered hash refuses approval
+    setter_res3 = graph.node_question_setter(setter_state)
+    payload3 = setter_res3["teacher_approval_payload"]
+    qid3 = payload3["question_id"]
+
+    gate_state_tampered = {
+        "teacher_approval_payload": payload3,
+        "turn_steps": [],
+        "steps": [],
+    }
+    monkeypatch.setattr(graph, "interrupt", lambda req: {"action": "approve", "payload_hash": "bad_hash_12345"})
+    tamper_res = graph.node_teacher_approval_gate(gate_state_tampered)
+    assert "rejected" in tamper_res["response"]
+    assert question_bank.get_approved_question(qid3) is None
+
+
+def test_hint_ladder_progression_across_multiturn_practice(monkeypatch):
+    """Verify that an ordinary learner progresses through hint levels 1, 2, and 3 across turns."""
+    from socratic_tutor import graph
+    from langgraph.checkpoint.memory import MemorySaver
+
+    hints_called = []
+
+    def mock_generate_hint(**kwargs):
+        lvl = kwargs.get("hint_level", 1)
+        hints_called.append(lvl)
+        return f"Hint Level {lvl} guidance (Refer to Section 9.2)"
+
+    monkeypatch.setattr(graph.tutor, "generate_hint", mock_generate_hint)
+
+    checkpointer = MemorySaver()
+    app = graph.build_graph(checkpointer=checkpointer)
+    cfg = {"configurable": {"thread_id": "thread_hint_progression"}}
+
+    # Turn 1: First attempt
+    res1 = app.invoke({
+        "mode": "practice",
+        "query": "I am not sure where the ray reflects from the mirror.",
+        "current_concept_id": "concept_reflection_laws",
+        "messages": [HumanMessage(content="I am not sure where the ray reflects.")],
+        "steps": [],
+    }, config=cfg)
+    assert res1["hint_step"] == 1
+    assert hints_called[-1] == 1
+
+    # Turn 2: Second attempt (continuing on same concept)
+    res2 = app.invoke({
+        "mode": "practice",
+        "query": "Still confused about the angle.",
+        "current_concept_id": "concept_reflection_laws",
+        "messages": [HumanMessage(content="Still confused about the angle.")],
+        "steps": [],
+    }, config=cfg)
+    assert res2["hint_step"] == 2
+    assert hints_called[-1] == 2
+
+    # Turn 3: Third attempt (continuing on same concept)
+    res3 = app.invoke({
+        "mode": "practice",
+        "query": "Can you give me the formula or ray rule?",
+        "current_concept_id": "concept_reflection_laws",
+        "messages": [HumanMessage(content="Can you give me the formula or ray rule?")],
+        "steps": [],
+    }, config=cfg)
+    assert res3["hint_step"] == 3
+    assert hints_called[-1] == 3
+
+    # Turn 4: Fourth attempt caps at MAX_HINT_STEPS (3)
+    res4 = app.invoke({
+        "mode": "practice",
+        "query": "Need more help.",
+        "current_concept_id": "concept_reflection_laws",
+        "messages": [HumanMessage(content="Need more help.")],
+        "steps": [],
+    }, config=cfg)
+    assert res4["hint_step"] == 3
+
+    # Turn 5: Student moves to a new concept -> resets to Level 1
+    res5 = app.invoke({
+        "mode": "practice",
+        "query": "Now how does Ohm's law work?",
+        "current_concept_id": "concept_ohms_law",
+        "messages": [HumanMessage(content="Now how does Ohm's law work?")],
+        "steps": [],
+    }, config=cfg)
+    assert res5["hint_step"] == 1
+    assert hints_called[-1] == 1
+
+
+def test_output_guardrail_uses_question_gold_answer_not_student_attempt(monkeypatch, tmp_path):
+    """Verify output guardrail compares against protected gold answer from question_bank, not student_attempt."""
+    from socratic_tutor.tools import question_bank
+    from socratic_tutor import graph
+
+    monkeypatch.setattr(question_bank, "DB_PATH", tmp_path / "qb_guard.db")
+    question_bank._init_db()
+
+    prop = question_bank.propose_question(
+        concept_id="concept_ohms_law",
+        difficulty="easy",
+        prompt="12 V across 4 ohm: find current",
+        gold_answer="3 A",
+    )
+    qid = prop["question_id"]
+    question_bank.publish_approved_question(qid)
+
+    # Case 1: Tutor response leaks the gold answer "3 A"
+    state_leak = {
+        "mode": "practice",
+        "current_question_id": qid,
+        "student_attempt": "100 A",  # Wrong student attempt
+        "response": "The current is 3 A according to Ohm's law.",
+        "citations": [],
+        "retrieved_sections": [],
+        "hint_tries": 0,
+    }
+    out_leak = graph.node_output_guardrail(state_leak)
+    assert out_leak["answer_leak_flag"] is True
+
+    # Case 2: Tutor response echoes student attempt "100 A" but does NOT leak gold answer "3 A"
+    state_no_leak = {
+        "mode": "practice",
+        "current_question_id": qid,
+        "student_attempt": "100 A",
+        "response": "You suggested 100 A. Let's look at the relation between V and R.",
+        "citations": [],
+        "retrieved_sections": [],
+        "hint_tries": 0,
+    }
+    out_no_leak = graph.node_output_guardrail(state_no_leak)
+    assert out_no_leak["answer_leak_flag"] is False
+
 
