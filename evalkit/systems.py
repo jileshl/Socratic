@@ -43,10 +43,11 @@ class TurnResult:
 class TutorSystem:
     name = "base"
 
-    def start(self, student_id: str, mode: str) -> None:
+    def start(self, student_id: str, mode: str, current_question_id: str | None = None) -> None:
         self.session_id = f"eval-{uuid.uuid4().hex[:10]}"
         self.student_id = student_id
         self.mode = mode
+        self.current_question_id = current_question_id
         self.history: list[tuple[str, str]] = []
 
     def turn(self, message: str, callbacks: list | None = None) -> TurnResult:
@@ -82,6 +83,7 @@ class GraphSystem(TutorSystem):
             "session_id": self.session_id,
             "student_id": self.student_id,
             "mode": self.mode,
+            "current_question_id": getattr(self, "current_question_id", None),
             "query": message,
             "messages": [HumanMessage(content=message)],
             "steps": [],
