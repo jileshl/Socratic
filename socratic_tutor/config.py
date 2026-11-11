@@ -103,6 +103,9 @@ TARGET_CHAPTERS = [
 # Each evaluation run records these values and the git commit it ran on.
 SIMULATED_STUDENT_MODEL = os.getenv("SIMULATED_STUDENT_MODEL", "meta-llama/llama-3.3-70b-instruct")  # not the agents' family
 AGENT_TEMPERATURE = float(os.getenv("AGENT_TEMPERATURE", "0.2"))
+# Longest reply any model call may write. OpenRouter reserves credit for this many tokens on every
+# call, so leaving it unset (the model maximum, up to 65,536) fails on keys with a low credit limit.
+LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "1500"))
 JUDGE_TEMPERATURE = float(os.getenv("JUDGE_TEMPERATURE", "0.0"))
 SIMULATED_STUDENT_TEMPERATURE = float(os.getenv("SIMULATED_STUDENT_TEMPERATURE", "0.7"))
 
