@@ -6,6 +6,8 @@ import tempfile
 os.environ.setdefault("EVAL_STUB", "1")
 os.environ.setdefault("EVAL_RESULTS_DIR", tempfile.mkdtemp(prefix="socratic-test-results-"))
 os.environ.setdefault("TEACHER_PIN", "test-pin")
+# The guardrails' model calls (Llama Guard, the pasted-homework reader) never run in tests; tests that need them use fakes.
+os.environ["GUARD_MODELS"] = "off"
 
 
 import pytest  # noqa: E402
