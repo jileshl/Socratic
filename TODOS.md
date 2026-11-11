@@ -160,7 +160,7 @@ Human-judge calibration, assessment-material approval, question-bank rejection c
 * **Tasks**:
   1. Create 40 persona cards (split 20 dev / 20 held-out) with seeded misconceptions and patience turns.
   2. Implement interactive dialogue evaluation: pre-quiz $\rightarrow$ Socratic session $\rightarrow$ post-quiz.
-  3. Calibrate LLM Judge (`gemini-2.5-flash` or `llama-3.3-70b-instruct`) against 20+ human teacher rubrics using Cohen's kappa ($\kappa \ge 0.70$).
+  3. Calibrate LLM Judge (`gemini-3.1-flash-lite` or `llama-3.3-70b-instruct`) against 20+ human teacher rubrics using Cohen's kappa ($\kappa \ge 0.70$).
 * **Verification**: `python scripts/evaluate_dev.py` outputs task success, answer-leak rate, and average learning gain.
 
 ---
