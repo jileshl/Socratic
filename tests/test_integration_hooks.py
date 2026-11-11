@@ -55,6 +55,22 @@ def hook_lines(caplog: pytest.LogCaptureFixture) -> list[dict[str, Any]]:
     return lines
 
 
+@pytest.fixture(autouse=True)
+def private_learner_store(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    """The graph's learner store writes to a temporary database, never the real one (.index/learner_store.db)."""
+    database: Path = tmp_path / "learner_store.db"
+    real_store: Any = graph.LearnerStore
+
+    class PrivateLearnerStore(real_store):
+        """The real LearnerStore, always on the temporary database."""
+
+        def __init__(self, db_path: Path | None = None) -> None:
+            super().__init__(db_path=database)
+
+    monkeypatch.setattr(graph, "LearnerStore", PrivateLearnerStore)
+    return database
+
+
 # --------------------------------------------------------------------------- the tutor's search
 
 
@@ -111,7 +127,7 @@ def test_the_same_search_a_third_time_is_blocked(fake_search: FakeSearch) -> Non
     """The same tool with the same arguments may run MAX_IDENTICAL_TOOL_CALLS times in a turn, then it's blocked."""
     tool_hooks.start_turn("ses_same")
     state: dict[str, Any] = facts(session_id="ses_same")
-    for attempt in range(config.MAX_IDENTICAL_TOOL_CALLS):
+    for _ in range(config.MAX_IDENTICAL_TOOL_CALLS):
         graph._tutor_search({"query": "the same question", "top_k": 4}, state)
     blocked: list[dict[str, Any]] = graph._tutor_search({"query": "the same question", "top_k": 4}, state)
     assert blocked == [] and fake_search.calls == config.MAX_IDENTICAL_TOOL_CALLS
@@ -208,3 +224,63 @@ def test_grade_answer_without_a_state_still_runs_directly(monkeypatch: pytest.Mo
     monkeypatch.setenv(tool_hooks.PAUSE_VARIABLE, "1")
     result: dict[str, Any] = grader.grade_answer("2 A", "2 A", is_numeric=True)
     assert result["is_correct"] is True
+
+
+def labelled_question(prompt: str, gold_answer: str) -> str:
+    """An approved question whose key has labels ("v = 30 cm; m = 3"), so the grader compares number pairs."""
+    saved: dict[str, Any] = question_bank.propose_question("concept_mirror_formula", "easy", prompt, gold_answer)
+    question_bank.publish_approved_question(saved["question_id"])
+    return saved["question_id"]
+
+
+def grade_through_the_graph(question_id: str, answer: str, caplog: pytest.LogCaptureFixture) -> tuple[dict[str, Any], int]:
+    """Grade one quiz answer with the graph's grader node; return the result and how many grader hook lines there were."""
+    tool_hooks.start_turn("ses_hooks")
+    state: dict[str, Any] = facts(mode="quiz")
+    state["current_question_id"] = question_id
+    state["student_attempt"] = answer
+    caplog.clear()
+    with caplog.at_level(logging.INFO, logger="tool-hooks"):
+        result: dict[str, Any] = graph.node_grader(state)
+    grader_lines: int = 0
+    for line in hook_lines(caplog):
+        if line["agent"] == "grader":
+            grader_lines = grader_lines + 1
+    return result, grader_lines
+
+
+def test_a_repeated_wrong_number_is_graded_wrong_not_cant_check(approved_key: str, caplog: pytest.LogCaptureFixture) -> None:
+    """The review's case: the same wrong number three times against a labelled key. It used to hit the
+    identical-call limit ("can't check"); now it is ONE hooked check and an honest "not quite right"."""
+    question_id: str = labelled_question("Find v.", "v = -20 cm")
+    result, grader_lines = grade_through_the_graph(question_id, "v = -30 cm\nso v = -30 cm\nfinal: v = -30 cm", caplog)
+    assert result["response"] == grader.WRONG_FEEDBACK
+    assert grader_lines == 1
+
+
+def test_an_answer_with_many_numbers_is_graded_right(approved_key: str, caplog: pytest.LogCaptureFixture) -> None:
+    """The review's case: eight numbers against a three-part key. It used to run the turn budget out; now it is
+    ONE hooked check, and the matching pair makes it right."""
+    question_id: str = labelled_question("Find v, m and h.", "v = 30 cm; m = 3; h = 6 cm")
+    answer: str = "u = -10 cm, f = -15 cm, h = 2 cm, x = 12 cm, y = 9 cm, z = 1.5, w = 4.5 cm, v = 30 cm"
+    result, grader_lines = grade_through_the_graph(question_id, answer, caplog)
+    assert result["response"] == grader.CORRECT_FEEDBACK
+    assert grader_lines == 1
+
+
+def test_a_blocked_quiz_turn_records_nothing_and_raises_no_alert(approved_key: str, monkeypatch: pytest.MonkeyPatch,
+                                                                    private_learner_store: Path) -> None:
+    """A whole quiz turn with the tools paused: "can't check", the supervisor's grade_error plan, no quiz result
+    saved, and no teacher alert (a paused tool is about the system, not the student)."""
+    monkeypatch.setenv(tool_hooks.PAUSE_VARIABLE, "1")
+    app_graph: Any = graph.build_graph(checkpointer=InMemorySaver())
+    state_in: dict[str, Any] = facts(mode="quiz", session_id="ses_paused_quiz")
+    state_in["query"] = "2 A"
+    state_in["current_question_id"] = approved_key
+    state_in["messages"] = []
+    state_in["steps"] = []
+    out: dict[str, Any] = app_graph.invoke(state_in, config={"configurable": {"thread_id": "hooks-paused-quiz"}})
+    assert out["response"] == grader.CANNOT_CHECK_FEEDBACK
+    assert out["plan"] == ["grade_error"] and out["teacher_alert_triggered"] is False
+    profile: dict[str, Any] = graph.LearnerStore().get_profile("stu_hooks")
+    assert profile["mastery_map"] == {}

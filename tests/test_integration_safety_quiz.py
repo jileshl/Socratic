@@ -76,6 +76,22 @@ def approved_question(prompt: str, gold_answer: str, concept_id: str = "concept_
     return saved["question_id"]
 
 
+@pytest.fixture(autouse=True)
+def private_learner_store(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    """The graph's learner store writes to a temporary database, never the real one (.index/learner_store.db)."""
+    database: Path = tmp_path / "learner_store.db"
+    real_store: Any = graph.LearnerStore
+
+    class PrivateLearnerStore(real_store):
+        """The real LearnerStore, always on the temporary database."""
+
+        def __init__(self, db_path: Path | None = None) -> None:
+            super().__init__(db_path=database)
+
+    monkeypatch.setattr(graph, "LearnerStore", PrivateLearnerStore)
+    return database
+
+
 # --------------------------------------------------------------------------- S1: the guardrail's own replies
 
 
