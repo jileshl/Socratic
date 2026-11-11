@@ -253,3 +253,48 @@ aside .ray { grid-template-columns: repeat(4, minmax(0, 1fr)); row-gap: 16px; }
 aside .ray::before, aside .ray .beam { display: none; }
 /* no empty chat box before the first message */
 #log:empty { min-height: 0; padding: 0; }
+
+/* ---------- study plan: a path of numbered steps (the order matters) ---------- */
+.path { list-style: none; margin: 10px 0 0; padding: 0; counter-reset: step; }
+.path > li { position: relative; display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 12px; padding: 0 0 18px; counter-increment: step; }
+.path > li::before { content: counter(step); width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 14px; background: var(--sheet); border: 2px solid var(--rule); color: var(--ink-2); z-index: 1; }
+.path > li::after { content: ""; position: absolute; left: 15px; top: 30px; bottom: 0; width: 2px; background: var(--rule); }
+.path > li:last-child { padding-bottom: 0; } .path > li:last-child::after { display: none; }
+.path > li.mastered::before { content: "✓"; background: var(--ok); border-color: var(--ok); color: #fff; }
+.path > li.next::before { border-color: var(--royal); color: var(--royal); box-shadow: 0 0 0 4px var(--royal-soft); }
+.step-body { display: grid; gap: 6px; padding-top: 3px; }
+.step-body .t { font-weight: 700; font-size: 16px; }
+.step-body .why { font-size: 13.5px; color: var(--ink-2); }
+.step-body .m { display: grid; grid-template-columns: minmax(80px, 220px) auto; gap: 10px; align-items: center; font-size: 13.5px; color: var(--ink-2); }
+.step-body .acts { display: flex; gap: 6px; flex-wrap: wrap; }
+.step-body .acts button { font-size: 14px; padding: 5px 12px; }
+.plan-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+.teacher-note { margin: 10px 0 4px; padding: 10px 14px; border-radius: var(--r-sm); background: var(--royal-soft); border-left: 3px solid var(--royal); font-size: 15px; }
+.teacher-note b { color: var(--royal); }
+.due { font-size: 13.5px; font-weight: 700; color: var(--warn); }
+.nextup { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 14px; padding: 12px 16px; background: var(--sheet); border: 1px solid var(--rule); border-left: 5px solid var(--royal); border-radius: var(--r); }
+.nextup .t { flex: 1; min-width: 200px; } .nextup .t b { display: block; font-size: 16px; }
+
+/* ---------- who's learning ---------- */
+.picker { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 14px; color: var(--ink-2); }
+.picker select { padding: 6px 10px; font-size: 14.5px; font-weight: 700; color: var(--ink); max-width: 220px; }
+
+/* ---------- teacher: students ---------- */
+.stu-bar { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; justify-content: space-between; margin-bottom: 14px; }
+.stu-bar label { margin: 0; }
+.stu-bar .row input { width: 200px; }
+table.class tr[data-id] { cursor: pointer; }
+table.class tr[data-id]:hover td { background: var(--rule-2); }
+table.class tr.sel td { background: var(--royal-soft); }
+table.class td .meter { width: 90px; display: inline-block; vertical-align: middle; margin-right: 6px; }
+.stu-name { font-weight: 700; }
+.builder li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--rule-2); }
+.builder ol { margin: 6px 0 10px; padding-left: 22px; }
+.builder .mv { display: flex; gap: 4px; }
+.builder .mv button { padding: 3px 9px; font-size: 13.5px; }
+.sugg { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 7px 0; border-bottom: 1px dashed var(--rule); font-size: 14.5px; }
+.sugg .why { font-size: 13px; color: var(--ink-2); }
+@media (max-width: 560px) { .stu-bar .row input { width: 100%; } table.class .hide-sm { display: none; } }
+.builder .row select { flex: 1; min-width: 0; }
+.maxed { font-size: 14px; padding: 7px 11px; border-radius: var(--r-sm); background: var(--royal-soft); border-left: 3px solid var(--royal); }
+.quick button.strong { background: var(--royal); color: #fff; border-color: var(--royal); font-weight: 700; }

@@ -28,6 +28,7 @@
     <div class="attention" id="attention"></div>
     <div class="tabs">
       <button data-tab="dash" class="on" onclick="tab('dash')">Class overview</button>
+      <button data-tab="students" onclick="tab('students')">Students and plans</button>
       <button data-tab="appr" onclick="tab('appr')">Approvals <span id="apprCount" class="count"></span></button>
       <button data-tab="alerts" onclick="tab('alerts')">Alerts <span id="alertCount" class="count"></span></button>
       <button data-tab="labels" onclick="tab('labels')">Score conversations</button>
@@ -45,10 +46,20 @@
       <p class="muted" id="generated"></p>
     </section>
 
+    <section id="t-students" class="hidden">
+      <div class="stu-bar">
+        <label class="picker"><span>Student</span><select id="stuPick" onchange="openStudent(this.value)" aria-label="Choose a student"></select></label>
+        <form class="row" onsubmit="addStudent(event)"><input id="newName" placeholder="First name or nickname" maxlength="60" aria-label="New student's name"><button>Add a student</button><span id="addOut" class="error" role="status"></span></form>
+      </div>
+      <p class="muted" style="max-width:80ch;margin-top:0">Names stay in this app: the tutor and its AI models only ever see each student's random ID. A student picks their name under "Learning as" on the student page.</p>
+      <div id="stuDetail"></div>
+      <div class="panel"><h2>Your class</h2><p class="muted">Click a student to see their record and set their study plan. Students with an open alert are listed first.</p><table class="class" id="classTable"></table></div>
+    </section>
+
     <section id="t-appr" class="hidden">
       <p class="muted" style="max-width:75ch">Questions reach students only after you approve the exact version shown. Each version has its own fingerprint. If anything changes after you open it, including your own edit, an earlier approval no longer counts and the new version needs approving.</p>
       <div id="apprList"></div>
-      <div class="panel"><h2>Recent decisions</h2><table id="apprLog"></table></div>
+      <div class="panel"><h2>Recent decisions</h2><p class="muted" style="margin-top:0">Every approve, edit and reject, newest first. "Refused" means the safety rule worked: an approval only counts for the exact version that was reviewed.</p><table id="apprLog"></table></div>
     </section>
 
     <section id="t-alerts" class="hidden"><div id="alertList"></div></section>
@@ -82,6 +93,7 @@ const GUIDE = [
   { title: "Two students, same question", tag: "Signature A", student: true, steps: ["Open the student view in presenter mode and run \"Student A, then student B\".", "Compare the two replies and each student's progress."] },
   { title: "Answer-leak alert", tag: "L16", leak: true, steps: ["Click \"Send 5 test leaks\". They are labelled as tests.", "Open Prometheus alerts or the Grafana banner: AnswerLeakSpike goes pending, then firing after about a minute."] },
   { title: "Stop and resume a conversation", tag: "L8", steps: ["During a conversation, in Terminal: docker compose -f docker/docker-compose.yml restart app", "Reload the student view and carry on: the conversation continues from where it stopped."] },
+  { title: "Give a student a study plan", go: "students", steps: ["Open Students and plans and pick Rohan (demo) from the Student list.", "Read the suggestion (worked out by code from his quiz results), click \"Use all suggestions\" or add topics yourself, reorder them, add a note and a due date.", "Click \"Assign plan\". In the student view, pick Rohan under \"Learning as\" and open My plan."] },
   { title: "Score conversations for the AI judge", tag: "L13", go: "labels", steps: ["After an evaluation run, export conversations: python -m evalkit.calibrate export --run <run folder>", "Score them under Score conversations. 20 or more give the judge-agreement figure."] },
 ];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -103,7 +115,8 @@ async function login(e) {
 async function logout() { await fetch("/api/teacher/logout", { method: "POST" }); show(false); }
 function tab(name) {
   document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === name));
-  ["dash", "appr", "alerts", "labels", "guide"].forEach(t => document.getElementById("t-" + t).classList.toggle("hidden", t !== name));
+  if (name === "students") loadStudents();
+  ["dash", "students", "appr", "alerts", "labels", "guide"].forEach(t => document.getElementById("t-" + t).classList.toggle("hidden", t !== name));
   try { history.replaceState(null, "", "#" + name); } catch (e) {}
 }
 function liveToggle() {
@@ -171,7 +184,10 @@ async function loadApprovals() {
         <span class="muted" data-out role="status"></span>
       </div></div>`;
   }).join("") : "<div class='panel muted'>Nothing to review. The Demo guide can add [DEMO] questions.</div>";
-  document.getElementById("apprLog").innerHTML = "<tr><th>When</th><th>Question</th><th>Decision</th><th>Result</th></tr>" + (body.recent_decisions.length ? body.recent_decisions.map(r => `<tr><td>${esc(new Date(r.at).toLocaleTimeString())}</td><td class="hash">${esc(r.item_id)}</td><td>${esc(r.action)}</td><td class="${r.outcome === "ok" ? "okay" : "error"}">${r.outcome === "ok" ? "Done" : esc(r.outcome)}</td></tr>`).join("") : "<tr><td class='muted' colspan='4'>No decisions yet.</td></tr>");
+  const ACT = { approve: "Approved", edit: "Edited", reject: "Rejected" };
+  const result = r => r.outcome === "ok" ? `<span class="okay">${r.action === "approve" ? "Published to students" : r.action === "edit" ? "Saved as a new version" : "Removed"}</span>`
+    : r.outcome === "refused: stale" ? `<span class="error">Refused: this approval was for an older version</span><div class="hash">The question was edited after it was opened, so the earlier approval no longer counted. Nothing was published.</div>` : `<span class="error">${esc(r.outcome)}</span>`;
+  document.getElementById("apprLog").innerHTML = "<tr><th>When</th><th>Question</th><th>What was done</th><th>Result</th></tr>" + (body.recent_decisions.length ? body.recent_decisions.map(r => `<tr><td>${esc(new Date(r.at).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }))}</td><td>${r.question ? esc(r.question.replace(/^\[(DEMO|TEST)\]\s*/, "")) : "<span class='muted'>Question no longer in the bank</span>"}${/^\[TEST\]/.test(r.question || "") ? " <span class='chip'>automated check</span>" : /^\[DEMO\]/.test(r.question || "") ? " <span class='chip warn'>demo</span>" : ""}${r.concept ? `<div class="hash">${esc(r.concept)}</div>` : ""}</td><td>${esc(ACT[r.action] || r.action)}</td><td>${result(r)}</td></tr>`).join("") : "<tr><td class='muted' colspan='4'>No decisions yet.</td></tr>");
 }
 async function decide(itemId, action, hash) {
   const box = document.getElementById("item-" + itemId);
@@ -195,7 +211,7 @@ async function decide(itemId, action, hash) {
   }
 }
 function renderAlerts(alerts) {
-  document.getElementById("alertList").innerHTML = alerts.length ? alerts.map(a => `<div class="panel alert ${esc(a.kind)}"><div class="row" style="justify-content:space-between"><h3>${a.kind === "distress" ? "Please check in with this student" : "A student is stuck"}</h3><span class="chip ${a.kind === "distress" ? "bad" : "warn"}">${a.kind === "distress" ? "Distress" : "Stuck"}</span></div><p>${esc(a.detail)}</p><div class="hash">Student ${esc(a.student_id)}, ${esc(new Date(a.at).toLocaleString())}</div><button style="margin-top:10px" onclick="ack(${a.id})">Mark as handled</button></div>`).join("") : "<div class='panel muted'>No open alerts. Distress alerts appear here straight away; stuck alerts after 3 sessions on one topic or 10 minutes without progress.</div>";
+  document.getElementById("alertList").innerHTML = alerts.length ? alerts.map(a => `<div class="panel alert ${esc(a.kind)}"><div class="row" style="justify-content:space-between"><h3>${a.kind === "distress" ? "Please check in with this student" : "A student is stuck"}</h3><span class="chip ${a.kind === "distress" ? "bad" : "warn"}">${a.kind === "distress" ? "Distress" : "Stuck"}</span></div><p>${esc(a.detail)}</p><div class="hash"><b class="stu-name">${esc(a.student_name || a.student_id)}</b>, ${esc(new Date(a.at).toLocaleString())}</div><div class="row" style="margin-top:10px"><button onclick="ack(${a.id})">Mark as handled</button><button onclick="tab('students');openStudent('${esc(a.student_id)}')">Open ${esc(a.student_name || "student")}'s record</button></div></div>`).join("") : "<div class='panel muted'>No open alerts. Distress alerts appear here straight away; stuck alerts after 3 sessions on one topic or 10 minutes without progress.</div>";
 }
 async function ack(id) { await api(`/api/teacher/alerts/${id}/ack`, { method: "POST" }); refresh(); }
 
@@ -206,7 +222,7 @@ function renderGuide() {
     : `<h2>Demo data is switched off</h2><p class="muted">Add <code>OPS_DEMO=1</code> to the .env file and restart to add demo data and test the leak alert from here. From a terminal instead: <code>python -m scripts.seed_demo --class</code></p>`;
   document.getElementById("guideList").innerHTML = `<p class="muted">A suggested order for the demo. Each step uses the real tutor.</p>` + GUIDE.map((g, i) => `<div class="sc"><div class="top"><span class="sc-title">${i + 1}. ${esc(g.title)}</span>${g.tag ? `<span class="tag-demo">${esc(g.tag)}</span>` : ""}</div>
     <ol class="steps">${g.steps.map(s => `<li>${esc(s)}</li>`).join("")}</ol>
-    <div class="row">${g.go ? `<button onclick="tab('${g.go}')">Go to ${esc({ appr: "Approvals", dash: "Class overview", alerts: "Alerts", labels: "Score conversations" }[g.go])}</button>` : ""}${g.second ? `<button onclick="window.open('/teacher?demo=1#appr','_blank')">Open Approvals in a second tab</button>` : ""}${g.student ? `<a class="btn" href="/?demo=1" target="_blank">Open the student view (presenter mode)</a>` : ""}${g.leak && opsDemo ? `<button onclick="fireLeak()">Send 5 test leaks</button>` : ""}</div></div>`).join("");
+    <div class="row">${g.go ? `<button onclick="tab('${g.go}')">Go to ${esc({ appr: "Approvals", dash: "Class overview", students: "Students and plans", alerts: "Alerts", labels: "Score conversations" }[g.go])}</button>` : ""}${g.second ? `<button onclick="window.open('/teacher?demo=1#appr','_blank')">Open Approvals in a second tab</button>` : ""}${g.student ? `<a class="btn" href="/?demo=1" target="_blank">Open the student view (presenter mode)</a>` : ""}${g.leak && opsDemo ? `<button onclick="fireLeak()">Send 5 test leaks</button>` : ""}</div></div>`).join("");
 }
 async function demoData(action) {
   const { status, body } = await api("/api/ops/demo-data", { method: "POST", body: JSON.stringify({ action }) });
@@ -216,6 +232,91 @@ async function demoData(action) {
 async function fireLeak() {
   const { status, body } = await api("/api/ops/emit-test-leak?count=5", { method: "POST" });
   const el = document.getElementById("demoOut"); if (el) el.textContent = status === 200 ? "Sent 5 test leaks. The alert fires in about a minute: check Prometheus alerts or the Grafana banner." : (body.detail || "That didn't work.");
+}
+
+// ---------- students and study plans ----------
+const SHORT = { light: "Light", eye: "Human eye", elec: "Electricity", other: "Other" };
+let students = [], concepts = [], current = null, draft = [], showUnnamed = false;
+const passBand = m => m == null ? "" : m >= .7 ? "hi" : m >= .4 ? "mid" : "lo";
+const when = t => t ? new Date(t).toLocaleDateString(undefined, { day: "numeric", month: "short" }) : "never";
+async function loadStudents() {
+  if (!concepts.length) concepts = (await (await fetch("/api/concepts")).json()).items;
+  students = (await api("/api/teacher/students")).body.items || [];
+  const sel = document.getElementById("stuPick");
+  sel.innerHTML = `<option value="">${students.length ? "Choose a student" : "No students yet"}</option>` + students.map(s => `<option value="${esc(s.student_id)}">${esc(s.name)}${s.open_alerts ? " (needs you)" : ""}</option>`).join("");
+  if (current) sel.value = current;
+  // Named students first. Students who used the tutor without a name (their own device) are folded away unless they need you.
+  const shown = students.filter(s => s.named || s.open_alerts || s.student_id === current || showUnnamed);
+  const folded = students.length - shown.length;
+  document.getElementById("classTable").innerHTML = "<tr><th>Name</th><th>Mastery</th><th>Mix-ups</th><th>Alerts</th><th>Study plan</th><th class='hide-sm'>Last active</th></tr>" + (shown.length ? shown.map(s => `<tr data-id="${esc(s.student_id)}" class="${s.student_id === current ? "sel" : ""}" onclick="openStudent('${esc(s.student_id)}')" tabindex="0" onkeydown="if(event.key==='Enter')openStudent('${esc(s.student_id)}')">
+    <td><span class="stu-name">${esc(s.name)}</span>${s.named ? "" : `<div class="hash">no name yet</div>`}</td>
+    <td>${s.avg_mastery == null ? "<span class='muted'>no quizzes yet</span>" : `<span class="meter"><span style="width:${Math.round(s.avg_mastery * 100)}%" class="${passBand(s.avg_mastery)}"></span></span>${Math.round(s.avg_mastery * 100)}%<div class="hash">${s.topics} topic${s.topics === 1 ? "" : "s"}</div>`}</td>
+    <td>${s.open_mixups || "<span class='muted'>none</span>"}</td>
+    <td>${s.open_alerts ? `<span class="chip bad">${s.open_alerts} open</span>` : "<span class='muted'>none</span>"}</td>
+    <td>${s.plan_topics ? `${s.plan_done} of ${s.plan_topics} done${s.plan_due ? `<div class="hash">due ${esc(when(s.plan_due + "T00:00"))}</div>` : ""}` : "<span class='muted'>not set</span>"}</td>
+    <td class="hide-sm">${esc(when(s.last_active))}</td></tr>`).join("") : "<tr><td colspan='6' class='muted'>No students yet. Add one above, or add the demo class in the Demo guide (presenter mode).</td></tr>")
+    + (folded ? `<tr><td colspan="6"><button class="ghost" onclick="showUnnamed=true;loadStudents()">Show ${folded} more student${folded === 1 ? "" : "s"} without a name</button></td></tr>` : (showUnnamed && students.some(s => !s.named) ? `<tr><td colspan="6"><button class="ghost" onclick="showUnnamed=false;loadStudents()">Hide students without a name</button></td></tr>` : ""));
+}
+async function addStudent(e) {
+  e.preventDefault();
+  const input = document.getElementById("newName"); const name = input.value.trim(); if (!name) return;
+  const { status, body } = await api("/api/teacher/students", { method: "POST", body: JSON.stringify({ name }) });
+  document.getElementById("addOut").textContent = status === 200 ? "" : (typeof body.detail === "string" ? body.detail : "Type a name of up to 60 letters.");
+  if (status !== 200) return;
+  input.value = ""; current = body.student_id; await loadStudents(); openStudent(body.student_id);
+}
+async function openStudent(id) {
+  current = id || null;
+  document.querySelectorAll("#classTable tr[data-id]").forEach(r => r.classList.toggle("sel", r.dataset.id === id));
+  document.getElementById("stuPick").value = id || "";
+  const el = document.getElementById("stuDetail");
+  if (!id) { el.innerHTML = ""; return; }
+  const { status, body: d } = await api("/api/teacher/students/" + encodeURIComponent(id));
+  if (status !== 200) { el.innerHTML = `<div class="panel error">That student's record couldn't be loaded.</div>`; return; }
+  draft = (d.plan.assigned ? d.plan.assigned.items : []).map(i => i.concept_id);
+  const groups = {}; d.mastery.forEach(m => (groups[m.chapter || "Other"] = groups[m.chapter || "Other"] || []).push(m));
+  el.innerHTML = `<div class="panel" style="border-top:4px solid var(--royal)">
+    <div class="plan-head"><div><h2 style="font-size:22px">${esc(d.name)}</h2><div class="hash">Random ID ${esc(d.student_id)}, last active ${esc(when(d.last_active))}</div></div>
+      <form class="row" onsubmit="rename(event)"><input id="renameBox" value="${esc(d.named ? d.name : "")}" placeholder="Give this student a name" maxlength="60" aria-label="Student's name"><button>Save name</button></form></div>
+    ${d.open_alerts.map(a => `<div class="teacher-note" style="background:var(--bad-soft);border-color:var(--bad)"><b style="color:var(--bad)">${a.kind === "distress" ? "Please check in" : "Stuck"}:</b> ${esc(a.detail)}</div>`).join("")}
+    <div class="grid2" style="margin-top:12px">
+      <div><h3>Mastery</h3>${d.mastery.length ? Object.entries(groups).map(([ch, rows]) => `<div class="chapter c-${CHAPTER[ch] || "other"}">${esc(ch)}</div>` + rows.map(m => `<div class="mrow"><span>${esc(m.title)}</span><span class="meter"><span style="width:${Math.round(m.mastery * 100)}%" class="${passBand(m.mastery)}"></span></span><span class="pct">${Math.round(m.mastery * 100)}%</span></div>`).join("")).join("") : "<p class='muted'>No quiz results yet.</p>"}
+        <h3 style="margin-top:14px">Mix-ups</h3><div class="chips" style="margin-top:6px">${d.misconceptions.length ? d.misconceptions.map(m => `<span class="chip ${m.resolved ? "ok" : "warn"}">${esc(m.name)}${m.resolved ? " (sorted)" : ""}</span>`).join("") : "<span class='muted'>None seen.</span>"}</div></div>
+      <div class="builder"><h3>Study plan</h3><p class="muted" style="margin:2px 0 6px">${esc(d.name)} sees these topics in this order under My plan, each with its progress and a button to practise it.</p>
+        <ol id="draftList"></ol>
+        <div class="row"><select id="addTopic" aria-label="Add a topic"><option value="">Add a topic…</option>${byChapter(concepts).map(([ch, rows]) => `<optgroup label="${esc(ch)}">${rows.map(c => `<option value="${esc(c.concept_id)}">${esc(c.title)}</option>`).join("")}</optgroup>`).join("")}</select><button type="button" onclick="addTopic()">Add</button></div>
+        <h3 style="margin-top:14px">Suggested by the tutor</h3><p class="muted" style="margin:2px 0 4px">Worked out by code from ${esc(d.name)}'s quiz results and mix-ups. It changes after every quiz.</p>
+        <div id="suggList"></div>
+        <label class="muted" for="planNote">Note for ${esc(d.name)}</label><textarea id="planNote" rows="2" maxlength="500" placeholder="For example: Ohm's law first, then try the quiz.">${esc(d.plan.assigned ? d.plan.assigned.note : "")}</textarea>
+        <div class="row" style="margin-top:8px"><label class="muted" style="margin:0" for="planDue">Due</label><input id="planDue" type="date" value="${esc(d.plan.assigned && d.plan.assigned.due || "")}"><button class="primary" onclick="savePlan()">Assign plan</button><span id="planOut" class="muted" role="status"></span></div>
+      </div></div></div>`;
+  window._sugg = d.plan.suggested; window._name = d.name; window._status = Object.fromEntries([...(d.plan.assigned ? d.plan.assigned.items : []), ...d.plan.suggested].map(i => [i.concept_id, i]));
+  renderDraft();
+  el.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+}
+function cInfo(id) { return concepts.find(c => c.concept_id === id) || { title: id, chapter: "" }; }
+function renderDraft() {
+  const st = window._status || {};
+  document.getElementById("draftList").innerHTML = draft.length ? draft.map((id, i) => { const c = cInfo(id); const s = st[id]; return `<li><span><b>${esc(c.title)}</b><div class="hash">${esc(SHORT[CHAPTER[c.chapter] || "other"])}${s ? `, ${s.status === "mastered" ? "mastered" : s.status === "in_progress" ? Math.round(s.mastery * 100) + "% so far" : "not started"}` : ""}</div></span>
+    <span class="mv"><button type="button" onclick="move(${i},-1)" ${i ? "" : "disabled"} aria-label="Move up">Up</button><button type="button" onclick="move(${i},1)" ${i < draft.length - 1 ? "" : "disabled"} aria-label="Move down">Down</button><button type="button" class="danger" onclick="drop(${i})" aria-label="Remove">Remove</button></span></li>`; }).join("") : `<p class="muted">No topics yet. Add them from the list below or from the suggestion.</p>`;
+  const sugg = (window._sugg || []).filter(s => !draft.includes(s.concept_id));
+  document.getElementById("suggList").innerHTML = sugg.length ? sugg.map(s => `<div class="sugg"><span>${esc(s.title)}<div class="why">${esc(s.reason)}</div></span><button type="button" onclick="addTopic('${esc(s.concept_id)}')">Add</button></div>`).join("") + (sugg.length > 1 ? `<button type="button" style="margin-top:8px" onclick="useAll()">Use all suggestions</button>` : "") : `<p class="muted">Nothing more to suggest.</p>`;
+}
+function move(i, d) { const j = i + d; [draft[i], draft[j]] = [draft[j], draft[i]]; renderDraft(); }
+function drop(i) { draft.splice(i, 1); renderDraft(); }
+function addTopic(id) { id = id || document.getElementById("addTopic").value; if (id && !draft.includes(id)) { draft.push(id); renderDraft(); } }
+function useAll() { (window._sugg || []).forEach(s => { if (!draft.includes(s.concept_id)) draft.push(s.concept_id); }); renderDraft(); }
+async function savePlan() {
+  const out = document.getElementById("planOut");
+  const { status, body } = await api(`/api/teacher/students/${encodeURIComponent(current)}/plan`, { method: "PUT", body: JSON.stringify({ concepts: draft, note: document.getElementById("planNote").value, due: document.getElementById("planDue").value || null }) });
+  if (status !== 200) { out.className = "error"; out.textContent = typeof body.detail === "string" ? body.detail : "That didn't work. Check the due date."; return; }
+  out.className = "okay"; out.textContent = draft.length ? `Assigned. ${window._name} sees it under My plan.` : "Plan cleared.";
+  loadStudents();
+}
+async function rename(e) {
+  e.preventDefault(); const name = document.getElementById("renameBox").value.trim(); if (!name) return;
+  const { status } = await api("/api/teacher/students/" + encodeURIComponent(current), { method: "PUT", body: JSON.stringify({ name }) });
+  if (status === 200) { await loadStudents(); openStudent(current); refresh(); }
 }
 
 let labelQueue = [];
@@ -242,7 +343,7 @@ async function saveLabel() {
   labelQueue.shift(); nextLabel();
 }
 links();
-api("/api/teacher/dashboard").then(() => { show(true); refresh(); liveToggle(); const h = location.hash.slice(1); if (["dash", "appr", "alerts", "labels"].includes(h) || (PRESENTER && h === "guide")) tab(h); }).catch(() => {});
+api("/api/teacher/dashboard").then(() => { show(true); refresh(); liveToggle(); const h = location.hash.slice(1); if (["dash", "students", "appr", "alerts", "labels"].includes(h) || (PRESENTER && h === "guide")) tab(h); }).catch(() => {});
 </script>
 </body>
 </html>
