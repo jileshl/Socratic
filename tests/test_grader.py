@@ -228,6 +228,7 @@ def test_node_grader_looks_up_key_from_question_bank(monkeypatch, tmp_path) -> N
     question_bank.publish_approved_question(qid)
 
     state = {
+        "session_id": "ses_test", "student_id": "stu_test",  # the facts R4's tool hooks need (mode is below)
         "student_attempt": "2 A",
         "current_question_id": qid,
         "mode": "quiz",
@@ -237,6 +238,7 @@ def test_node_grader_looks_up_key_from_question_bank(monkeypatch, tmp_path) -> N
     assert result["grade_result"]["score"] == 1.0
 
     state_wrong = {
+        "session_id": "ses_test", "student_id": "stu_test",  # the facts R4's tool hooks need (mode is below)
         "student_attempt": "5 A",
         "current_question_id": qid,
         "mode": "quiz",
