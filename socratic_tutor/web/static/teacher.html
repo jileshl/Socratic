@@ -35,6 +35,17 @@
 
     <section id="t-appr" class="hidden">
       <p class="muted">New questions reach students only after you approve the exact version shown. If anything changes after you open an item (including your own edit), the earlier approval no longer counts and you must approve the new version.</p>
+      <div id="apprOff" class="panel banner hidden"></div>
+      <div class="panel">
+        <b>Propose a new question set</b>
+        <p class="muted">The question setter writes the questions; the calculator computes every answer key. Nothing reaches students until you approve the set.</p>
+        <div class="row">
+          <select id="proposeConcept"></select>
+          <select id="proposeCount"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select>
+          <button class="primary" id="proposeBtn" onclick="proposeSet()">Propose a set</button>
+          <span class="muted" id="proposeOut"></span>
+        </div>
+      </div>
       <div id="apprList"></div>
       <div class="panel"><b>Recent decisions</b><table id="apprLog"></table></div>
     </section>
@@ -90,43 +101,131 @@ async function refresh() {
   renderAlerts(d.open_alerts);
   loadApprovals();
 }
+// R4 plumbing PR-2: the Approvals tab shows the waiting QUESTION SETS, one panel per set.
+// The sets as last shown, by set id: an edit sends only what the teacher changed, and every decision names
+// the hash of the version on screen (the server signs it; the gate refuses any other version).
+let shownSets = {};
 async function loadApprovals() {
   const { body } = await api("/api/teacher/approvals");
-  document.getElementById("apprList").innerHTML = body.items.length ? body.items.map(item => {
-    const p = item.payload;
-    const vBadge = (p.verified === false || p.solver_verified === false)
-      ? `<span class="badge" style="background:#fef7e0;color:#b06000;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;">⚠️ unverified answer key</span>`
-      : (p.verified === true || p.solver_verified === true)
-        ? `<span class="badge" style="background:#e6f4ea;color:#137333;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;">✓ solver-verified</span>`
-        : "";
-    return `<div class="panel" id="item-${esc(item.item_id)}">
-      <div class="row" style="justify-content:space-between;align-items:center;"><b>${esc(p.concept_id || p.concept || "question")}</b>${vBadge}<span class="hash">hash ${esc(item.payload_hash.slice(0, 12))}…</span></div>
-      <label class="muted">Question</label><textarea rows="2" data-k="prompt">${esc(p.prompt ?? JSON.stringify(p))}</textarea>
-      <label class="muted">Answer key</label><textarea rows="1" data-k="gold_answer">${esc(p.gold_answer ?? "")}</textarea>
-      <div class="row" style="margin-top:8px">
-        <button class="primary" onclick="decide('${esc(item.item_id)}','approve','${item.payload_hash}')">Approve this version</button>
-        <button onclick="decide('${esc(item.item_id)}','edit','${item.payload_hash}')">Save edit</button>
-        <button class="danger" onclick="decide('${esc(item.item_id)}','reject','${item.payload_hash}')">Reject</button>
-        <span class="muted" data-out></span>
-      </div></div>`;
-  }).join("") : "<div class='panel muted'>Nothing waiting for approval.</div>";
+  // [H1] no signing key on the server: nothing can be decided (fail closed), proposing still works.
+  const off = document.getElementById("apprOff");
+  if (body.approvals_enabled === false) {
+    off.textContent = "Approvals are off: the server has no APPROVAL_SIGNING_KEY. Set it in .env and restart the server.";
+    off.classList.remove("hidden");
+  } else {
+    off.classList.add("hidden");
+  }
+  // [H2] the concepts for the propose form (filled once, so the teacher's choice isn't reset).
+  const select = document.getElementById("proposeConcept");
+  if (select.options.length === 0) {
+    for (const conceptId of body.concept_ids || []) {
+      const option = document.createElement("option");
+      option.value = conceptId;
+      option.textContent = conceptId.replace("concept_", "").replaceAll("_", " ");
+      select.appendChild(option);
+    }
+  }
+  // [H3] one panel per waiting set. Every value goes through esc(): the question text comes from a model.
+  shownSets = {};
+  let html = "";
+  for (const item of body.items) {
+    shownSets[item.payload.set_id] = item;
+    html += setPanel(item);
+  }
+  if (html === "") {
+    html = "<div class='panel muted'>Nothing waiting for approval.</div>";
+  }
+  document.getElementById("apprList").innerHTML = html;
   document.getElementById("apprLog").innerHTML = "<tr><th>When</th><th>Item</th><th>Action</th><th>Outcome</th></tr>" + body.recent_decisions.map(r => `<tr><td>${esc(r.at)}</td><td class="hash">${esc(r.item_id)}</td><td>${esc(r.action)}</td><td class="${r.outcome === "ok" ? "okay" : "error"}">${esc(r.outcome)}</td></tr>`).join("");
 }
-async function decide(itemId, action, hash) {
-  const box = document.getElementById("item-" + itemId);
-  const changes = {}; box.querySelectorAll("textarea").forEach(t => changes[t.dataset.k] = t.value);
-  const { status, body } = await api("/api/teacher/approvals/" + encodeURIComponent(itemId), { method: "POST", body: JSON.stringify({ action, payload_hash: hash, changes: action === "edit" ? changes : null }) });
+function setPanel(item) {
+  const p = item.payload;
+  const setId = esc(p.set_id);
+  let questions = "";
+  for (const q of p.questions) {
+    questions += `<div style="margin-top:10px" data-qid="${esc(q.id)}">
+      <div class="muted">${esc(q.concept_id)} · ${esc(q.difficulty)} · ${esc(q.id)}</div>
+      <label class="muted">Question</label><textarea rows="2" data-k="prompt">${esc(q.prompt)}</textarea>
+      <label class="muted">Answer key (computed by the calculator)</label><textarea rows="1" data-k="gold_answer">${esc(q.gold_answer)}</textarea>
+    </div>`;
+  }
+  return `<div class="panel" id="set-${setId}">
+    <div class="row" style="justify-content:space-between"><b>Question set ${setId} · version ${esc(p.version)} · ${esc(p.questions.length)} question(s)</b><span class="hash">hash ${esc(item.payload_hash.slice(0, 12))}…</span></div>
+    <div class="muted">${esc(item.note)}</div>
+    ${questions}
+    <div class="row" style="margin-top:8px">
+      <button class="primary" onclick="decide('${setId}','approve')">Approve this version</button>
+      <button onclick="decide('${setId}','edit')">Save edits</button>
+      <button class="danger" onclick="decide('${setId}','reject')">Reject set</button>
+      <span class="muted" data-out></span>
+    </div></div>`;
+}
+async function decide(setId, action) {
+  const shown = shownSets[setId];
+  const box = document.getElementById("set-" + setId);
   const out = box.querySelector("[data-out]");
-  if (status === 409) { out.className = "error"; out.textContent = body.detail; return; }
-  if (status >= 400) { out.className = "error"; out.textContent = body.detail || "Failed"; return; }
-  out.className = "okay";
-  out.textContent = action === "edit" ? "Edited. The earlier approval no longer applies; approve the new version." : action === "approve" ? "Approved and published." : "Rejected.";
+  // [H4] an edit sends only the changed fields: {question id: {field: new value}}.
+  let changes = null;
   if (action === "edit") {
-    box.querySelectorAll("button")[0].setAttribute("onclick", `decide('${itemId}','approve','${body.payload_hash}')`);
-    box.querySelectorAll("button")[1].setAttribute("onclick", `decide('${itemId}','edit','${body.payload_hash}')`);
-    box.querySelectorAll("button")[2].setAttribute("onclick", `decide('${itemId}','reject','${body.payload_hash}')`);
-    box.querySelector(".hash").textContent = "hash " + body.payload_hash.slice(0, 12) + "… (new version)";
-  } else setTimeout(refresh, 800);
+    changes = {};
+    for (const q of shown.payload.questions) {
+      const fields = {};
+      for (const area of box.querySelectorAll(`[data-qid="${CSS.escape(q.id)}"] textarea`)) {
+        if (area.value !== q[area.dataset.k]) {
+          fields[area.dataset.k] = area.value;
+        }
+      }
+      if (Object.keys(fields).length > 0) {
+        changes[q.id] = fields;
+      }
+    }
+    if (Object.keys(changes).length === 0) {
+      out.className = "error";
+      out.textContent = "Nothing changed.";
+      return;
+    }
+  }
+  const request = { action: action, payload_hash: shown.payload_hash, changes: changes };
+  const { status, body } = await api("/api/teacher/approvals/" + encodeURIComponent("qbset:" + setId), { method: "POST", body: JSON.stringify(request) });
+  // 409: refused (an older version, or the bank changed); 503: approvals are off. Nothing was changed.
+  if (status >= 400) {
+    out.className = "error";
+    out.textContent = body.detail || "Failed";
+    return;
+  }
+  out.className = "okay";
+  if (action === "edit") {
+    out.textContent = "Edited. The earlier approval no longer applies; approve the new version.";
+  } else if (action === "approve") {
+    out.textContent = "Approved and published.";
+  } else {
+    out.textContent = "Rejected.";
+  }
+  // Reload: an edited set comes back as its new version (a new hash) to approve.
+  setTimeout(refresh, 800);
+}
+async function proposeSet() {
+  const out = document.getElementById("proposeOut");
+  const button = document.getElementById("proposeBtn");
+  const request = { concept_id: document.getElementById("proposeConcept").value, count: Number(document.getElementById("proposeCount").value) };
+  button.disabled = true;
+  out.className = "muted";
+  out.textContent = "Asking the question setter…";
+  const { status, body } = await api("/api/teacher/question_sets", { method: "POST", body: JSON.stringify(request) });
+  button.disabled = false;
+  if (status >= 400) {
+    out.className = "error";
+    out.textContent = typeof body.detail === "string" ? body.detail : "Failed";
+    return;
+  }
+  // The setter's note, and why any draft was refused (textContent: model text is never parsed as HTML).
+  let text = body.note;
+  for (const refusal of body.refused || []) {
+    text += " | refused (" + (refusal.difficulty || "draft") + "): " + refusal.error;
+  }
+  out.className = body.ok ? "okay" : "error";
+  out.textContent = text;
+  refresh();
 }
 function renderAlerts(alerts) {
   document.getElementById("alertList").innerHTML = alerts.length ? alerts.map(a => `<div class="panel ${a.kind === "distress" ? "banner" : ""}"><b>${a.kind === "distress" ? "Please check in with this student" : "Student is stuck"}</b><p>${esc(a.detail)}</p><div class="muted">Student ${esc(a.student_id)} · ${esc(a.at)}</div><button style="margin-top:6px" onclick="ack(${a.id})">Mark as handled</button></div>`).join("") : "<div class='panel muted'>No open alerts.</div>";
