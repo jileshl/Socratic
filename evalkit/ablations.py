@@ -7,6 +7,7 @@ never affected.
 
 Patch points (tell R5 if you rename any of these):
     socratic_tutor.policy.check_input_guardrails / check_answer_leak      (R4)
+    socratic_tutor.policy.check_reply (the reply check: links, citations, content guard) (R4)
     socratic_tutor.learner_store.LearnerStore read and write methods      (R2)
     socratic_tutor.reflexion.ReflexionPlaybook.get_lessons_for_misconception (R3)
 """
@@ -38,6 +39,11 @@ def _no_leak(*args: Any, **kwargs: Any) -> bool:
     return False
 
 
+def _pass_reply(reply: str, citations: list[str], retrieved_ids: list[str], student_text: str = "") -> dict[str, Any]:
+    """Defences off: the reply check lets the reply through unchanged (no link removal, no content guard)."""
+    return {"reply": reply, "citations": citations, "links_removed": 0, "blocked_by": None}
+
+
 def _empty_profile(self: Any, student_id: str, *args: Any, **kwargs: Any) -> dict[str, Any]:
     return {"student_id": student_id, "mastery_map": {}, "misconceptions": [], "effective_lessons": [], "stuck_counter": 0}
 
@@ -52,12 +58,17 @@ def applied(defences: bool = True, memory: bool = True, playbook: bool = False) 
         if not defences:
             _swap(stack, policy, "check_input_guardrails", _pass_input)
             _swap(stack, policy, "check_answer_leak", _no_leak)
+            # The reply check also counts as a defence (R4 plumbing PR-1 wired it into the graph's output node).
+            _swap(stack, policy, "check_reply", _pass_reply)
             for module in list(sys.modules.values()):  # modules that did `from policy import ...`
                 if module is not None and getattr(module, "__name__", "").startswith("socratic_tutor.") and module is not policy:
                     if getattr(module, "check_input_guardrails", None) is not None:
                         _swap(stack, module, "check_input_guardrails", _pass_input)
                     if getattr(module, "check_answer_leak", None) is not None:
                         _swap(stack, module, "check_answer_leak", _no_leak)
+                    # graph.py does `from policy import check_reply`, so its own copy is switched off too.
+                    if getattr(module, "check_reply", None) is not None:
+                        _swap(stack, module, "check_reply", _pass_reply)
         if not memory:
             _swap(stack, LearnerStore, "get_profile", _empty_profile)
             for name in dir(LearnerStore):
