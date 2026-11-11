@@ -28,13 +28,13 @@ for mode in bm25 dense hybrid hybrid-no-rewrite; do
 done
 ```
 
-On the same rebuilt 35-chunk index and 30 development queries, BM25 and dense-only each scored **0.9000 Recall@5**; hybrid with query rewriting scored **0.9500**, versus **0.9167** without rewriting. The optional cross-encoder also scored **0.9500**; it did not increase aggregate recall in this run. Install `requirements-reranker.txt` to run `--mode hybrid-reranked`. Query-level gains and regressions are documented in [REPORT.md](REPORT.md). MRR and latency are not measured. The 12 held-out queries remain reserved.
+On the same rebuilt 35-chunk index and 30 development queries, BM25 and dense-only each scored **0.9000 Recall@5**; hybrid with query rewriting scored **0.9500**, versus **0.9167** without rewriting. The optional cross-encoder also scored **0.9500**; it did not increase aggregate recall in this run. Install `requirements-reranker.txt` to run `--mode hybrid-reranked`. Query-level gains, regressions, MRR, and latency are documented in [REPORT.md](REPORT.md). The 12 held-out queries remain reserved.
 
 Historical baseline: before adding six dev queries and switching to `rank_bm25`, BM25 scored **0.9028 Recall@5** on the original 24-query dev set. That result uses a different evaluation snapshot and should not be compared directly with the current 30-query results.
 
 `DATA_DIR` and `DOCUMENT_PATH` can be configured in `.env`; `DOCUMENT_PATH` must contain the three NCERT chapter PDFs, and `DATA_DIR` contains the JSON/JSONL datasets.
 
-The current 35-chunk index also stores 47 stable IDs for numbered end-of-chapter textbook questions. The NCERT Exemplar source is not present in the repository: `jesc1ps.pdf` is the textbook and `jesc1an.pdf` is its answer key, which is not indexed for student retrieval. Exemplar ingestion remains pending the correct source PDF.
+The current 35-chunk index stores 47 stable IDs for numbered end-of-chapter textbook questions. In addition, 83 official NCERT Exemplar problems across Chapters 9, 10, and 11 have been extracted from `exemplar_ch*.pdf` and indexed under `.index/exemplars.json`, served securely via `textbook_kb.get_exemplar` without solution leaks. `jesc1ps.pdf` is the textbook and `jesc1an.pdf` is its answer key, which is intentionally excluded from student retrieval.
 
 ## Learner Memory Status
 

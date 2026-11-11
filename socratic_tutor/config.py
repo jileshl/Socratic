@@ -43,9 +43,9 @@ OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/ap
 # Model definitions (OpenRouter default)
 SUPERVISOR_MODEL = os.getenv("SUPERVISOR_MODEL", "openai/gpt-4.1-mini")
 SPECIALIST_MODEL = os.getenv("SPECIALIST_MODEL", "openai/gpt-4o-mini")
-JUDGE_MODEL = os.getenv("JUDGE_MODEL", "google/gemini-2.5-flash")
-# Guardrails (R4): Llama Guard 4 checks messages and replies for content unsafe for minors (capstone guide p.5).
-GUARD_MODEL = os.getenv("GUARD_MODEL", "meta-llama/llama-guard-4-12b")
+JUDGE_MODEL = os.getenv("JUDGE_MODEL", "google/gemini-3.1-flash-lite")
+# Guardrails (R4): Content guard checks messages and replies for content unsafe for minors (capstone guide p.5).
+GUARD_MODEL = os.getenv("GUARD_MODEL", "openai/gpt-4o-mini")
 # "on" in the app. "off" skips the guard model and the pasted-homework reader (unit tests set it off).
 GUARD_MODELS = os.getenv("GUARD_MODELS", "on")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "baai/bge-m3")

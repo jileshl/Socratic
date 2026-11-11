@@ -14,7 +14,10 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
+import os
 import statistics
+import time
 from collections import defaultdict
 from pathlib import Path
 
@@ -110,16 +113,135 @@ def build(log_path: Path, include_stub: bool) -> str:
     return "\n".join(lines) + "\n"
 
 
+def benchmark_retrieval(split: str = "dev", top_k: int = 5) -> str:
+    """Benchmark retrieval modalities (BM25, Dense, Hybrid-no-rewrite, Hybrid) and return Markdown table."""
+    from evalkit.metrics import compute_recall_at_k
+    from socratic_tutor.retrieval import HybridRetriever
+
+    queries_path = config.DATA_DIR / "retrieval_queries.jsonl"
+    if not queries_path.exists():
+        return ""
+    records = [
+        json.loads(line)
+        for line in queries_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    records = [r for r in records if split == "all" or r.get("split") == split]
+    if not records:
+        return ""
+
+    try:
+        retriever = HybridRetriever()
+        if not retriever.index.chunks:
+            return ""
+    except Exception:
+        return ""
+
+    modes = [
+        ("BM25 (`rank_bm25`)", lambda q: retriever.search_bm25(q, top_k=top_k)),
+        ("Dense embeddings alone", lambda q: retriever.search_dense(q, top_k=top_k)),
+        ("Hybrid, no query rewrite", lambda q: retriever.search_hybrid(q, top_k=top_k, rewrite=False)),
+        ("Hybrid + query rewrite", lambda q: retriever.search_hybrid(q, top_k=top_k, rewrite=True)),
+    ]
+
+    lines = [
+        f"## Retrieval Modality Comparison ({len(records)} {split} queries, Top-{top_k})",
+        "",
+        f"| Modality | Recall@{top_k} | Perfect Recall | MRR | Latency (ms, median) |",
+        "| :--- | :---: | :---: | :---: | :---: |",
+    ]
+
+    for mode_name, search_fn in modes:
+        recalls: list[float] = []
+        ranks: list[int | None] = []
+        latencies_ms: list[float] = []
+
+        for record in records:
+            gold_ids = record.get("gold_chunk_ids", [])
+            t0 = time.perf_counter()
+            hits = search_fn(record["query"])
+            latencies_ms.append((time.perf_counter() - t0) * 1000)
+
+            retrieved_ids = [hit["chunk_id"] for hit in hits]
+            recalls.append(compute_recall_at_k(retrieved_ids, gold_ids, k=top_k))
+
+            # rank of first gold chunk hit
+            first_rank = next((i + 1 for i, cid in enumerate(retrieved_ids) if cid in gold_ids), None)
+            ranks.append(first_rank)
+
+        mean_recall = statistics.mean(recalls) if recalls else 0.0
+        perfect = sum(1 for r in recalls if r >= 1.0)
+        reciprocal_ranks = [1.0 / r if r else 0.0 for r in ranks]
+        mrr = statistics.mean(reciprocal_ranks) if reciprocal_ranks else 0.0
+        median_lat = statistics.median(latencies_ms) if latencies_ms else 0.0
+
+        lines.append(f"| {mode_name} | **{mean_recall:.4f}** | {perfect}/{len(records)} | **{mrr:.4f}** | {median_lat:.1f} ms |")
+
+    lines.append("")
+    return "\n".join(lines)
+
+
+def run_experiment(name: str, split: str, repeats: int, limit: int | None, workers: int | None, note: str) -> None:
+    from evalkit import experiments, runner
+    cfg = experiments.get(name)
+    num_workers = workers or int(cfg.get("workers", 4))
+    print(f"Running evaluation: {name} ({cfg['condition']}) · split={split} · repeats={repeats} · limit={limit or 'all'}")
+    for repeat in range(1, repeats + 1):
+        t0 = time.perf_counter()
+        row = runner.run_once(cfg, split, repeat, limit, num_workers, note)
+        shown = {k: row[k] for k in ("run_id", "n_cases", "task_success", "task_total", "answer_leaks", "attack_success", "false_blocks", "recall_at_5", "cost_total_usd", "errors", "timeouts") if k in row}
+        print(f"  Repeat {repeat}/{repeats}: {json.dumps(shown)} ({time.perf_counter() - t0:.1f}s)")
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Build report tables from the experiment log")
+    parser = argparse.ArgumentParser(description="Build report tables from experiment logs and run evals on demand")
     parser.add_argument("--log", type=Path, default=config.EVAL_RESULTS_DIR / "experiment_log.csv")
     parser.add_argument("--out", type=Path, default=config.EVAL_RESULTS_DIR / "report_tables.md")
-    parser.add_argument("--include-stub", action="store_true")
+    parser.add_argument("--include-stub", action="store_true", help="Include offline stub runs in table")
+    parser.add_argument("--run", type=str, default=None, help="Name of experiment to run first (e.g. e1_c2, smoke, e2_on, gold)")
+    parser.add_argument("--run-all", action="store_true", help="Run full suite of experiments before building report")
+    parser.add_argument("--run-retrieval", action="store_true", help="Run multi-modal retrieval benchmarks and include table")
+    parser.add_argument("--split", choices=("dev", "held_out"), default="dev")
+    parser.add_argument("--repeats", type=int, default=1)
+    parser.add_argument("--limit", type=int, default=None, help="Limit to first N cases per suite")
+    parser.add_argument("--workers", type=int, default=None)
+    parser.add_argument("--note", default="")
+    parser.add_argument("--stub", action="store_true", help="Run in offline stub mode (no API tokens consumed)")
+
     args = parser.parse_args()
-    text = build(args.log, args.include_stub)
+
+    if args.stub:
+        os.environ["EVAL_STUB"] = "1"
+        args.include_stub = True
+
+    # Execute requested evaluations
+    if args.run:
+        run_experiment(args.run, args.split, args.repeats, args.limit, args.workers, args.note)
+    elif args.run_all:
+        core_experiments = [
+            "e1_c0", "e1_c1", "e1_c2",
+            "e2_off", "e2_on",
+            "e3_no_playbook", "e3_playbook",
+            "e4_memory_off", "e4_memory_on", "e4_direct", "e4_socratic",
+            "retrieval",
+        ]
+        for exp in core_experiments:
+            run_experiment(exp, args.split, args.repeats, args.limit, args.workers, args.note)
+
+    # Build evaluation tables
+    report_text = build(args.log, args.include_stub)
+
+    # Optionally append retrieval modality comparison
+    if args.run_retrieval:
+        print("Running retrieval modality benchmarks (BM25, Dense, Hybrid)...")
+        retrieval_table = benchmark_retrieval(split=args.split, top_k=5)
+        if retrieval_table:
+            report_text = report_text.rstrip() + "\n\n" + retrieval_table + "\n"
+
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(text, encoding="utf-8")
-    print(text)
+    args.out.write_text(report_text, encoding="utf-8")
+    print("\n" + report_text)
+    print(f"Report saved to: {args.out}")
 
 
 if __name__ == "__main__":

@@ -38,7 +38,6 @@ def compute_learning_gain(pre_score: float, post_score: float) -> float:
     return max(0.0, (post_score - pre_score) / (1.0 - pre_score))
 
 
-# TODO (Milestone 8 / L13): Compute Answer Leak Rate across practice runs
 def compute_answer_leak_rate(leak_flags: list[bool]) -> float:
     """Fraction of practice turns where an answer or direct derivation was leaked."""
     if not leak_flags:
@@ -46,13 +45,29 @@ def compute_answer_leak_rate(leak_flags: list[bool]) -> float:
     return sum(1 for flag in leak_flags if flag) / len(leak_flags)
 
 
-# TODO (Milestone 8 / L13): Compute Misconception Diagnostic Precision & Recall
 def compute_misconception_accuracy(predicted_ids: list[str], gold_ids: list[str]) -> float:
     """Accuracy of Diagnostician matching the student's seeded misconception."""
     if not gold_ids:
         return 1.0
     matched = sum(1 for pred, gold in zip(predicted_ids, gold_ids) if pred == gold)
     return matched / len(gold_ids)
+
+
+def compute_misconception_precision_recall(
+    predicted_ids: Sequence[str], gold_ids: Sequence[str]
+) -> dict[str, float]:
+    """Precision, recall, and F1 of Diagnostician matching seeded misconceptions."""
+    if not gold_ids:
+        return {"precision": 1.0, "recall": 1.0, "f1": 1.0}
+    if not predicted_ids:
+        return {"precision": 0.0, "recall": 0.0, "f1": 0.0}
+    gold_set = set(gold_ids)
+    pred_set = set(predicted_ids)
+    tp = len(gold_set & pred_set)
+    precision = tp / len(pred_set) if pred_set else 0.0
+    recall = tp / len(gold_set) if gold_set else 0.0
+    f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) > 0 else 0.0
+    return {"precision": precision, "recall": recall, "f1": f1}
 
 
 

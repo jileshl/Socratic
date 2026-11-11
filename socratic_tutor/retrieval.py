@@ -6,7 +6,6 @@ import re
 import threading
 from collections import defaultdict
 
-import chromadb
 from rank_bm25 import BM25Okapi
 
 from socratic_tutor import config
@@ -70,6 +69,11 @@ class HybridRetriever:
 
     def _get_dense_collection(self):
         if self._dense_collection is None:
+            try:
+                import chromadb
+            except ImportError as exc:
+                raise RuntimeError("Dense search requires chromadb; install requirements.txt") from exc
+
             client = chromadb.PersistentClient(path=str(config.INDEX_DIR / "chroma"))
             self._dense_collection = client.get_or_create_collection(
                 name="ncert_sections",
