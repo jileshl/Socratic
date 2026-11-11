@@ -1,9 +1,75 @@
 """Question Setter Agent: Selects or drafts practice questions at appropriate difficulty."""
 
+from __future__ import annotations
+
+from typing import Any
 from socratic_tutor import llm, config
 from socratic_tutor.prompts import QUESTION_SETTER_PROMPT
 
+CONCEPT_FALLBACK_QUESTIONS: dict[str, dict[str, str]] = {
+    "concept_reflection_laws": {
+        "question_text": "State the laws of reflection of light.",
+        "gold_answer": "1. The angle of incidence is equal to the angle of reflection. 2. The incident ray, normal to the mirror at the point of incidence, and reflected ray all lie in the same plane.",
+        "difficulty": "easy",
+    },
+    "concept_concave_mirror": {
+        "question_text": "An object is placed 20 cm in front of a concave mirror of focal length 15 cm. Find the distance of the image from the mirror.",
+        "gold_answer": "-60 cm",
+        "difficulty": "medium",
+    },
+    "concept_mirror_formula": {
+        "question_text": "An object is placed 30 cm in front of a concave mirror of focal length 20 cm. Find the image distance using the mirror formula.",
+        "gold_answer": "-60 cm",
+        "difficulty": "medium",
+    },
+    "concept_refraction_laws": {
+        "question_text": "State Snell's law of refraction.",
+        "gold_answer": "The ratio of sine of angle of incidence to the sine of angle of refraction is a constant (sin i / sin r = constant) for a given pair of media.",
+        "difficulty": "easy",
+    },
+    "concept_lens_formula": {
+        "question_text": "A convex lens of focal length 20 cm produces an image of an object placed 30 cm in front of it. Find the image distance.",
+        "gold_answer": "60 cm",
+        "difficulty": "medium",
+    },
+    "concept_ohms_law": {
+        "question_text": "A potential difference of 12 V is applied across a 4 ohm resistor. Find the current flowing through it.",
+        "gold_answer": "3 A",
+        "difficulty": "easy",
+    },
+    "concept_resistors_parallel": {
+        "question_text": "Two resistors of 6 ohm and 3 ohm are connected in parallel across a 6 V battery. Calculate the effective resistance and current in the 3 ohm resistor.",
+        "gold_answer": "Equivalent resistance is 2 ohm; current in 3 ohm resistor is 2 A.",
+        "difficulty": "medium",
+    },
+    "concept_joule_heating": {
+        "question_text": "A 20 ohm resistor carries a current of 5 A for 30 seconds. Calculate the heat produced in joules.",
+        "gold_answer": "15000 J",
+        "difficulty": "medium",
+    },
+}
 
-def select_question(concept_id: str, difficulty: str = "medium") -> dict:
+
+def select_question(concept_id: str, difficulty: str = "medium") -> dict[str, Any]:
     prompt = f"Concept ID: {concept_id}\nDifficulty: {difficulty}\n"
-    return llm.chat_json(prompt=prompt, system_prompt=QUESTION_SETTER_PROMPT)
+    res = llm.chat_json(prompt=prompt, system_prompt=QUESTION_SETTER_PROMPT)
+    if isinstance(res, dict) and res.get("question_text") and res.get("gold_answer") and "error" not in res:
+        res.setdefault("concept_id", concept_id)
+        res.setdefault("difficulty", difficulty)
+        return res
+
+    fallback = CONCEPT_FALLBACK_QUESTIONS.get(
+        concept_id,
+        {
+            "question_text": "State the fundamental law or definition governing this concept and give one practical example.",
+            "gold_answer": "Correct NCERT statement and valid practical application.",
+            "difficulty": difficulty,
+        },
+    )
+    return {
+        "concept_id": concept_id,
+        "difficulty": fallback.get("difficulty", difficulty),
+        "question_text": fallback["question_text"],
+        "gold_answer": fallback["gold_answer"],
+    }
+
