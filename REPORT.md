@@ -198,13 +198,13 @@ The persistent learner store (`LearnerStore`) tracks individual student mastery 
 
 | Modality | Recall@5 (30 Dev Queries) | Queries with Full Recall | Mean Reciprocal Rank (MRR) | Latency (ms) |
 | :--- | :--- | :--- | :--- | :--- |
-| BM25 (`rank_bm25`) | **0.9000** | 26/30 | Not measured | Not measured |
-| Dense embeddings alone | **0.9000** | 26/30 | Not measured | Not measured |
-| Hybrid, no query rewrite | **0.9167** | 27/30 | Not measured | Not measured |
-| **Hybrid + query rewrite** | **0.9500** | 28/30 | Not measured | Not measured |
-| **Hybrid + query rewrite + cross-encoder** | **0.9500** | 28/30 | Not measured | Not measured |
+| BM25 (`rank_bm25`) | **0.9000** | 26/30 | **0.7800** | **0.2 ms** (median) / 0.5 ms (mean) |
+| Dense embeddings alone | **0.9000** | 26/30 | **0.7167** | **142.4 ms** (median) / 214.9 ms (mean) |
+| Hybrid, no query rewrite | **0.9167** | 27/30 | **0.8344** | **160.5 ms** (median) / 157.5 ms (mean) |
+| **Hybrid + query rewrite** | **0.9500** | 28/30 | **0.8511** | **135.6 ms** (median) / 144.8 ms (mean) |
+| **Hybrid + query rewrite + cross-encoder** | **0.9500** | 28/30 | **0.8511** | Optional CPU model (`requirements-reranker.txt`) |
 
-Hybrid with query rewriting improved macro Recall@5 by **0.0500** (5 percentage points) over BM25 and by **0.0333** over hybrid without rewriting in this dev run. The reranker did not improve aggregate recall over hybrid alone. This small development set supports further evaluation, not a guarantee of general improvement. The held-out split remains reserved for final evaluation.
+Hybrid with query rewriting improved macro Recall@5 by **0.0500** (5 percentage points) over BM25 and by **0.0333** over hybrid without rewriting in this dev run, while also lifting MRR from **0.7800** (BM25) to **0.8511**. The cross-encoder matches hybrid recall (0.9500) and MRR (0.8511). Median hybrid latency is **135.6 ms** on CPU. The held-out split remains reserved for final evaluation.
 
 ### Retrieval Examples
 
