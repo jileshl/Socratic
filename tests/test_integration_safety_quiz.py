@@ -31,7 +31,7 @@ def run_one_turn(message: str, thread: str, mode: str = "practice") -> dict[str,
     # The same keys the web server sends for a turn.
     state_in: dict[str, Any] = {
         "session_id": "ses_" + thread,
-        "student_id": "",
+        "student_id": "stu_test",
         "mode": mode,
         "query": message,
         "messages": [],
@@ -153,7 +153,7 @@ def test_keyed_question_leak_is_caught_and_retried(monkeypatch: pytest.MonkeyPat
 
     monkeypatch.setattr(graph.tutor, "generate_hint", leaking_hint)
     app_graph: Any = graph.build_graph(checkpointer=InMemorySaver())
-    state_in: dict[str, Any] = {"session_id": "ses_keyed", "student_id": "", "mode": "practice", "messages": [], "steps": []}
+    state_in: dict[str, Any] = {"session_id": "ses_keyed", "student_id": "stu_test", "mode": "practice", "messages": [], "steps": []}
     state_in["query"] = "Where is the image?"
     state_in["current_question_id"] = question_id
     out: dict[str, Any] = app_graph.invoke(state_in, config={"configurable": {"thread_id": "s2-keyed"}})
@@ -225,10 +225,10 @@ def test_the_safety_facts_are_reset_on_the_next_turn(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(graph.tutor, "generate_hint", plain_hint)
     app_graph: Any = graph.build_graph(checkpointer=InMemorySaver())
     config: dict[str, Any] = {"configurable": {"thread_id": "s1-reset"}}
-    first: dict[str, Any] = {"session_id": "ses_reset", "student_id": "", "mode": "practice", "messages": [], "steps": []}
+    first: dict[str, Any] = {"session_id": "ses_reset", "student_id": "stu_test", "mode": "practice", "messages": [], "steps": []}
     first["query"] = "I want to hurt myself"
     app_graph.invoke(first, config=config)
-    second: dict[str, Any] = {"session_id": "ses_reset", "student_id": "", "mode": "practice", "messages": [], "steps": []}
+    second: dict[str, Any] = {"session_id": "ses_reset", "student_id": "stu_test", "mode": "practice", "messages": [], "steps": []}
     second["query"] = "Why is the image in a concave mirror upside down?"
     out: dict[str, Any] = app_graph.invoke(second, config=config)
     assert out["distress_level"] == "none" and out["input_blocked_by"] is None
