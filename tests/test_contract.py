@@ -311,7 +311,11 @@ def test_distress_turn_followed_by_normal_turn_reply_not_empty():
     }, config=cfg)
     assert t1_out["teacher_alert_triggered"] is True
     assert t1_out["distress_detected"] is True
-    assert "It is completely normal to feel stuck" in t1_out["response"]
+    # This message is SEVERE distress, so the student must get the guardrail's own reply, with the helpline,
+    # not the generic "It is completely normal to feel stuck" text the graph used to put in its place.
+    from socratic_tutor.policy import SEVERE_DISTRESS_REPLY
+    assert t1_out["response"] == SEVERE_DISTRESS_REPLY
+    assert t1_out["distress_level"] == "severe"
 
     # Turn 2: Normal follow-up
     t2_out = app.invoke({

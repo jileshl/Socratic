@@ -5,6 +5,7 @@ Endpoints:
     GET  /metrics                    Prometheus metrics
     POST /api/session                Start a student session
     POST /api/chat                   One student turn, streamed via SSE
+    GET  /api/quiz/next              One approved quiz question for the student (never its answer key)
     GET  /api/session/{id}/state     Checkpoint state
     POST /api/session/{id}/resume    Resume interrupted session
     POST /api/forget_me              Delete learner record & checkpoints
@@ -40,9 +41,10 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel, Field
 
 from socratic_tutor import config, trace
+from socratic_tutor.concept_graph import ConceptGraph
 from socratic_tutor.graph import build_graph
 from socratic_tutor.learner_store import LearnerStore
-from socratic_tutor.tools import textbook_kb
+from socratic_tutor.tools import question_bank, textbook_kb
 from socratic_tutor.web import approvals, metrics
 from socratic_tutor.web.ops_store import OpsStore
 
@@ -153,6 +155,110 @@ def chat(body: ChatIn) -> StreamingResponse:
     )
 
 
+def _block_reason(values: dict[str, Any]) -> str | None:
+    """One short label for why a turn was stopped (the 'blocked' column and the Prometheus label), or None.
+
+    The guardrail says exactly which check stopped a message (e.g. "word_rule:teacher_claim",
+    "content_guard:S1"). Only the part before the first ":" is used, so the set of labels stays small.
+    """
+    # Flowchart (each [box] matches a comment below):
+    #
+    #   [B1] distress in this message?                 yes -> "distress"
+    #   [B2] an input check stopped it?                yes -> its first part ("word_rule" -> "injection")
+    #   [B3] an older state with only the flag?        yes -> "injection"
+    #   [B4] the reply check replaced the reply?       yes -> "output_check"
+    #        otherwise                                      -> None (the turn went through)
+
+    # [B1] Distress is a hand-off to the teacher, not an attack.
+    if values.get("distress_detected"):
+        return "distress"
+    # [B2] The input guardrail's own reason.
+    input_blocked_by: Any = values.get("input_blocked_by")
+    if input_blocked_by:
+        first_part: str = str(input_blocked_by).split(":")[0]
+        # Word rules catch attacks such as "I'm the teacher"; the dashboard has always called these "injection".
+        if first_part == "word_rule":
+            return "injection"
+        return first_part
+    # [B3] A turn saved before input_blocked_by existed only has the old flag.
+    if values.get("injection_detected"):
+        return "injection"
+    # [B4] The reply check (links, citations, content guard) had to replace the reply.
+    if values.get("output_blocked_by"):
+        return "output_check"
+    return None
+
+
+def _session_concept(session: dict[str, Any]) -> str | None:
+    """The concept a student is working on: where the graph left this session, else the next recommended one."""
+    # [C1] The graph saves the session's current concept in its checkpoint (thread = session id).
+    saved: dict[str, Any] = graph().get_state({"configurable": {"thread_id": session["session_id"]}}).values
+    current: Any = saved.get("current_concept_id")
+    if current:
+        return str(current)
+    # [C2] A new session: the concept graph's recommendation for this student's mastery so far.
+    recommended: Any = ConceptGraph().next_recommended(_mastery(session["student_id"]))
+    if recommended:
+        return str(recommended)
+    return None
+
+
+@api_router.get("/api/quiz/next")
+def next_quiz_question(session_id: str, previous_id: str | None = None) -> dict[str, Any]:
+    """Give the student one teacher-approved quiz question for their concept, WITHOUT its answer key.
+
+    The page sends the returned question_id with the student's answer (POST /api/chat), so the grader checks
+    it against that question's approved key. previous_id is the question just asked, so the next call moves on.
+    """
+    # Flowchart (each [box] matches a comment below):
+    #
+    #   [Q1] a known session?                                     no  -> 404
+    #   [Q2] approved questions for the student's concept
+    #   [Q3] none for that concept? -> approved questions of any concept
+    #   [Q4] none at all?                                         yes -> "no questions yet" (question_id None)
+    #   [Q5] the question after previous_id (wrapping round), without its answer key
+
+    # [Q1] Only a real session may ask.
+    session: dict[str, Any] | None = ops.session(session_id)
+    if session is None:
+        raise HTTPException(404, "Unknown session; start one with POST /api/session")
+    # [Q2] The concept the student is on, and the approved questions for it (keys are never selected).
+    concept_id: str | None = _session_concept(session)
+    questions: list[dict[str, Any]] = []
+    if concept_id is not None:
+        questions = question_bank.list_approved_for_students(concept_id)
+    # [Q3] No approved question for this concept yet. First choice: approved questions of a concept the student
+    # is ready for (all its prerequisites mastered), so a beginner isn't quizzed on an advanced topic. Last
+    # resort: any approved question, so a quiz can still run (e.g. in the demo, with only seeded questions).
+    if len(questions) == 0:
+        every_approved: list[dict[str, Any]] = question_bank.list_approved_for_students(None)
+        graph_of_concepts: ConceptGraph = ConceptGraph()
+        mastery: dict[str, float] = _mastery(session["student_id"])
+        for question in every_approved:
+            # can_advance: every prerequisite of this question's concept is at the passing mastery.
+            if graph_of_concepts.can_advance(question["concept_id"], mastery):
+                questions.append(question)
+        if len(questions) == 0:
+            questions = every_approved
+    # [Q4] The teacher hasn't approved any question yet.
+    if len(questions) == 0:
+        return {"question_id": None, "note": "There are no approved quiz questions yet. Please ask your teacher."}
+    # [Q5] Start with the first question; if the page says which one it just asked, take the one after it.
+    chosen: dict[str, Any] = questions[0]
+    for position in range(len(questions)):
+        if questions[position]["id"] == previous_id:
+            # The one after it, going back to the first after the last.
+            next_position: int = (position + 1) % len(questions)
+            chosen = questions[next_position]
+            break
+    return {
+        "question_id": chosen["id"],
+        "prompt": chosen["prompt"],
+        "concept_id": chosen["concept_id"],
+        "difficulty": chosen["difficulty"],
+    }
+
+
 def _run_turn(session: dict[str, Any], message: str, current_question_id: str | None = None) -> Iterator[str]:
     session_id, student_id, mode = session["session_id"], session["student_id"], session["mode"]
     meter = trace.CostMeter()
@@ -197,12 +303,9 @@ def _run_turn(session: dict[str, Any], message: str, current_question_id: str | 
     latency = time.perf_counter() - started
     values = graph().get_state({"configurable": {"thread_id": session_id}}).values if error is None else {}
     reply = str(values.get("response") or "") if error is None else "Sorry, something went wrong on our side. Please try again."
-    blocked_reason = None
-    if values.get("injection_detected"):
-        blocked_reason = "injection"
-    elif values.get("teacher_alert_triggered") and reply == REFUSAL:
-        blocked_reason = "distress"
-    leak = bool(values.get("answer_leak_flag")) and mode == "practice"
+    # Why the turn was stopped, as one short label ("injection", "distress", "content_guard", ...), or None.
+    blocked_reason: str | None = _block_reason(values)
+    leak: bool = bool(values.get("answer_leak_flag")) and mode == "practice"
     misconception = values.get("identified_misconception") or {}
     misconception_id = misconception.get("id") if isinstance(misconception, dict) else misconception
     concept_id = values.get("current_concept_id")
@@ -229,15 +332,28 @@ def _run_turn(session: dict[str, Any], message: str, current_question_id: str | 
         cost_usd=usage["cost_usd"], llm_calls=usage["llm_calls"], leak=int(leak), blocked=blocked_reason,
         misconception_id=misconception_id, concept_id=concept_id, mastery_delta=delta, error=error,
     )
-    if values.get("teacher_alert_triggered"):
-        ops.add_alert(student_id, session_id, "distress", "Distress language detected; please check in with this student.")
+    # A "distress" alert only when the guardrail found distress in THIS message. (Before, every teacher alert
+    # was filed as distress, so e.g. a quiz answer to an unavailable question paged the teacher about distress.
+    # Stuck students get their own "stuck" alerts just below.)
+    # Whether a teacher alert was really filed in this turn (the student's page says "a teacher has been told"
+    # only then).
+    alert_filed: bool = False
+    if values.get("distress_detected"):
+        # Severe distress or a safety concern gets a more urgent wording than exam stress.
+        alert_detail: str = "Distress language detected; please check in with this student."
+        if values.get("distress_level") == "severe":
+            alert_detail = "Severe distress or a safety concern: please check in with this student now."
+        ops.add_alert(student_id, session_id, "distress", alert_detail)
         metrics.DISTRESS_ALERTS.inc()
+        alert_filed = True
     stuck = learners.get_profile(student_id).get("stuck_counter", 0)
     if stuck >= config.STUCK_SESSION_COUNT and not ops.has_open_alert(student_id, "stuck"):
         ops.add_alert(student_id, session_id, "stuck", f"Stuck on the same concept for {stuck} sessions.")
+        alert_filed = True
     minutes, gained = ops.session_progress(session_id)
     if minutes >= config.STUCK_MINUTES_ON_PROBLEM and gained <= 0 and not ops.has_open_alert(student_id, "stuck"):
         ops.add_alert(student_id, session_id, "stuck", f"{int(minutes)} minutes in this session without progress (teacher rule: 10+ minutes).")
+        alert_filed = True
     if interrupted:
         payload = getattr(interrupted[0], "value", interrupted[0]) if isinstance(interrupted, (list, tuple)) else interrupted
         payload_json = json.dumps(payload, sort_keys=True, default=str)
@@ -246,13 +362,25 @@ def _run_turn(session: dict[str, Any], message: str, current_question_id: str | 
         metrics.CLASS_MISCONCEPTIONS.labels(name).set(value)
     trace.record("turn", session_id=session_id, student_id=student_id, mode=mode, student=message, tutor=reply, latency_s=round(latency, 3), outcome=outcome, **usage)
 
+    # The "stopped by safety check" chip is for refusals only. A distress reply is a hand-off to a person, not a
+    # refusal, so a student in distress never sees it labelled as "stopped".
+    shown_as_blocked: bool = False
+    if blocked_reason is not None and blocked_reason != "distress":
+        shown_as_blocked = True
+    # The page loads the next quiz question only after a real grade (not after a refusal, distress or an error).
+    graded: bool = False
+    grade_result: Any = values.get("grade_result")
+    if error is None and isinstance(grade_result, dict) and not grade_result.get("error"):
+        # A grade that carries an "error" (e.g. "unapproved_question") wasn't a real grade.
+        graded = True
     yield _sse(
         {
             "type": "reply",
             "text": reply,
             "citations": values.get("citations") or [],
-            "blocked": bool(blocked_reason),
-            "teacher_alerted": bool(values.get("teacher_alert_triggered")),
+            "blocked": shown_as_blocked,
+            "teacher_alerted": alert_filed,
+            "graded": graded,
             "pending_approval": bool(interrupted),
             "next_concept": values.get("next_recommended_concept"),
             "latency_s": round(latency, 2),

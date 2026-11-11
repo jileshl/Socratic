@@ -13,7 +13,7 @@ from langchain_core.messages import AnyMessage, AIMessage, HumanMessage
 
 from socratic_tutor import config
 from socratic_tutor.state import SocraticState
-from socratic_tutor.policy import check_input_guardrails, check_answer_leak
+from socratic_tutor.policy import check_input_guardrails, check_answer_leak, check_reply, keep_retrieved_citations
 from socratic_tutor.concept_graph import ConceptGraph
 from socratic_tutor.learner_store import LearnerStore
 from socratic_tutor.reflexion import ReflexionPlaybook
@@ -21,6 +21,12 @@ from socratic_tutor.tools import textbook_kb, math_tools, question_bank
 from socratic_tutor.agents import diagnostician, tutor, grader, question_setter
 
 REFUSAL = "I cannot fulfill this request as entered. Let's focus on our NCERT study goals."
+# Used only if the guardrail ever stops a message without giving its own reply (it always gives one today).
+SUPPORTIVE_REPLY_FALLBACK = (
+    "It is completely normal to feel stuck or frustrated when studying physics. "
+    "Let's take a deep breath and take this one small step at a time. "
+    "What specific part or formula are you looking at right now?"
+)
 _SECTION_RE = re.compile(r"(?<![\d.])(9|10|11)\.(\d{1,2})(?:\.(\d{1,2}))?(?![\d])")
 
 
@@ -113,28 +119,61 @@ def node_input_guardrail(state: SocraticState) -> dict:
         "teacher_alert_triggered": False,
     }
 
+    # Flowchart of the blocked case (each [box] matches a comment below):
+    #
+    #   [IG1] start the three new per-turn safety facts empty
+    #          |
+    #          v
+    #   [IG2] did the guardrail stop the message?                    no -> carry on to the supervisor
+    #          | yes: keep its reason and its distress level
+    #          v
+    #   [IG3] distress (academic, severe, or a safety concern)?      yes -> its OWN reply + teacher alert, end
+    #          | no
+    #          v
+    #   [IG4] any other block (word rule, content guard, guard down) -> its OWN reply, end
+
+    # [IG1] Which check stopped the message (e.g. "word_rule:teacher_claim"), and how worried we are.
+    reset_state["input_blocked_by"] = None
+    reset_state["distress_level"] = "none"
+    # The reply check at the end of the turn fills this in if it has to replace the reply (output_guardrail).
+    reset_state["output_blocked_by"] = None
+
+    # [IG2] The guardrail stopped this message.
     if not guard_res["passed"]:
+        # The guardrail chooses the right words for each case: the helpline for severe distress, a calm small
+        # step for exam stress, a refusal for an attack. We show ITS reply. (Before, the graph replaced it with
+        # one generic sentence, so a student in severe distress never saw the helpline.)
+        policy_reply: str | None = guard_res.get("reply")
+        # Keep the reason and the level in the state, so the web app can label the turn and word the alert.
+        reset_state["input_blocked_by"] = guard_res.get("blocked_by")
+        distress_level: str | None = guard_res.get("distress_level")
+        if distress_level:
+            reset_state["distress_level"] = distress_level
+
+        # [IG3] Distress or a safety concern: end the turn and tell the teacher (Teacher Rule 4).
         if guard_res.get("is_distress"):
-            # Teacher Rule 4: Academic distress protocol
-            # Supportive de-escalation, down-scale to a micro-step, raise silent teacher alert
-            supportive_reply = (
-                "It is completely normal to feel stuck or frustrated when studying physics. "
-                "Let's take a deep breath and take this one small step at a time. "
-                "What specific part or formula are you looking at right now?"
-            )
+            # Start from the old text, and use the guardrail's reply whenever it gives one.
+            distress_reply: str = SUPPORTIVE_REPLY_FALLBACK
+            if policy_reply:
+                distress_reply = policy_reply
             reset_state.update({
                 "injection_detected": False,
                 "distress_detected": True,
                 "teacher_alert_triggered": True,
-                "response": supportive_reply,
+                "response": distress_reply,
             })
             return reset_state
 
+        # [IG4] Any other block. injection_detected stays True here, as before, so the E2 evaluation still
+        # counts every stopped attack as blocked; input_blocked_by says exactly which check it was.
+        refusal_reply: str = REFUSAL
+        if policy_reply:
+            refusal_reply = policy_reply
         reset_state.update({
             "injection_detected": True,
             "distress_detected": False,
             "teacher_alert_triggered": False,
-            "response": REFUSAL,
+            "response": refusal_reply,
         })
         return reset_state
 
@@ -504,23 +543,52 @@ def node_tutor(state: SocraticState) -> dict:
 
 
 def node_output_guardrail(state: SocraticState) -> dict:
+    # Flowchart (each [box] matches a comment below):
+    #
+    #   [OG1] the answer key and the question text (if the student is on a bank question)
+    #          |
+    #          v
+    #   [OG2] leak check: the key and the question's own numbers (free questions: rule off, see below)
+    #          |
+    #          |-- leak in practice mode -> retry the hint, or the scaffold question (unchanged)
+    #          v
+    #   [OG3] reply check (R4's check_reply, practice mode): links out, retrieved citations only, guard
+    #          |
+    #          v
+    #        the reply the student sees
     response = state.get("response", "")
     expected_answer = None
+    # [OG1] The question's own text: numbers it already gives are not a leak when the reply repeats them.
+    question_text: str | None = None
     qid = state.get("current_question_id")
     if qid:
         q = question_bank.get_approved_question(qid) or question_bank.get_question(qid)
         if q:
             expected_answer = q.get("gold_answer")
+            question_text = q.get("prompt")
     if not expected_answer:
         expected_answer = state.get("gold_answer")
 
-    leak = check_answer_leak(response, expected_answer)
+    # [OG2] The leak check: the key, and the question's own numbers (which a hint may repeat).
+    # The student's message is NOT passed here on purpose. With it, check_answer_leak would also judge FREE
+    # questions (no key) by "a new number with a unit leaks", and in a review that flagged normal hints:
+    # "Remember that 1 m = 100 cm", "the near point is about 25 cm", or a second turn that repeats the numbers
+    # from the first. That rule stays off until the E1 runs have measured it.
+    leak: bool = check_answer_leak(response, expected_answer, question_text=question_text)
+    # The student's message still goes to the reply check below, as context for the content guard.
+    student_text: str = str(state.get("query") or "")
 
-    # Validate citations against retrieved sections (checking grounded in NCERT)
-    retrieved = state.get("retrieved_sections", [])
-    valid_secs = {str(p.get("section_id")) for p in retrieved if p.get("section_id")}
-    citations = state.get("citations", [])
-    validated_citations = [c for c in citations if not valid_secs or c in valid_secs]
+    # The sections that were really retrieved, and the citations kept from them (the same rule everywhere:
+    # a citation of a section that was never retrieved was made up, so it is dropped).
+    retrieved: list[dict] = state.get("retrieved_sections", [])
+    citations: list[str] = state.get("citations", [])
+    retrieved_ids: list[str] = []
+    for passage in retrieved:
+        # Each retrieved passage carries the NCERT section it came from, e.g. "9.2.4".
+        section_id: Any = passage.get("section_id")
+        if section_id:
+            retrieved_ids.append(str(section_id))
+    validated_citations: list[str] = keep_retrieved_citations(citations, retrieved_ids)
 
     # Socratic Invariant: If leak occurs in practice mode
     if leak and state.get("mode", "practice") == "practice":
@@ -545,12 +613,29 @@ def node_output_guardrail(state: SocraticState) -> dict:
             "answer_leak_flag": True,
         }
 
+    # [OG3] R4's reply check (policy.check_reply) on the reply that is about to go out:
+    #   - removes links and images, so nothing opens or loads by itself;
+    #   - keeps only citations of sections that were really retrieved (a cited section we never fetched was
+    #     made up);
+    #   - when the guard models are on, the content guard reads the reply (unsafe for a minor -> a safe fallback).
+    # It never raises: if a check breaks, the student gets the safe fallback reply (fail closed).
+    # In quiz mode the reply is the grader's fixed feedback ("Correct! Well done."), written by code, so the
+    # check is skipped: the content guard would cost a model call for nothing, and if the guard were down its
+    # practice-mode fallback would replace the student's right/wrong verdict.
+    checked: dict[str, Any] = {"reply": response, "citations": validated_citations, "blocked_by": None}
+    if state.get("mode", "practice") != "quiz":
+        checked = check_reply(response, citations, retrieved_ids, student_text)
+
     return {
         "steps": ["output_guardrail"],
         "turn_steps": state.get("turn_steps", []) + ["output_guardrail"],
-        "response": response,
-        "citations": validated_citations,
+        # The cleaned reply (or the safe fallback, if the reply check replaced it).
+        "response": checked["reply"],
+        # Only the citations of sections that were really retrieved.
+        "citations": checked["citations"],
         "answer_leak_flag": False,
+        # None when the reply passed; otherwise which check replaced it (for the web app's labels).
+        "output_blocked_by": checked["blocked_by"],
     }
 
 
