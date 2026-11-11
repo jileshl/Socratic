@@ -873,6 +873,21 @@ def test_propose_set_uses_the_shared_graph_by_default(shared_graph_in_tmp: Any, 
 # ---------------------------------------------------------------------------
 
 
+def waiting_sets_within(gate: Any, seconds: float = 10.0) -> list[dict[str, Any]]:
+    """waiting_sets, run in a separate thread: if it hangs on the checkpointer's lock, the test FAILS after a few
+    seconds instead of hanging the whole test run (SqliteSaver.list holds the lock that get_state needs)."""
+    results: list[Any] = []
+
+    def run() -> None:
+        results.append(approval_gate.waiting_sets(gate))
+
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    worker.join(seconds)
+    assert not worker.is_alive(), "waiting_sets hung on the checkpointer's lock"
+    return results[0]
+
+
 def test_waiting_sets_lists_only_waiting_question_sets(gate: Any) -> None:
     """Two waiting sets, one published set, and a paused run on a thread that isn't a set: only the two sets."""
     ids = propose_two()
@@ -886,7 +901,7 @@ def test_waiting_sets_lists_only_waiting_question_sets(gate: Any) -> None:
     fourth = question_bank.propose_question("concept_ohms_law", "easy", "A 9 V battery is across 3 ohm. Current?", "3 A")
     gate.invoke({"set_id": "set_other", "question_ids": [fourth["question_id"]]}, {"configurable": {"thread_id": "session-123"}})
     # Only the two waiting sets, the most recently active first.
-    listed = approval_gate.waiting_sets(gate)
+    listed = waiting_sets_within(gate)
     listed_ids: list[str] = []
     for item in listed:
         listed_ids.append(item["set_id"])
@@ -899,16 +914,8 @@ def test_waiting_sets_does_not_hang_on_the_checkpointer_lock(gate: Any) -> None:
     """SqliteSaver.list holds the saver's lock while it yields; asking each set inside that loop would hang.
     Run waiting_sets in a separate thread and check that it finishes."""
     submit(gate, propose_two(), set_id="set_lock")
-    results: list[Any] = []
-
-    def run() -> None:
-        results.append(approval_gate.waiting_sets(gate))
-
-    worker = threading.Thread(target=run, daemon=True)
-    worker.start()
-    worker.join(10)
-    assert not worker.is_alive(), "waiting_sets hung on the checkpointer's lock"
-    assert len(results[0]) == 1
+    submit(gate, [question_bank.propose_question("concept_ohms_law", "easy", "A 6 V battery is across 2 ohm. Current?", "3 A")["question_id"]], set_id="set_lock_2")
+    assert len(waiting_sets_within(gate)) == 2
 
 
 def test_waiting_sets_shows_the_current_version_after_an_edit(gate: Any) -> None:
@@ -919,7 +926,7 @@ def test_waiting_sets_shows_the_current_version_after_an_edit(gate: Any) -> None
                           "gold_answer": "2 A"}}
     edited = approval_gate.decide(gate, "set_edit", sign("set_edit", "edit", submitted["payload_hash"], changes=changes))
     assert edited["status"] == "waiting"
-    listed = approval_gate.waiting_sets(gate)
+    listed = waiting_sets_within(gate)
     assert len(listed) == 1
     assert listed[0]["payload_hash"] == edited["payload_hash"]
     assert listed[0]["payload_hash"] != submitted["payload_hash"]

@@ -141,6 +141,15 @@ def test_the_models_own_key_is_never_used() -> None:
     refused: dict[str, Any] = solver_key.draft_from_model_reply("concept_mirror_formula", "easy", no_calculation)
     assert refused["ok"] is False
     assert "without a calculation" in refused["error"]
+    # A calculation the solver refuses (the object at the focus): refused too, never keyed with the model's key.
+    at_focus: dict[str, Any] = {
+        "question_text": "An object is placed 15 cm in front of a concave mirror of focal length 15 cm. Find v.",
+        "gold_answer": "-15 cm",
+        "calculation": {"formula": "mirror_formula", "values": {"u": -15, "f": -15}, "length_unit": "cm", "find": "v"},
+    }
+    not_keyed: dict[str, Any] = solver_key.draft_from_model_reply("concept_mirror_formula", "easy", at_focus)
+    assert not_keyed["ok"] is False
+    assert "draft" not in not_keyed
 
 
 def test_given_values_must_be_in_the_question() -> None:
