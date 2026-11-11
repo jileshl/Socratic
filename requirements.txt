@@ -1,5 +1,5 @@
-# REQUIRES PYTHON 3.12 OR NEWER. gradio, langgraph, langchain-core and
-# langchain-openai all set that floor. On 3.9 pip fails with
+# REQUIRES PYTHON 3.12 (Python 3.12 is recommended; Python 3.13 lacks pre-built wheels for optional OCR dependencies like rapidocr-onnxruntime).
+# gradio, langgraph, langchain-core and langchain-openai all set 3.12 as the floor.
 # "Could not find a version that satisfies the requirement gradio>=5.0".
 # Run `python scripts/check_env.py` first — it tells you exactly what to fix.
 #

@@ -75,6 +75,24 @@ CONCEPT_FALLBACK_QUESTIONS: dict[str, dict[str, Any]] = {
         "difficulty": "medium",
         "calculation": {"formula": "joule_heating", "r": 20, "i": 5, "t": 30, "find": "h"},
     },
+    "concept_joules_heating": {
+        "question_text": "A 20 ohm resistor carries a current of 5 A for 30 seconds. Calculate the heat produced in joules.",
+        "gold_answer": "15000 J",
+        "difficulty": "medium",
+        "calculation": {"formula": "joule_heating", "r": 20, "i": 5, "t": 30, "find": "h"},
+    },
+    "concept_series_combination": {
+        "question_text": "Two resistors of 4 ohm and 6 ohm are connected in series across a 12 V battery. Calculate the equivalent resistance.",
+        "gold_answer": "10 ohm",
+        "difficulty": "easy",
+        "calculation": {"formula": "series_resistance", "resistors": [4, 6]},
+    },
+    "concept_lens_power": {
+        "question_text": "A convex lens has a focal length of 0.5 m. Find its power.",
+        "gold_answer": "2 D",
+        "difficulty": "easy",
+        "calculation": {"formula": "lens_power", "f": 0.5, "length_unit": "m"},
+    },
 }
 
 
@@ -86,14 +104,10 @@ def select_question(concept_id: str, difficulty: str = "medium") -> dict[str, An
         res.setdefault("difficulty", difficulty)
         return res
 
-    fallback_entry = CONCEPT_FALLBACK_QUESTIONS.get(
-        concept_id,
-        {
-            "question_text": "State the fundamental law or definition governing this concept and give one practical example.",
-            "gold_answer": "Correct NCERT statement and valid practical application.",
-            "difficulty": difficulty,
-        },
-    )
+    fallback_entry = CONCEPT_FALLBACK_QUESTIONS.get(concept_id)
+    if not fallback_entry:
+        return {"error": f"No question generated or fallback available for concept '{concept_id}'"}
+
     if isinstance(fallback_entry, list):
         matching = [q for q in fallback_entry if q.get("difficulty") == difficulty]
         fallback = matching[0] if matching else fallback_entry[0]

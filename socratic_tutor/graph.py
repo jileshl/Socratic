@@ -795,8 +795,17 @@ def _calculate_or_verify_answer(
 def node_question_setter(state: SocraticState) -> dict:
     concept = state.get("current_concept_id", "concept_reflection_laws")
     res = question_setter.select_question(concept)
-    prompt_text = res.get("question_text", "State the laws of reflection.")
-    raw_gold_answer = res.get("gold_answer", "")
+    if not isinstance(res, dict) or res.get("error") or not res.get("question_text") or not res.get("gold_answer"):
+        return {
+            "steps": ["question_setter"],
+            "turn_steps": state.get("turn_steps", []) + ["question_setter"],
+            "teacher_approval_required": False,
+            "teacher_approval_payload": None,
+            "response": f"No question proposal available for concept '{concept}'.",
+        }
+
+    prompt_text = res["question_text"]
+    raw_gold_answer = res["gold_answer"]
     difficulty = res.get("difficulty", "medium")
     calculation = res.get("calculation")
     if calculation is None and "formula" in res:
@@ -838,7 +847,15 @@ def node_question_setter(state: SocraticState) -> dict:
 
 
 def node_teacher_approval_gate(state: SocraticState) -> dict:
-    payload = state.get("teacher_approval_payload", {})
+    payload = state.get("teacher_approval_payload")
+    if not payload:
+        return {
+            "steps": ["teacher_approval_gate"],
+            "turn_steps": state.get("turn_steps", []) + ["teacher_approval_gate"],
+            "teacher_approval_required": False,
+            "response": state.get("response", "No question proposal to review."),
+        }
+
     decision = interrupt({"payload": payload, "prompt": "Approve new question for shared bank?"})
 
     is_dict = isinstance(decision, dict)

@@ -1312,5 +1312,28 @@ def test_parallel_resistors_fallback_split_into_two_single_value_questions():
     assert grade_med["is_correct"] is True
 
 
+def test_skip_proposing_when_no_question_or_fallback_for_concept(monkeypatch, tmp_path):
+    """Verify question setter skips proposing and approval gate when no question/fallback exists."""
+    from socratic_tutor import graph
+    from socratic_tutor.tools import question_bank
+
+    monkeypatch.setattr(question_bank, "DB_PATH", tmp_path / "qb_skip.db")
+    question_bank._init_db()
+
+    state = {
+        "current_concept_id": "concept_non_existent_placeholder",
+        "turn_steps": [],
+        "steps": [],
+    }
+    setter_out = graph.node_question_setter(state)
+    assert setter_out["teacher_approval_required"] is False
+    assert setter_out["teacher_approval_payload"] is None
+
+    # Gate handles non-proposal without interrupt
+    gate_out = graph.node_teacher_approval_gate(setter_out)
+    assert gate_out["teacher_approval_required"] is False
+
+
+
 
 
