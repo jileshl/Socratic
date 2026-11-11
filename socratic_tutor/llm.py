@@ -17,6 +17,7 @@ def get_llm(model: str = config.SPECIALIST_MODEL, temperature: float = 0.2) -> C
         temperature=temperature,
         api_key=api_key,
         base_url=base_url,
+        max_tokens=config.LLM_MAX_TOKENS,
         extra_body={"usage": {"include": True}},
     )
 
