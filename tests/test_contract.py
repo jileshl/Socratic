@@ -1273,6 +1273,17 @@ def test_unmatched_conceptual_question_marked_unverified(monkeypatch, tmp_path):
     assert ver is False
     assert ans == raw_ans
 
+    monkeypatch.setattr(
+        graph.question_setter.llm,
+        "chat_json",
+        lambda *a, **kw: {
+            "concept_id": "concept_reflection_laws",
+            "difficulty": "easy",
+            "question_text": prompt,
+            "gold_answer": raw_ans,
+        },
+    )
+
     setter_state = {
         "current_concept_id": "concept_reflection_laws",
         "turn_steps": [],
@@ -1319,6 +1330,13 @@ def test_skip_proposing_when_no_question_or_fallback_for_concept(monkeypatch, tm
 
     monkeypatch.setattr(question_bank, "DB_PATH", tmp_path / "qb_skip.db")
     question_bank._init_db()
+
+    # When LLM fails to generate and no fallback exists for the concept
+    monkeypatch.setattr(
+        graph.question_setter.llm,
+        "chat_json",
+        lambda *a, **kw: {"error": "LLM generation unavailable"},
+    )
 
     state = {
         "current_concept_id": "concept_non_existent_placeholder",
