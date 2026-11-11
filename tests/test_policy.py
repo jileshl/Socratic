@@ -769,3 +769,55 @@ def test_crash_inside_check_reply_gives_fallback() -> None:
     result: dict[str, Any] = policy.check_reply(None, [], [])  # type: ignore[arg-type]
     assert result["reply"] == policy.SAFE_FALLBACK_REPLY
     assert result["blocked_by"] == "guardrail_error"
+
+
+# ---------------------------------------------------------------- a prompted guard model (the course key has no Llama Guard)
+
+def test_general_guard_model_gets_prompt_and_framed_conversation(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(config, "GUARD_MODEL", "google/gemini-3.1-flash-lite")
+    sent: list[tuple[str, str]] = guard_models.build_guard_messages([("user", "my question"), ("assistant", "a hint")])
+    assert sent[0] == ("system", guard_models.GUARD_PROMPT)
+    assert sent[1][0] == "user"
+    framed: str = sent[1][1]
+    # The conversation is shown as data between markers, each speaker named, and the turn to label named.
+    assert "<<<CONVERSATION START>>>" in framed and "<<<CONVERSATION END>>>" in framed
+    assert "STUDENT: my question" in framed
+    assert "TUTOR: a hint" in framed
+    assert framed.endswith("Label the last message, the TUTOR's.")
+
+
+def test_llama_guard_model_gets_the_conversation_as_it_is(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(config, "GUARD_MODEL", "meta-llama/llama-guard-4-12b")
+    messages: list[tuple[str, str]] = [("user", "my question")]
+    assert guard_models.build_guard_messages(messages) == messages
+
+
+def test_ask_content_guard_sends_the_framed_messages(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(config, "GUARD_MODEL", "google/gemini-3.1-flash-lite")
+    received: list[list[tuple[str, str]]] = []
+
+    class RecordingModel:
+        """Records what it was sent and answers "safe"."""
+
+        def invoke(self, messages: list[tuple[str, str]]) -> FakeReply:
+            received.append(messages)
+            return FakeReply("safe")
+
+    def fake_get_llm(model: str, temperature: float) -> RecordingModel:
+        return RecordingModel()
+
+    monkeypatch.setattr(guard_models.llm, "get_llm", fake_get_llm)
+    assert guard_models.ask_content_guard([("user", "hello")])["safe"] is True
+    assert received[0][0] == ("system", guard_models.GUARD_PROMPT)
+
+
+def test_parse_guard_reply_accepts_light_decoration() -> None:
+    # A general model may add bold, a full stop, or put the codes on the same line.
+    assert guard_models.parse_guard_reply("**safe**")["safe"] is True
+    assert guard_models.parse_guard_reply("Safe.")["safe"] is True
+    assert guard_models.parse_guard_reply("unsafe S11") == {"ok": True, "safe": False, "categories": ["S11"]}
+    two_lines: str = "UNSAFE" + chr(10) + "**S1, S11.**"
+    assert guard_models.parse_guard_reply(two_lines) == {"ok": True, "safe": False, "categories": ["S1", "S11"]}
+    # A sentence is still not an answer we understand.
+    assert guard_models.parse_guard_reply("The message seems safe to me")["ok"] is False
+    assert guard_models.parse_guard_reply("unsafe because it is violent")["ok"] is False
