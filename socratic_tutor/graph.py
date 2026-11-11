@@ -260,6 +260,11 @@ def node_supervisor(state: SocraticState) -> dict:
         else:
             # N3: If grader encountered an error (e.g. unapproved question), do not run replan
             if grade_res.get("error"):
+                # A question that isn't available tells the teacher. A check that R4's tool hooks blocked
+                # (budget used up, tools paused) is about the system, not the student, so the alert stays as it was.
+                error_alert: bool = True
+                if str(grade_res.get("error")).startswith("tool_blocked"):
+                    error_alert = teacher_alert
                 return {
                     "steps": ["supervisor"],
                     "turn_steps": turn_steps + ["supervisor"],
@@ -267,7 +272,7 @@ def node_supervisor(state: SocraticState) -> dict:
                     "mastery_map": mastery,
                     "current_concept_id": current_concept,
                     "next_recommended_concept": next_concept,
-                    "teacher_alert_triggered": True,
+                    "teacher_alert_triggered": error_alert,
                     "hint_step": hint_step,
                     "hint_raised_this_turn": hint_raised,
                     "last_concept_id": current_concept,
@@ -498,7 +503,7 @@ def node_diagnostician(state: SocraticState) -> dict:
     }
 
 
-def search_textbook(query: str, chapter: str | None = None, top_k: int = 4) -> list[dict]:
+def search_textbook(query: str, chapter: str | None = None, top_k: int = 4) -> list[dict[str, Any]]:
     """The tutor's textbook tool, under the name R4's permission map knows ("search_textbook").
 
     It calls textbook_kb.search_textbook at call time, so a test that swaps that function still works, and
@@ -507,7 +512,7 @@ def search_textbook(query: str, chapter: str | None = None, top_k: int = 4) -> l
     return textbook_kb.search_textbook(query, chapter=chapter, top_k=top_k)
 
 
-def _tutor_search(arguments: dict[str, Any], state: SocraticState) -> list[dict]:
+def _tutor_search(arguments: dict[str, Any], state: SocraticState) -> list[dict[str, Any]]:
     """One textbook search for the tutor, through R4's tool hooks. A blocked search gives no passages."""
     # Flowchart (each [box] matches a comment below):
     #
@@ -708,6 +713,7 @@ def node_grader(state: SocraticState) -> dict:
     # say so, and record no grade (the "error" key makes the supervisor skip the replan).
     if str(res.get("error", "")).startswith("tool_blocked"):
         feedback = grader.CANNOT_CHECK_FEEDBACK
+        res["feedback"] = grader.CANNOT_CHECK_FEEDBACK
 
     return {
         "steps": ["grader"],
