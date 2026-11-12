@@ -83,7 +83,7 @@ For the live demo and the backup recording, add `?demo=1` to either address (**p
   - `[DEMO]` questions waiting for approval;
   - Student A and Student B;
   - six demo students with misconceptions and mastery;
-  - a name ending in "(demo)" for each demo student, and a `[DEMO]` study plan for Rohan (demo);
+  - a plain first name for each demo student (their IDs start with `stu_demo_`), and a `[DEMO]` study plan for Rohan;
   - two `[DEMO]` alerts.
 
   All demo IDs start with `stu_demo_`, and the overview shows a banner while they are loaded. No sessions, costs or leaks are invented. The code is in `socratic_tutor/web/demo_data.py`.

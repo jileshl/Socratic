@@ -106,7 +106,7 @@ h3 { font-size: 15.5px; margin: 0; }
 
 /* ---------- chat ---------- */
 .chat { padding: 0; overflow: hidden; }
-#log { min-height: 260px; max-height: 58vh; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 18px; }
+#log { min-height: 260px; max-height: 70vh; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 18px; }
 .msg { max-width: 84%; display: grid; gap: 6px; }
 .msg .bubble { padding: 10px 14px; border-radius: 14px; white-space: pre-wrap; }
 .msg .who { font-size: 12.5px; color: var(--ink-2); font-weight: 700; }
@@ -369,3 +369,57 @@ table.class td .meter { width: 90px; display: inline-block; vertical-align: midd
 .msg.tutor.care .bubble { background: var(--ok-soft); }
 .chip.calm { background: var(--ok-soft); color: var(--ok); border-color: transparent; }
 .quick.calm button { color: var(--ok); border-color: var(--ok-soft); }
+
+/* ---------- the NCERT book next to the tutor: real text (set in a book serif), formula, figure ---------- */
+.bookcard { background: var(--sheet); border: 1px solid var(--rule); border-left: 4px solid var(--ok); border-radius: var(--r); overflow: hidden; }
+.bookcard > summary { list-style: none; cursor: pointer; display: flex; gap: 10px; align-items: center; padding: 9px 12px; }
+.bookcard > summary::-webkit-details-marker { display: none; }
+.bookcard > summary::after { content: "Show"; margin-left: auto; font-size: 13px; color: var(--royal); font-weight: 700; }
+.bookcard[open] > summary::after { content: "Hide"; }
+.bk-icon { width: 22px; height: 18px; flex: none; border: 2px solid var(--ok); border-radius: 2px 2px 3px 3px; position: relative; }
+.bk-icon::before { content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 2px; margin-left: -1px; background: var(--ok); }
+.bk-src { display: block; font-size: 12.5px; color: var(--ok); font-weight: 700; }
+.bk-title { display: block; font-size: 14.5px; font-weight: 700; line-height: 1.3; }
+.bk-body { padding: 2px 14px 14px; display: grid; gap: 10px; }
+.bookcard blockquote, .lesson-card blockquote { margin: 0; padding: 10px 14px; border-left: 3px solid var(--rule); background: var(--paper); border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  font-family: Georgia, "Times New Roman", serif; font-size: 16px; line-height: 1.6; color: var(--ink); }
+.formula { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; padding: 8px 12px; border-radius: var(--r-sm); background: var(--royal-soft); }
+.formula .eq { font-family: Georgia, "Times New Roman", serif; font-size: 20px; font-weight: 700; color: var(--ink); letter-spacing: .01em; }
+.formula .fno { font-size: 13px; color: var(--ink-2); }
+.formula .fsays { font-size: 13.5px; color: var(--ink-2); }
+.bookcard figure, .lesson-card figure { margin: 0; background: #fff; border: 1px solid var(--rule); border-radius: var(--r-sm); padding: 8px; }
+.bookcard img, .lesson-card img { display: block; max-width: 100%; max-height: 340px; margin: 0 auto; }
+.bookcard figcaption, .lesson-card figcaption { font-size: 13.5px; color: #4a5170; margin-top: 6px; text-align: center; }
+
+/* ---------- a lesson from the book ---------- */
+.lesson-card { background: var(--sheet); border: 1px solid var(--rule); border-top: 4px solid var(--ok); border-radius: var(--r); padding: 14px 16px; display: grid; gap: 10px; }
+.lesson-card h3 { font-size: 20px; margin: 0; }
+.lhead { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.lvl-tag { font-size: 12.5px; font-weight: 700; padding: 2px 10px; border-radius: 999px; background: var(--ok-soft); color: var(--ok); }
+.lvl-tag.in_progress { background: var(--warn-soft); color: var(--warn); }
+.lvl-tag.mastered { background: var(--royal-soft); color: var(--royal); }
+.lstep { display: grid; gap: 6px; }
+.lstep .lt { font-weight: 700; font-size: 14.5px; }
+.quick button.strong { background: var(--royal); color: #fff; border-color: var(--royal); }
+.learnrow { display: flex; gap: 6px; flex-wrap: wrap; }
+.learnrow select { flex: 1 1 140px; min-width: 0; font-size: 14px; }
+.chcard .learnrow button { text-align: center; white-space: nowrap; background: var(--royal); }
+.orask { font-size: 12.5px; color: var(--ink-2); margin-top: 2px; }
+
+/* ---------- behind the scenes: one card per step ---------- */
+.hood .hood-kind { font-size: 12.5px; font-weight: 700; color: var(--royal); }
+.hood .hood-q { font-size: 15px; margin: 2px 0 10px; color: var(--ink); }
+.hcards { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.hc { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 8px; padding: 8px 10px; border: 1px solid var(--rule); border-left: 4px solid var(--ok); border-radius: var(--r-sm); background: var(--sheet); }
+.hc.warn { border-left-color: var(--warn); } .hc.stop { border-left-color: var(--bad); background: var(--bad-soft); } .hc.care { border-left-color: var(--ok); background: var(--ok-soft); }
+.hc-n { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 12.5px; font-weight: 700; background: var(--rule-2); color: var(--ink-2); }
+.hc-t { display: flex; justify-content: space-between; gap: 8px; font-size: 14.5px; }
+.hc-t span { font-size: 12.5px; font-weight: 700; }
+.hc-l { font-size: 13.5px; color: var(--ink-2); line-height: 1.45; }
+.hc-l b { color: var(--ink); }
+.hood-foot { margin-top: 10px; font-size: 13px; color: var(--ink-2); }
+.chcard { min-width: 0; }
+.chcard .learnrow { display: grid; grid-template-columns: minmax(0, 1fr); }
+.chcard .learnrow select { width: 100%; }
+.chcard .learnrow button { white-space: normal; }
+.msg.tutor.lesson { max-width: 96%; }

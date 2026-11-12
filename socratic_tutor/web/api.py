@@ -50,7 +50,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel, Field
 
-from socratic_tutor import approval_gate, config, trace
+from socratic_tutor import approval_gate, book, config, trace
 from socratic_tutor.concept_graph import ConceptGraph
 from socratic_tutor.graph import build_graph
 from socratic_tutor.learner_store import LearnerStore
@@ -432,11 +432,67 @@ def _run_turn(
             "mastery_delta": delta,
             "grade": _grade_brief(values.get("grade_result")) if mode == "quiz" else None,
             "answer_leak_flagged": leak,
+            # The NCERT book next to the tutor's question: a real excerpt, the formulas and the figure of the
+            # section it cited (code, no model). Not for refusals, distress replies or quiz marking.
+            "book": _book_for(values, message, concept_id) if (mode == "practice" and error is None and not blocked_reason) else None,
+            # Behind the scenes, for the side panel: what each step saw and decided.
+            "behind": _behind(values, message, mode, blocked_reason),
             "latency_s": round(latency, 2),
             "cost_usd": usage["cost_usd"],
             "error": bool(error),
         }
     )
+
+
+def _book_for(values: dict[str, Any], message: str, concept_id: str | None) -> dict[str, Any] | None:
+    try:
+        return book.book_card(list(values.get("citations") or []), message, concept_id)
+    except Exception:  # the book card is extra help; a reply never fails because of it
+        return None
+
+
+def _behind(values: dict[str, Any], message: str, mode: str, blocked_reason: str | None) -> dict[str, Any]:
+    """What happened behind the scenes this turn, in plain words for the side panel. No answer keys."""
+    sources = []
+    for p in values.get("retrieved_sections") or []:
+        sid = p.get("section_id")
+        if sid and all(s["section_id"] != sid for s in sources):
+            sources.append({"section_id": sid, "title": book.section_title(sid) or p.get("title") or p.get("section_title") or ""})
+    masked = str(values.get("query") or message).strip() != message.strip()
+    return {
+        "mode": mode,
+        "safety": {
+            "blocked_by": values.get("input_blocked_by"),
+            "reason": blocked_reason,
+            "distress_level": values.get("distress_level") if values.get("distress_detected") else None,
+            "personal_details_masked": masked,
+        },
+        "concept_pinned": bool(values.get("concept_pinned")),
+        "sources": sources[:4],
+        "lesson_used": values.get("effective_lesson_applied"),
+    }
+
+
+@api_router.get("/api/lesson/{concept_id}")
+def lesson(concept_id: str, student_id: str | None = None) -> dict[str, Any]:
+    """"Learn this topic from the start": real text, figure and formulas from the NCERT book, matched to the
+    student's mastery of the topic (new / in progress / mastered). Code only; no model call."""
+    titles = _concept_titles()
+    if concept_id not in titles:
+        raise HTTPException(404, "Unknown topic")
+    mastery = None
+    if student_id and student_id.startswith("stu_"):
+        mastery = (learners.get_profile(student_id).get("mastery_map") or {}).get(concept_id)
+    next_id = None
+    if mastery is not None and mastery >= config.PASSING_MASTERY_THRESHOLD:
+        mastery_map = learners.get_profile(student_id).get("mastery_map") or {} if student_id else {}
+        cg = ConceptGraph()
+        later = [c for c, d in cg.concepts.items() if concept_id in d.get("prerequisites", []) and mastery_map.get(c, 0.0) < config.PASSING_MASTERY_THRESHOLD]
+        next_id = later[0] if later else cg.next_recommended(mastery_map)
+    out = book.lesson(concept_id, mastery, titles.get(concept_id, concept_id), next_id, titles.get(next_id or "", ""))
+    out["chapter"] = _concept_chapters().get(concept_id, "")
+    out["has_quiz"] = any(r.get("concept_id") == concept_id for r in approvals._qb_rows("approved"))
+    return out
 
 
 def _concept_titles() -> dict[str, str]:

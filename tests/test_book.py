@@ -1,0 +1,67 @@
+"""The NCERT book next to the tutor: real excerpts, figures cropped from the chapters, formulas, and lessons."""
+
+import json
+
+import pytest
+from fastapi.testclient import TestClient
+
+from socratic_tutor import book, config
+from socratic_tutor.web.server import app
+
+needs_index = pytest.mark.skipif(not (config.INDEX_DIR / "chunks.json").exists(), reason="NCERT index not built")
+
+
+def test_every_listed_figure_file_exists_and_topics_point_at_real_figures():
+    rows = json.loads((config.DATA_DIR / "book" / "figures.json").read_text(encoding="utf-8"))
+    assert len(rows) >= 30
+    for r in rows:
+        assert (config.DATA_DIR / "book" / "figures" / r["file"]).exists(), r
+    listed = {r["figure"] for r in rows}
+    for concept, figs in book.CONCEPT_FIGURES.items():
+        assert set(figs) <= listed, concept
+    assert set(book.CONCEPT_FIGURES) == set(book.CONCEPT_SECTIONS)
+
+
+def test_split_words_from_the_pdf_are_joined_again(monkeypatch):
+    monkeypatch.setattr(book, "_vocab", lambda: {"formation": 16, "for": 120, "mation": 2, "mirrors": 30, "mirr": 1, "ors": 1})
+    assert book._join_split_words("the for mation of images by mirr ors , here") == "the formation of images by mirrors, here"
+
+
+@needs_index
+def test_book_card_for_a_concave_mirror_question_shows_the_ray_diagrams():
+    card = book.book_card(["9.2.2", "9.2.1"], "Why is the image in a concave mirror upside down?", "concept_concave_ray_diagrams")
+    assert card["section_id"] == "9.2.2"
+    assert card["figure"]["figure"] == "9.7"
+    assert card["excerpt"] and len(card["excerpt"]) <= 400
+    # the excerpt is the book's own text, not something made up
+    words = card["excerpt"].split()[:6]
+    assert " ".join(words).lower().replace(" ", "") in book._join_split_words(book._chunks()["9.2.2"]["content"].replace("\n", " ")).lower().replace(" ", "")
+
+
+@needs_index
+def test_lesson_depends_on_the_students_mastery():
+    new = book.lesson("concept_ohms_law", None, "Ohm's Law")
+    assert new["level"] == "new" and new["steps"][0]["kind"] == "read" and "Ohm" in new["steps"][0]["text"]
+    assert any(s["kind"] == "formula" and s["items"][0]["eq"] == "V = IR" for s in new["steps"])
+    assert any(s["kind"] == "figure" for s in new["steps"])
+    going = book.lesson("concept_mirror_formula", 0.5, "Mirror formula")
+    assert going["level"] == "in_progress" and going["steps"][1]["kind"] == "formula"
+    done = book.lesson("concept_ohms_law", 0.9, "Ohm's Law", "concept_series_combination", "Resistors in Series")
+    assert done["level"] == "mastered" and done["next"]["concept_id"] == "concept_series_combination"
+
+
+def test_figures_are_served_and_nothing_else_is():
+    client = TestClient(app)
+    assert client.get("/book/figures/fig_9_7.png").status_code == 200
+    assert client.get("/book/figures/..%2F..%2Fconcept_graph.json").status_code == 404
+    assert client.get("/book/figures/figures.json").status_code == 404
+
+
+@needs_index
+def test_lesson_endpoint():
+    client = TestClient(app)
+    assert client.get("/api/lesson/concept_nope").status_code == 404
+    out = client.get("/api/lesson/concept_concave_ray_diagrams").json()
+    assert out["level"] == "new" and out["chapter"].startswith("Light")
+    assert any(s.get("figure") == "9.7" for s in out["steps"])
+    assert "no model" in out["how"]
