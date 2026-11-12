@@ -1,0 +1,45 @@
+{
+ "9.2.4": [
+  {"eq": "1/v + 1/u = 1/f", "no": "9.1", "says": "Mirror formula"},
+  {"eq": "m = h′/h = −v/u", "no": "9.3", "says": "Magnification by a mirror"}
+ ],
+ "9.3.1": [
+  {"eq": "sin i / sin r = constant", "no": "9.4", "says": "Snell's law of refraction"}
+ ],
+ "9.3.2": [
+  {"eq": "n₂₁ = v₁ / v₂", "no": "9.5", "says": "Refractive index of medium 2 with respect to medium 1"},
+  {"eq": "nₘ = c / v", "no": "9.7", "says": "Absolute refractive index"}
+ ],
+ "9.3.7": [
+  {"eq": "1/v − 1/u = 1/f", "no": "9.8", "says": "Lens formula"},
+  {"eq": "m = h′/h = v/u", "no": "9.10", "says": "Magnification by a lens"}
+ ],
+ "9.3.8": [
+  {"eq": "P = 1/f", "no": "9.11", "says": "Power of a lens (f in metres, P in dioptres)"}
+ ],
+ "11.1": [
+  {"eq": "I = Q / t", "no": "11.1", "says": "Electric current"}
+ ],
+ "11.2": [
+  {"eq": "V = W / Q", "no": "11.2", "says": "Potential difference"}
+ ],
+ "11.4": [
+  {"eq": "V = IR", "no": "11.5", "says": "Ohm's law"},
+  {"eq": "R = V / I", "no": "11.6", "says": "Resistance"}
+ ],
+ "11.5": [
+  {"eq": "R = ρ l / A", "no": "11.10", "says": "Resistance from resistivity, length and area"}
+ ],
+ "11.6.1": [
+  {"eq": "Rₛ = R₁ + R₂ + R₃", "no": "11.14", "says": "Resistors in series"}
+ ],
+ "11.6.2": [
+  {"eq": "1/Rₚ = 1/R₁ + 1/R₂ + 1/R₃", "no": "11.18", "says": "Resistors in parallel"}
+ ],
+ "11.7": [
+  {"eq": "H = I²Rt", "no": "11.21", "says": "Joule's law of heating"}
+ ],
+ "11.8": [
+  {"eq": "P = VI = I²R = V²/R", "no": "11.22", "says": "Electric power"}
+ ]
+}

@@ -62,6 +62,16 @@ def teacher_page() -> FileResponse:
     return FileResponse(STATIC / "teacher.html")
 
 
+@app.get("/book/figures/{name}", include_in_schema=False)
+def book_figure(name: str) -> FileResponse:
+    """Figures cropped from the NCERT chapters (data/book/figures), shown in the book card and lessons."""
+    folder = (config.DATA_DIR / "book" / "figures").resolve()
+    path = (folder / name).resolve()
+    if path.parent != folder or path.suffix != ".png" or not path.exists():
+        raise HTTPException(404)
+    return FileResponse(path, headers={"Cache-Control": "public, max-age=86400"})
+
+
 @app.get("/static/{name}", include_in_schema=False)
 def static_file(name: str) -> FileResponse:
     path = (STATIC / name).resolve()

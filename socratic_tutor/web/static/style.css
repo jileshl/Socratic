@@ -106,7 +106,7 @@ h3 { font-size: 15.5px; margin: 0; }
 
 /* ---------- chat ---------- */
 .chat { padding: 0; overflow: hidden; }
-#log { min-height: 260px; max-height: 58vh; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 18px; }
+#log { min-height: 260px; max-height: 70vh; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 18px; }
 .msg { max-width: 84%; display: grid; gap: 6px; }
 .msg .bubble { padding: 10px 14px; border-radius: 14px; white-space: pre-wrap; }
 .msg .who { font-size: 12.5px; color: var(--ink-2); font-weight: 700; }
@@ -247,7 +247,20 @@ body.presenter .presenter-only { display: revert !important; }
 body.presenter .layout-p { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr); gap: 20px; align-items: start; max-width: 1280px; margin: 0 auto; }
 body.presenter .layout-p > aside { position: sticky; top: 76px; max-height: calc(100vh - 92px); overflow-y: auto; }
 .presenter-badge { font-size: 12.5px; font-weight: 700; color: #fff; background: var(--eye); padding: 2px 10px; border-radius: 999px; }
-@media (max-width: 920px) { body.presenter .layout-p { grid-template-columns: minmax(0, 1fr); } body.presenter .layout-p > aside { position: static; max-height: none; } .topnav button { padding: 6px 10px; } }
+/* In a narrow window the panel is a drawer on the right, opened with the "How it works" button. */
+body.presenter .hood-toggle.presenter-only { display: none !important; }
+@media (max-width: 920px) {
+  body.presenter .layout-p { grid-template-columns: minmax(0, 1fr); }
+  body.presenter .layout-p > aside { position: fixed; top: 0; right: 0; bottom: 0; width: min(440px, 94vw); max-height: none; z-index: 30;
+    background: var(--paper); box-shadow: -8px 0 24px rgba(20, 24, 50, .18); padding: 12px; overflow-y: auto; transform: translateX(105%); transition: transform .25s ease; }
+  body.presenter.hood-open .layout-p > aside { transform: none; }
+  body.presenter .hood-toggle.presenter-only { display: inline-flex !important; }
+  body.presenter .hood-toggle { position: fixed; right: 14px; bottom: 14px; z-index: 31; gap: 6px; align-items: center;
+    background: var(--eye); color: #fff; border: none; border-radius: 999px; padding: 10px 16px; font-weight: 700; box-shadow: 0 4px 14px rgba(20, 24, 50, .25); }
+  body.presenter .hood-toggle.ping { animation: ping 1.2s ease 2; }
+  .topnav button { padding: 6px 10px; }
+}
+@keyframes ping { 50% { transform: scale(1.08); } }
 /* the ray in the narrow presenter panel: two rows of four, no beam */
 aside .ray { grid-template-columns: repeat(4, minmax(0, 1fr)); row-gap: 16px; }
 aside .ray::before, aside .ray .beam { display: none; }
@@ -369,3 +382,103 @@ table.class td .meter { width: 90px; display: inline-block; vertical-align: midd
 .msg.tutor.care .bubble { background: var(--ok-soft); }
 .chip.calm { background: var(--ok-soft); color: var(--ok); border-color: transparent; }
 .quick.calm button { color: var(--ok); border-color: var(--ok-soft); }
+
+/* ---------- the NCERT book next to the tutor: real text (set in a book serif), formula, figure ---------- */
+.bookcard { background: var(--sheet); border: 1px solid var(--rule); border-left: 4px solid var(--ok); border-radius: var(--r); overflow: hidden; }
+.bookcard > summary { list-style: none; cursor: pointer; display: flex; gap: 10px; align-items: center; padding: 9px 12px; }
+.bookcard > summary::-webkit-details-marker { display: none; }
+.bookcard > summary::after { content: "Show"; margin-left: auto; font-size: 13px; color: var(--royal); font-weight: 700; }
+.bookcard[open] > summary::after { content: "Hide"; }
+.bk-icon { width: 22px; height: 18px; flex: none; border: 2px solid var(--ok); border-radius: 2px 2px 3px 3px; position: relative; }
+.bk-icon::before { content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 2px; margin-left: -1px; background: var(--ok); }
+.bk-src { display: block; font-size: 12.5px; color: var(--ok); font-weight: 700; }
+.bk-title { display: block; font-size: 14.5px; font-weight: 700; line-height: 1.3; }
+.bk-body { padding: 2px 14px 14px; display: grid; gap: 10px; }
+.bookcard blockquote, .lesson-card blockquote { margin: 0; padding: 10px 14px; border-left: 3px solid var(--rule); background: var(--paper); border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  font-family: Georgia, "Times New Roman", serif; font-size: 16px; line-height: 1.6; color: var(--ink); }
+.formula { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; padding: 8px 12px; border-radius: var(--r-sm); background: var(--royal-soft); }
+.formula .eq { font-family: Georgia, "Times New Roman", serif; font-size: 20px; font-weight: 700; color: var(--ink); letter-spacing: .01em; }
+.formula .fno { font-size: 13px; color: var(--ink-2); }
+.formula .fsays { font-size: 13.5px; color: var(--ink-2); }
+.bookcard figure, .lesson-card figure { margin: 0; background: #fff; border: 1px solid var(--rule); border-radius: var(--r-sm); padding: 8px; }
+.bookcard img, .lesson-card img { display: block; max-width: 100%; max-height: 340px; margin: 0 auto; }
+.bookcard figcaption, .lesson-card figcaption { font-size: 13.5px; color: #4a5170; margin-top: 6px; text-align: center; }
+
+/* ---------- a lesson from the book ---------- */
+.lesson-card { background: var(--sheet); border: 1px solid var(--rule); border-top: 4px solid var(--ok); border-radius: var(--r); padding: 14px 16px; display: grid; gap: 10px; }
+.lesson-card h3 { font-size: 20px; margin: 0; }
+.lhead { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.lvl-tag { font-size: 12.5px; font-weight: 700; padding: 2px 10px; border-radius: 999px; background: var(--ok-soft); color: var(--ok); }
+.lvl-tag.in_progress { background: var(--warn-soft); color: var(--warn); }
+.lvl-tag.mastered { background: var(--royal-soft); color: var(--royal); }
+.lstep { display: grid; gap: 6px; }
+.lstep .lt { font-weight: 700; font-size: 14.5px; }
+.quick button.strong { background: var(--royal); color: #fff; border-color: var(--royal); }
+.learnrow { display: flex; gap: 6px; flex-wrap: wrap; }
+.learnrow select { flex: 1 1 140px; min-width: 0; font-size: 14px; }
+.chcard .learnrow button { text-align: center; white-space: nowrap; background: var(--royal); }
+.orask { font-size: 12.5px; color: var(--ink-2); margin-top: 2px; }
+
+/* ---------- behind the scenes: one card per step ---------- */
+.hood .hood-kind { font-size: 12.5px; font-weight: 700; color: var(--royal); }
+.hood .hood-q { font-size: 15px; margin: 2px 0 10px; color: var(--ink); }
+.hcards { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.hc { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 8px; padding: 8px 10px; border: 1px solid var(--rule); border-left: 4px solid var(--ok); border-radius: var(--r-sm); background: var(--sheet); }
+.hc.warn { border-left-color: var(--warn); } .hc.stop { border-left-color: var(--bad); background: var(--bad-soft); } .hc.care { border-left-color: var(--ok); background: var(--ok-soft); }
+.hc-n { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 12.5px; font-weight: 700; background: var(--rule-2); color: var(--ink-2); }
+.hc-t { display: flex; justify-content: space-between; gap: 8px; font-size: 14.5px; }
+.hc-t span { font-size: 12.5px; font-weight: 700; }
+.hc-l { font-size: 13.5px; color: var(--ink-2); line-height: 1.45; }
+.hc-l b { color: var(--ink); }
+.hood-foot { margin-top: 10px; font-size: 13px; color: var(--ink-2); }
+.chcard { min-width: 0; }
+.chcard .learnrow { display: grid; grid-template-columns: minmax(0, 1fr); }
+.chcard .learnrow select { width: 100%; }
+.chcard .learnrow button { white-space: normal; }
+.msg.tutor.lesson { max-width: 96%; }
+
+/* ---------- the learning path: four steps, the current one lit ---------- */
+.howto { background: var(--sheet); border: 1px solid var(--rule); border-left: 4px solid var(--royal); border-radius: var(--r); padding: 12px 16px; margin: 6px 0 14px; display: grid; gap: 6px; }
+.howto ol, .journey ol { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.howto li, .journey li { display: flex; gap: 8px; align-items: center; font-size: 14px; color: var(--ink-2); }
+.howto li span, .journey li span { width: 24px; height: 24px; flex: none; border-radius: 50%; display: grid; place-items: center; font-size: 13px; font-weight: 700; background: var(--rule-2); color: var(--ink-2); }
+.journey { background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--r); padding: 10px 14px; margin-top: 14px; display: grid; gap: 8px; }
+.journey .jt { font-size: 15px; }
+.journey li.done { color: var(--ok); } .journey li.done span { background: var(--ok); color: #fff; }
+.journey li.now { color: var(--ink); font-weight: 700; } .journey li.now span { background: var(--royal); color: #fff; box-shadow: 0 0 0 4px var(--royal-soft); }
+.unlocked { margin-top: 10px; padding: 10px 12px; border-radius: var(--r-sm); background: var(--ok-soft); display: grid; gap: 6px; }
+@media (max-width: 640px) { .howto ol, .journey ol { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.hc-l .model { display: inline-block; margin-top: 2px; font-size: 12.5px; color: var(--model); background: var(--eye-soft); padding: 1px 8px; border-radius: 999px; }
+
+/* ---------- the workflow in the side panel: the path the last message took lights up ---------- */
+#flow svg { display: block; margin-top: 8px; font-family: var(--font); }
+#flow .fn rect { fill: var(--sheet); stroke: var(--rule); stroke-width: 1.5; }
+#flow .fn .ft { font-size: 13.5px; font-weight: 700; fill: var(--ink-2); }
+#flow .fn .fs { font-size: 11px; fill: var(--ink-2); opacity: .8; }
+#flow .fn .fw { font-size: 11px; font-weight: 700; }
+#flow .fn .fw.who-model { fill: var(--model); } #flow .fn .fw.who-code { fill: var(--code); } #flow .fn .fw.who-person { fill: var(--person); }
+#flow .fn.on rect { fill: color-mix(in srgb, var(--c) 12%, var(--sheet)); stroke: var(--c); stroke-width: 2.5; }
+#flow .fn.on .ft { fill: var(--ink); }
+#flow .fe { fill: none; stroke: var(--rule); stroke-width: 1.6; }
+#flow .fe.on { stroke: var(--c); stroke-width: 3; }
+#flow .fa { fill: var(--rule); } #flow .fa.on { fill: var(--ink-2); }
+@media (prefers-reduced-motion: no-preference) { #flow .fn rect, #flow .fe { transition: all .3s ease; } }
+
+/* ---------- quiz: the book's figure, encouragement, level up, revision cards ---------- */
+.qfig { margin: 0; background: #fff; border: 1px solid var(--rule); border-radius: var(--r-sm); padding: 8px; }
+.qfig img { display: block; max-width: 100%; max-height: 220px; margin: 0 auto; }
+.qfig.small img { max-height: 170px; }
+.qfig figcaption { font-size: 13px; color: #4a5170; text-align: center; margin-top: 4px; }
+.cheer { margin-top: 8px; padding: 9px 12px; border-radius: var(--r-sm); background: var(--ok-soft); display: grid; gap: 2px; font-size: 14.5px; }
+.levelup { margin-top: 8px; display: flex; gap: 12px; align-items: center; padding: 12px 14px; border-radius: var(--r); color: #fff;
+  background: linear-gradient(90deg, #e04a3b, #f2a516, #3fa34d, #2a6fdb, #7446c4); }
+.levelup b { display: block; font-size: 17px; } .levelup span { font-size: 13.5px; opacity: .95; }
+.lv-big { width: 44px; height: 44px; flex: none; border-radius: 50%; background: rgba(255,255,255,.95); color: var(--royal) !important; display: grid; place-items: center; font-size: 22px !important; font-weight: 700; opacity: 1 !important; }
+.revise { margin-top: 10px; padding: 12px; border-radius: var(--r); border: 1px solid var(--rule); background: var(--paper); display: grid; gap: 8px; }
+.mini { background: var(--sheet); border: 1px solid var(--rule); border-left: 4px solid var(--warn); border-radius: var(--r-sm); padding: 10px 12px; display: grid; gap: 6px; }
+.mini .mq { font-size: 15px; }
+.mini > button { justify-self: start; }
+.mini .mback { display: none; } .mini.open .mback { display: grid; gap: 4px; } .mini.open > button { display: none; }
+.mini .trap { color: var(--bad); font-weight: 700; }
+.mini p { margin: 0; font-size: 14px; }
+.flow-then { margin: 10px 0 0; font-size: 12.5px; font-weight: 700; color: var(--ink-2); }

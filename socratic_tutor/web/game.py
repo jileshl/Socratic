@@ -117,6 +117,7 @@ def summary(profile: dict[str, Any], messages: int, message_days: list[str], cha
             "mixups_sorted": sorted_mixups,
             "active_days": len(days),
         },
+        "mastered": sorted(c for c, v in mastery.items() if v >= passing),
         "badges": [{"id": key, "name": name, "how": how, "earned": earned[key]} for key, name, how in BADGES],
         "points_rule": "1 point per % of mastery on each topic, 25 per mix-up sorted, 10 per quiz answer fully right, 2 per message to the tutor.",
     }

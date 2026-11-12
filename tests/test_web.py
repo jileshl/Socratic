@@ -222,7 +222,8 @@ def test_demo_class_has_names_and_a_plan(client, monkeypatch):
     client.post("/api/teacher/login", json={"pin": "test-pin"})
     client.post("/api/ops/demo-data", json={"action": "seed"})
     names = {s["student_id"]: s["name"] for s in client.get("/api/students").json()["items"]}
-    assert all(names[sid].endswith(")") and "demo" in names[sid] for sid in demo_data.DEMO_NAMES)
+    # plain first names; the stu_demo_ IDs and [DEMO] alerts keep them apart from real students
+    assert all(names[sid] == demo_data.DEMO_NAMES[sid] and "(" not in names[sid] for sid in demo_data.DEMO_NAMES)
     plan_student = demo_data.DEMO_PLAN[0]
     assert client.get(f"/api/student/{plan_student}/plan").json()["assigned"]["note"].startswith("[DEMO]")
     client.post("/api/ops/demo-data", json={"action": "clear"})
