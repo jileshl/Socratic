@@ -53,8 +53,12 @@ Alerts (`alert_rules` in `docker/docker-compose.yml`):
 ## Demo mode
 
 The student and teacher apps are separate and show only what each user needs:
-- **Student (`/`):** "Learning as" picks the student from the teacher's class list (or "Me, on this device" with a random ID). Learn (pick a chapter, then chat; hints climb idea, diagram, formula; NCERT sections cited; "Next on your plan" at the top), My plan (the teacher's plan in order with live progress, plus the tutor's suggestion), Quiz (teacher-approved questions, marked by the calculator) and My progress (mastery by chapter, mix-ups, delete my data).
+- **Student (`/`):** "Learning as" picks the student from the teacher's class list (or "Me, on this device" with a random ID). Learn (pick a chapter, then chat; hints climb idea, diagram, formula; NCERT sections cited; "Next on your plan" at the top), My plan (the teacher's plan in order with live progress, plus the tutor's suggestion), Flashcards (one card per common mix-up from `data/misconceptions.json`: the question that exposes it, then the trap, why students fall for it and what to try; cards you miss come back first), Quiz (teacher-approved questions, marked by the calculator) and My progress (mastery by chapter, mix-ups, delete my data).
 - **Teacher (`/teacher`):** what needs attention now, class overview, students and plans, questions to review, alerts (with the student's name), and conversations to score for the judge.
+
+### Points, levels and badges
+
+`socratic_tutor/web/game.py` works them out from records the tutor already keeps, so the student (header and My progress) and the teacher (Students and plans, Class highlights) see the same numbers: 1 point per % of mastery on each topic, 25 per mix-up sorted, 10 per quiz answer fully right, 2 per message. Levels run Spark, Ray, Beam, Prism, Spectrum, Rainbow. Badges and the streak (days in a row with any learning) come from the same records. Flashcard progress is kept in the student's browser only, so it earns its own badge on that device and is not part of the shared points. The teacher's Class overview adds Class highlights: topics mastered, mix-ups sorted, quiz answers right this week, active students this week, and a shout-out for each quiz passed in the last 7 days.
 
 ### Students and study plans
 

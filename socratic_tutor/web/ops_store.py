@@ -228,6 +228,10 @@ class OpsStore:
     def plans(self) -> dict[str, dict[str, Any]]:
         return {r["student_id"]: r for r in self._all("SELECT student_id, concepts_json, due, updated_at FROM study_plans")}
 
+    def message_times(self, student_id: str) -> list[str]:
+        """When the student sent each message (for points, streaks and badges)."""
+        return [r["at"] for r in self._all("SELECT at FROM turns WHERE student_id = ?", (student_id,))]
+
     def last_active(self) -> dict[str, str]:
         return {r["student_id"]: r["at"] for r in self._all("SELECT student_id, MAX(started_at) AS at FROM sessions GROUP BY student_id")}
 

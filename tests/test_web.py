@@ -217,3 +217,36 @@ def test_test_questions_never_reach_the_quiz(client):
     qid = question_bank.propose_question("concept_ohms_law", "easy", "[TEST] 10 V across 5 ohm: current?", "2 A")["question_id"]
     question_bank.publish_approved_question(qid)
     assert all(q["question_id"] != qid for q in client.get("/api/quiz/questions").json()["items"])
+
+
+def test_points_levels_and_streak_come_from_real_records():
+    from datetime import date
+
+    from socratic_tutor.web import game
+
+    assert game.streak({date(2026, 11, 10), date(2026, 11, 11), date(2026, 11, 12)}, today=date(2026, 11, 12)) == 3
+    assert game.streak({date(2026, 11, 10), date(2026, 11, 11)}, today=date(2026, 11, 12)) == 2  # today not started yet
+    assert game.streak({date(2026, 11, 9)}, today=date(2026, 11, 12)) == 0
+    profile = {
+        "mastery_map": {"concept_ohms_law": 0.8, "concept_myopia": 0.5},
+        "misconceptions": [{"id": "MISCON_ELEC_08", "resolved": True}],
+        "quiz_history": [{"score": 1.0, "created_at": "2026-11-12 04:00:00"}, {"score": 0.0, "created_at": "2026-11-12 04:05:00"}],
+    }
+    g = game.summary(profile, 3, [], {"concept_ohms_law": "Electricity", "concept_myopia": "Human Eye and the Colourful World"}, None)
+    assert g["points"] == 80 + 50 + 25 + 10 + 6
+    assert g["level"]["name"] == "Ray" and g["stats"]["topics_mastered"] == 1
+    earned = {b["id"] for b in g["badges"] if b["earned"]}
+    assert earned == {"first_question", "quiz_starter", "myth_buster", "topic_master"}
+
+
+def test_game_and_flashcards_endpoints(client):
+    session = client.post("/api/session", json={"mode": "practice", "consent": True}).json()
+    sid = session["student_id"]
+    g = client.get(f"/api/student/{sid}/game").json()
+    assert g["level"]["number"] >= 1 and len(g["badges"]) == 8 and "points_rule" in g
+    cards = client.get(f"/api/flashcards?student_id={sid}").json()["items"]
+    assert len(cards) >= 30 and all(c["front"] and c["trap"] and c["fix"] for c in cards)
+    client.post("/api/teacher/login", json={"pin": "test-pin"})
+    h = client.get("/api/teacher/dashboard").json()["highlights"]
+    assert {"topics_mastered", "mixups_sorted", "quiz_correct_7d", "active_students_7d", "shout_outs"} <= set(h)
+    assert all("level" in s and "points" in s for s in client.get("/api/teacher/students").json()["items"])
