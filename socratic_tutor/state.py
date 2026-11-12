@@ -17,6 +17,7 @@ class SocraticState(TypedDict, total=False):
     current_concept_id: str | None
     current_question_id: str | None
     chapter: str | None
+    concept_pinned: bool                     # True when the student picked this topic for this turn (Practise it)
     
     # --- Dialogue & History ---------------------------------------------------
     query: str

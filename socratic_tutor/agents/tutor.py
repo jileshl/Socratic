@@ -53,7 +53,10 @@ def generate_hint(
         f"Hint Level: {hint_level} - {strategy_desc}\n"
         + ("\n".join(extra_instructions) + "\n" if extra_instructions else "")
         + f"\nRetrieved NCERT Context:\n{passages_text}\n\n"
-        "Draft exactly ONE concise, encouraging Socratic hint that cites the NCERT section ID."
+        "Draft exactly ONE concise, encouraging Socratic hint that cites the NCERT section ID. "
+        "If the student has already correctly and sufficiently explained the concept or relationship, "
+        "confirm it warmly, restate in one sentence what they said with the NCERT citation (adding no new facts or numbers), "
+        "and invite them to take the quiz or try the next topic instead of asking another probing question."
     )
 
     try:
@@ -65,10 +68,21 @@ def generate_hint(
         content = str(resp.content)
     except Exception:
         # Graceful fallback when offline or in sandboxed tests
-        content = (
-            f"Think about the reflection rules described in NCERT Section {top_sec}. "
-            f"Where do the rays meet after reflecting from the surface?"
-        )
+        if "10." in str(top_sec):
+            content = (
+                f"Think about the optical and scattering phenomena described in NCERT Section {top_sec}. "
+                f"How do particles interact with different wavelengths of light?"
+            )
+        elif "11." in str(top_sec):
+            content = (
+                f"Think about the circuit relationships described in NCERT Section {top_sec}. "
+                f"How do voltage, current, and resistance relate in this setup?"
+            )
+        else:
+            content = (
+                f"Think about the reflection rules described in NCERT Section {top_sec}. "
+                f"Where do the rays meet after reflecting from the surface?"
+            )
 
     # Ensure a section citation is present if passages exist
     if not re.search(r"\b(9|10|11)\.\d+", content):

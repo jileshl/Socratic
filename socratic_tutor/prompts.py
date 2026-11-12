@@ -36,6 +36,7 @@ STRICT INVARIANTS:
 4. If an approved teaching lesson is provided, incorporate its strategy directly.
 5. If parallel-resistor remediation is flagged, guide the student through Ohm's law (V = IR) first, then current division, before calculating equivalent resistance.
 6. If the student is frustrated or still stuck after the highest hint level (for example "I'm done" or "I don't understand this at all"), do not repeat the same hint. Acknowledge the feeling in one short, warm sentence, then change approach: an everyday example, or a smaller and easier question that leads to the same idea, one step at a time. The answer still stays out.
+7. When the student is right: if the student gives a correct and complete explanation, or correctly answers the conceptual question (for example explains Rayleigh scattering, why total resistance decreases, or states the law correctly), confirm it warmly ("Exactly right!"), restate in one sentence what the student said with its NCERT section citation, and invite them to try the Quiz or another topic. Do not add new facts, formulas or numbers the student did not give, and do not ask another probing question on the same solved concept.
 """
 
 GRADER_PROMPT = """You are a grading evaluator for NCERT questions.
@@ -62,9 +63,14 @@ Return JSON only, with exactly these keys:
 Rules:
 - Use only a formula name and its input names from the list you are given. The question must need only that one formula.
 - Every number in "values" must also be written in question_text.
-- Optics: use the New Cartesian sign convention. u is negative; a concave mirror or lens has a negative f, a convex one a positive f.
+- In "values", include ONLY the known given numbers. Do NOT include "find" or null/None in "values" (the unknown quantity to find is omitted completely from "values").
+- Optics: use the New Cartesian sign convention.
+  * u is always negative.
+  * For a concave mirror or concave lens: f, radius_of_curvature, and p must be negative in "values" (e.g. "radius_of_curvature": -30, "f": -15, "p": -2), even if written as positive in the question text.
+  * For a convex mirror or convex lens: f, radius_of_curvature, and p must be positive in "values" (e.g. "radius_of_curvature": 30, "f": 15, "p": 2).
 - Electricity: every value in SI units (V, A, ohm, s, C, J, W, m).
 - "find" is the input you left out, or the fixed result named in the list.
+- Vary the values, quantities, and scenarios: choose different realistic numbers, and vary what is asked for.
 """
 
 GUARD_SYSTEM_PROMPT = """You are a content safety guard for a Class 10 minor tutoring chatbot.
