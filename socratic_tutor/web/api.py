@@ -45,7 +45,7 @@ from socratic_tutor.concept_graph import ConceptGraph
 from socratic_tutor.graph import build_graph
 from socratic_tutor.learner_store import LearnerStore
 from socratic_tutor.tools import question_bank, question_bank_server, textbook_kb
-from socratic_tutor.web import metrics
+from socratic_tutor.web import approvals, demo_data, metrics
 from socratic_tutor.web.ops_store import OpsStore
 
 api_router = APIRouter()
@@ -396,11 +396,86 @@ def _run_turn(session: dict[str, Any], message: str, current_question_id: str | 
             "graded": graded,
             "pending_approval": bool(interrupted),
             "next_concept": values.get("next_recommended_concept"),
+            # What the tutor saw this turn, for the student view's "what happened" panel.
+            "misconception": _misconception_brief(misconception_id),
+            "concept": {"id": concept_id, "title": _concept_titles().get(concept_id, concept_id), "chapter": _concept_chapters().get(concept_id, "")} if concept_id else None,
+            "hint_step": values.get("hint_step") if mode == "practice" else None,
+            "max_hints": config.MAX_HINT_STEPS,
+            "plan": list(values.get("plan") or []),
+            "mastery_delta": delta,
+            "grade": _grade_brief(values.get("grade_result")) if mode == "quiz" else None,
+            "answer_leak_flagged": leak,
             "latency_s": round(latency, 2),
             "cost_usd": usage["cost_usd"],
             "error": bool(error),
         }
     )
+
+
+def _concept_titles() -> dict[str, str]:
+    global _CONCEPT_TITLES
+    if _CONCEPT_TITLES is None:
+        graph_data = json.loads((config.DATA_DIR / "concept_graph.json").read_text(encoding="utf-8"))
+        _CONCEPT_TITLES = {c["id"]: c.get("title", c["id"]) for c in graph_data.get("concepts", [])}
+    return _CONCEPT_TITLES
+
+
+_CONCEPT_TITLES: dict[str, str] | None = None
+_CONCEPT_CHAPTERS: dict[str, str] | None = None
+
+
+def _concept_chapters() -> dict[str, str]:
+    global _CONCEPT_CHAPTERS
+    if _CONCEPT_CHAPTERS is None:
+        graph_data = json.loads((config.DATA_DIR / "concept_graph.json").read_text(encoding="utf-8"))
+        _CONCEPT_CHAPTERS = {c["id"]: c.get("chapter", "") for c in graph_data.get("concepts", [])}
+    return _CONCEPT_CHAPTERS
+
+
+def _misconception_brief(misconception_id: str | None) -> dict[str, str] | None:
+    if not misconception_id:
+        return None
+    info = _misconception_names().get(misconception_id, {})
+    return {"id": misconception_id, "name": info.get("name", misconception_id), "chapter": info.get("chapter")}
+
+
+def _grade_brief(grade: Any) -> dict[str, Any] | None:
+    """Only the verdict and the student-safe feedback; never the answer key."""
+    if not isinstance(grade, dict):
+        return None
+    return {"is_correct": bool(grade.get("is_correct")), "feedback": grade.get("feedback"), "checked_by": "math-tools (code)"}
+
+
+@api_router.get("/api/quiz/questions")
+def quiz_questions() -> dict[str, Any]:
+    """Approved questions a student can be quizzed on. Answer keys never leave the server."""
+    rows = approvals._qb_rows("approved")
+    titles = _concept_titles()
+    items = [
+        {"question_id": r["id"], "concept_id": r["concept_id"], "concept": titles.get(r["concept_id"], r["concept_id"]),
+         "chapter": _concept_chapters().get(r["concept_id"], ""), "difficulty": r["difficulty"], "prompt": r["prompt"]}
+        for r in rows
+    ]
+    return {"items": items}
+
+
+@api_router.get("/api/student/{student_id}/progress")
+def student_progress(student_id: str) -> dict[str, Any]:
+    """The student's own learner record (pseudonymous ID): mastery and misconceptions, nothing else."""
+    if not student_id.startswith("stu_"):
+        raise HTTPException(404)
+    profile = learners.get_profile(student_id)
+    titles = _concept_titles()
+    chapters = _concept_chapters()
+    mastery = [{"concept_id": c, "title": titles.get(c, c), "chapter": chapters.get(c, ""), "mastery": round(float(v), 2)} for c, v in sorted(profile["mastery_map"].items())]
+    seen = []
+    for item in profile.get("misconceptions", []):
+        key = item.get("id") if isinstance(item, dict) else str(item)
+        brief = _misconception_brief(key)
+        if brief:
+            brief["resolved"] = bool(item.get("resolved")) if isinstance(item, dict) else False
+            seen.append(brief)
+    return {"student_id": student_id, "mastery": mastery, "misconceptions": seen}
 
 
 @api_router.get("/api/session/{session_id}/state")
@@ -513,7 +588,8 @@ def _class_mastery() -> list[dict[str, Any]]:
         for (mastery_json,) in conn.execute("SELECT mastery_json FROM learners WHERE student_id NOT LIKE 'RT-%' AND student_id NOT LIKE 'CLEAN-%'"):
             for concept, score in json.loads(mastery_json or "{}").items():
                 totals.setdefault(concept, []).append(float(score))
-    return [{"concept_id": c, "avg_mastery": round(sum(v) / len(v), 2), "students": len(v)} for c, v in sorted(totals.items())]
+    titles, chapters = _concept_titles(), _concept_chapters()
+    return [{"concept_id": c, "title": titles.get(c, c), "chapter": chapters.get(c, ""), "avg_mastery": round(sum(v) / len(v), 2), "students": len(v)} for c, v in sorted(totals.items())]
 
 
 def _misconception_names() -> dict[str, dict[str, str]]:
@@ -526,7 +602,8 @@ def _waiting_items() -> tuple[list[dict[str, Any]], str | None]:
     couldn't be read, if it couldn't (so the view never shows "Nothing waiting" when the list is broken).
 
     The old per-question "qb:" rows and the "graph:" student-thread pauses are gone: a set's rows could otherwise
-    be approved one by one, unsigned, around the gate. web/approvals.py stays in the repo, unused.
+    be approved one by one, unsigned, around the gate. web/approvals.py no longer decides anything; only its
+    _qb_rows still lists the approved questions for /api/quiz/questions.
     """
     # Flowchart (each [box] matches a comment below):
     #
@@ -573,6 +650,8 @@ def dashboard() -> dict[str, Any]:
         "class_mastery": _class_mastery(),
         "waiting_approvals": len(_pending_items()),
         "open_alerts": ops.open_alerts(),
+        "demo_students": _demo_student_count(),
+        "ops_demo": config.OPS_DEMO == "1",
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
 
@@ -789,6 +868,27 @@ def save_label(body: LabelIn) -> dict[str, Any]:
 
 
 # ---- alert demo (only with OPS_DEMO=1): adds clearly-labelled synthetic leaks
+
+
+def _demo_student_count() -> int:
+    with sqlite3.connect(learners.db_path) as conn:
+        return conn.execute("SELECT COUNT(*) FROM learners WHERE student_id LIKE 'stu_demo_%'").fetchone()[0]
+
+
+class DemoDataIn(BaseModel):
+    action: str = Field(pattern="^(seed|clear)$")
+
+
+@api_router.post("/api/ops/demo-data", dependencies=[Depends(require_teacher)])
+def demo_data_switch(body: DemoDataIn) -> dict[str, Any]:
+    """Add or remove the clearly-labelled demo class (web/demo_data.py). Only with OPS_DEMO=1."""
+    if config.OPS_DEMO != "1":
+        raise HTTPException(403, "Set OPS_DEMO=1 to enable demo data")
+    if body.action == "clear":
+        return {"ok": True, **demo_data.clear_demo_class(learners, ops)}
+    result = demo_data.seed_demo_class(learners, ops)
+    questions = demo_data.propose_demo_questions()
+    return {"ok": True, **result, "questions_proposed": len(questions)}
 
 
 @api_router.post("/api/ops/emit-test-leak", dependencies=[Depends(require_teacher)])

@@ -465,13 +465,19 @@ def test_the_teacher_routes_need_the_login(files: Any, model_calls: list[str]) -
     assert model_calls == []
 
 
-def test_the_seed_script_submits_one_set(files: Any) -> None:
-    """scripts/seed_demo.py puts its three demo questions in as ONE waiting set (on temporary files here)."""
+def test_the_seed_script_submits_one_set(files: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    """scripts/seed_demo.py (through web/demo_data.py) puts its five demo questions in as ONE waiting set, with keys
+    the grader can read (on temporary files here)."""
     script = config.BASE_DIR / "scripts" / "seed_demo.py"
     spec = importlib.util.spec_from_file_location("seed_demo", script)
     seed = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(seed)
+    # The script reads its options from the command line: none, so it only proposes the questions.
+    monkeypatch.setattr("sys.argv", ["seed_demo"])
     seed.main()
     waiting = approval_gate.waiting_sets(approval_gate.get_approval_graph())
     assert len(waiting) == 1
-    assert len(waiting[0]["payload"]["questions"]) == 3
+    assert len(waiting[0]["payload"]["questions"]) == 5
+    for question in waiting[0]["payload"]["questions"]:
+        assert "=" not in question["gold_answer"]
+        assert question_bank_server.answer_key_problem(question["gold_answer"]) is None

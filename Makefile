@@ -69,5 +69,5 @@ docker-check: ## validate the compose file and build the image (CI runs this too
 up:      ## start everything with Docker (app, Prometheus, Grafana)
 	docker compose -f docker/docker-compose.yml up --build
 
-seed-demo: ## add three [DEMO] questions waiting for teacher approval
-	$(PY) -m scripts.seed_demo
+seed-demo: ## demo data: [DEMO] questions for approval; add CLASS=1 for personas A/B and a demo class, CLEAR=1 to remove it
+	$(PY) -m scripts.seed_demo $(if $(CLASS),--class,) $(if $(CLEAR),--clear,)
