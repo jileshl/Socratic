@@ -33,3 +33,17 @@ def test_answer_leak_detection():
     
     assert check_answer_leak(leaked_response, gold_answer) is True
     assert check_answer_leak(scaffolded_response, gold_answer) is False
+
+
+def test_study_frustration_is_not_read_as_self_harm(monkeypatch):
+    """'I'm done. I don't understand this at all' got the crisis reply when the guard model said self-harm."""
+    from socratic_tutor import guard_models, policy
+
+    monkeypatch.setattr(guard_models, "guard_models_on", lambda: True)
+    monkeypatch.setattr(policy, "content_guard_verdict", lambda messages: {"verdict": "self_harm", "categories": "S11"})
+    calm = policy.check_input_guardrails("I'm done. I don't understand this at all.")
+    assert calm["distress_level"] == "academic" and calm["reply"] == policy.FRUSTRATION_CHECK_REPLY
+    assert "HELPLINE" not in calm["reply"]
+    # A real self-harm phrase still gets the severe path, even with frustration words around it.
+    for text in ("I'm done with life", "I'm done. I want to die", "I don't understand anything, I want to hurt myself"):
+        assert policy.check_input_guardrails(text)["distress_level"] == "severe", text

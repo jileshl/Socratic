@@ -388,7 +388,7 @@ async function loadStudents() {
     <td>${s.open_mixups || "<span class='muted'>none</span>"}</td>
     <td>${s.open_alerts ? `<span class="chip bad">${s.open_alerts} open</span>` : "<span class='muted'>none</span>"}</td>
     <td>${s.plan_topics ? `${s.plan_done} of ${s.plan_topics} done${s.plan_due ? `<div class="hash">due ${esc(when(s.plan_due + "T00:00"))}</div>` : ""}` : "<span class='muted'>not set</span>"}</td>
-    <td class="hide-sm">${esc(when(s.last_active))}</td></tr>`).join("") : "<tr><td colspan='7' class='muted'>No students yet. Add one above, or add the demo class in the Demo guide (presenter mode).</td></tr>")
+    <td class="hide-sm">${esc(when(s.last_active))}</td></tr>`).join("") : `<tr><td colspan='7'><b>No students yet.</b> <span class='muted'>Type a first name above and press "Add a student"; they then pick their name under "Learning as" on the student page. Students who use the tutor without a name also appear here.</span>${opsDemo ? ` <button onclick="demoData('seed').then(loadStudents)">Load the demo class</button>` : ` <span class='muted'>For the demo class, set OPS_DEMO=1 in .env and restart.</span>`}</td></tr>`)
     + (folded ? `<tr><td colspan="7"><button class="ghost" onclick="showUnnamed=true;loadStudents()">Show ${folded} more student${folded === 1 ? "" : "s"} without a name</button></td></tr>` : (showUnnamed && students.some(s => !s.named) ? `<tr><td colspan="7"><button class="ghost" onclick="showUnnamed=false;loadStudents()">Hide students without a name</button></td></tr>` : ""));
 }
 async function addStudent(e) {

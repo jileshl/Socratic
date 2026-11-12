@@ -19,7 +19,7 @@
   <div class="row">
     <span class="presenter-badge presenter-only">Presenter mode</span>
     <button type="button" class="lvl hidden" id="lvlPill" onclick="go('progress')" title="Your level and streak. Open My progress for badges."></button>
-    <label class="picker hidden" id="pickerWrap"><span>Learning as</span><select id="persona" onchange="setPersona(this.value)" aria-label="Who is learning"></select></label>
+    <label class="picker" id="pickerWrap"><span>Learning as</span><select id="persona" onchange="setPersona(this.value)" aria-label="Who is learning"></select></label>
   </div>
 </header>
 
@@ -210,8 +210,8 @@ async function loadRoster() {
   const ids = Object.keys(roster);
   if (PRESENTER) ["stu_demo_a", "stu_demo_b"].forEach(id => { if (!roster[id]) ids.unshift(id); });
   const sel = document.getElementById("persona");
-  sel.innerHTML = `<option value="">${esc(label(""))}</option>` + ids.map(id => `<option value="${esc(id)}">${esc(label(id))}</option>`).join("");
-  document.getElementById("pickerWrap").classList.toggle("hidden", !ids.length && !PRESENTER);
+  sel.innerHTML = `<option value="">${esc(label(""))}</option>` + ids.map(id => `<option value="${esc(id)}">${esc(label(id))}</option>`).join("")
+    + (ids.length ? "" : `<option disabled>No class list yet: your teacher adds names under Students and plans</option>`);
   const picked = store.get("picked");
   if (!PRESENTER && picked && roster[picked]) setPersona(picked, true); else { refreshNextUp(); refreshGame(); }
 }
@@ -249,12 +249,14 @@ function reply(ev, holder) {
   if (maxed) body.push(`<div class="maxed">That was the biggest hint. The tutor won't give the answer, so now it's your turn: write what you think, in your own words, and the tutor will check it.</div>`);
   const chips = [];
   (ev.citations || []).slice(0, 3).forEach(c => chips.push(`<span class="chip book">NCERT ${esc(c)}</span>`));
-  if (ev.teacher_alerted) chips.push(`<span class="chip warn">Your teacher will check in with you</span>`);
+  if (ev.teacher_alerted) chips.push(`<span class="chip calm">Your teacher knows and will check in with you</span>`);
   if (ev.error) chips.push(`<span class="chip bad">Something went wrong. Please try again.</span>`);
   if (chips.length) body.push(`<div class="chips">${chips.join("")}</div>`);
   const quizBtn = ev.concept && ev.concept.id && hasQuiz(ev.concept.id) ? `<button type="button" onclick="quizOn('${esc(ev.concept.id)}')">Take the quiz on this</button>` : "";
   if (!ev.blocked && !ev.error && !ev.teacher_alerted) body.push(`<div class="quick">${maxed ? "" : `<button type="button" onclick="quick('Can I have another hint?')">Another hint</button>`}<button type="button" onclick="quick('I don\\'t understand. Can you explain it differently?')">Explain differently</button><button type="button" class="${maxed ? "strong" : ""}" onclick="writeAnswer()">I think I've got it</button>${maxed ? quizBtn : ""}</div>`);
-  holder.className = "msg tutor" + (ev.blocked ? " stopped" : "");
+  // After study stress or frustration: calm next steps, never a dead end. (Severe distress: no study buttons.)
+  if (ev.distress_level === "academic") body.push(`<div class="quick calm"><button type="button" onclick="quick('Can we try one very small step?')">One small step</button><button type="button" onclick="quick('Can you explain it with an everyday example?')">An everyday example</button><button type="button" onclick="takeBreak()">Take a short break</button></div>`);
+  holder.className = "msg tutor" + (ev.blocked ? " stopped" : "") + (ev.distress_level ? " care" : "");
   holder.innerHTML = `<div class="trow"><span class="avatar" aria-hidden="true"></span><div class="body">${persona ? `<div class="who">Tutor to ${esc(label(persona))}</div>` : ""}${body.join("")}</div></div>`;
   scroll();
 }
@@ -295,6 +297,7 @@ async function send(e) {
   input.value = ""; await guarded(() => ask(text)); input.focus();
 }
 function quick(text) { if (!busy) guarded(() => ask(text)); }
+function takeBreak() { note("Good idea. Stand up, stretch, drink some water. Your progress is saved, and the tutor will be right here when you come back.", "scenario"); }
 // "I think I've got it" opens the box for the student's own answer; sending an empty claim only gets another question back.
 function writeAnswer() { const i = document.getElementById("msg"); if (!i.value.trim()) i.value = "I think "; i.placeholder = "Say what you think and why, for example: the image is ... because ..."; i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
 let quizIds = null;
@@ -439,7 +442,7 @@ function renderCard() {
   const c = round[pos]; const k = CHAPTER_KEY[c.chapter] || "light"; const box = cardState()[c.card_id] || 0;
   el.innerHTML = `<div class="deckprog"><span>Card ${pos + 1} of ${round.length}</span><span class="meter"><span class="hi" style="width:${100 * pos / round.length}%"></span></span><span>${roundKnown} known</span></div>
     <div class="fcard ${flipped ? "flip" : ""}" style="--c:var(--${k})">
-      <div class="face front" ${flipped ? 'aria-hidden="true"' : ""}>
+      <div class="face front" ${flipped ? 'aria-hidden="true"' : 'onclick="if(!event.target.closest(\'button\'))flip()" title="Click to turn the card over"'}>
         <div class="row" style="gap:6px"><span class="ch ${k}">${esc(CH_SHORT[k])}</span>${c.mine ? `<span class="chip warn">Your mix-up</span>` : ""}${c.on_plan ? `<span class="chip ok">On your plan</span>` : ""}${box >= 1 ? `<span class="chip">You had this last time</span>` : ""}</div>
         <div class="topic">${esc(c.concept)}</div>
         <div class="q">${esc(c.front)}</div>
