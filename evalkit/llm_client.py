@@ -92,6 +92,7 @@ def make_chat(model: str, temperature: float, role: str = "generic") -> BaseChat
         base_url=os.getenv("OPENROUTER_BASE_URL", config.OPENROUTER_BASE_URL),
         timeout=90,
         max_retries=2,
+        max_tokens=config.LLM_MAX_TOKENS,  # OpenRouter reserves credit for the maximum reply
         extra_body={"usage": {"include": True}},  # OpenRouter returns the call's cost
     )
 

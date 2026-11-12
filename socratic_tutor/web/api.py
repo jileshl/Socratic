@@ -19,6 +19,16 @@ Endpoints:
     GET  /api/teacher/labels         Calibration transcript labelling queue
     POST /api/teacher/labels         Save calibration label
     POST /api/ops/emit-test-leak     Ops synthetic leak demo
+    GET  /api/concepts               Topics in the concept graph (for plans)
+    GET  /api/students               Class list for the student picker (names the teacher typed)
+    GET  /api/student/{id}/plan      The student's study plan: teacher's plan and the suggestion
+    GET  /api/student/{id}/game      Points, level, streak and badges (worked out from real records)
+    GET  /api/flashcards             Revision cards from the misconception catalogue
+    GET  /api/teacher/students       Every student with name, mastery, alerts and plan status
+    POST /api/teacher/students       Add a student to the class list (creates a random ID)
+    PUT  /api/teacher/students/{id}  Rename a student
+    GET  /api/teacher/students/{id}  One student's record and study plan
+    PUT  /api/teacher/students/{id}/plan  Assign or change the study plan
 """
 
 from __future__ import annotations
@@ -29,7 +39,7 @@ import json
 import sqlite3
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -45,7 +55,7 @@ from socratic_tutor.concept_graph import ConceptGraph
 from socratic_tutor.graph import build_graph
 from socratic_tutor.learner_store import LearnerStore
 from socratic_tutor.tools import question_bank, question_bank_server, textbook_kb
-from socratic_tutor.web import approvals, demo_data, metrics
+from socratic_tutor.web import approvals, demo_data, game, metrics, study_plan
 from socratic_tutor.web.ops_store import OpsStore
 
 api_router = APIRouter()
@@ -455,6 +465,7 @@ def quiz_questions() -> dict[str, Any]:
         {"question_id": r["id"], "concept_id": r["concept_id"], "concept": titles.get(r["concept_id"], r["concept_id"]),
          "chapter": _concept_chapters().get(r["concept_id"], ""), "difficulty": r["difficulty"], "prompt": r["prompt"]}
         for r in rows
+        if not str(r["prompt"]).startswith("[TEST]")  # left behind by older test runs; never shown to students
     ]
     return {"items": items}
 
@@ -476,6 +487,98 @@ def student_progress(student_id: str) -> dict[str, Any]:
             brief["resolved"] = bool(item.get("resolved")) if isinstance(item, dict) else False
             seen.append(brief)
     return {"student_id": student_id, "mastery": mastery, "misconceptions": seen}
+
+
+def _open_misconceptions(profile: dict[str, Any]) -> list[dict[str, Any]]:
+    names = _misconception_names()
+    out = []
+    for item in profile.get("misconceptions", []):
+        key = item.get("id") if isinstance(item, dict) else str(item)
+        if isinstance(item, dict) and item.get("resolved"):
+            continue
+        info = names.get(key)
+        if info:
+            out.append({"id": key, **info})
+    return out
+
+
+def _quiz_concepts() -> set[str]:
+    return {r["concept_id"] for r in approvals._qb_rows("approved")}
+
+
+def _plan_for(student_id: str) -> dict[str, Any]:
+    profile = learners.get_profile(student_id)
+    return study_plan.view(dict(profile["mastery_map"]), _open_misconceptions(profile), ops.plan(student_id), _quiz_concepts())
+
+
+def _fallback_name(student_id: str) -> str:
+    return "Student " + student_id.removeprefix("stu_")[-4:].upper()
+
+
+def _game_for(student_id: str, profile: dict[str, Any] | None = None) -> dict[str, Any]:
+    profile = profile or learners.get_profile(student_id)
+    times = ops.message_times(student_id)
+    assigned = _plan_for(student_id).get("assigned")
+    return game.summary(profile, len(times), times, _concept_chapters(), assigned)
+
+
+@api_router.get("/api/student/{student_id}/game")
+def student_game(student_id: str) -> dict[str, Any]:
+    if not student_id.startswith("stu_"):
+        raise HTTPException(404)
+    return {"student_id": student_id, **_game_for(student_id)}
+
+
+@api_router.get("/api/flashcards")
+def flashcards(student_id: str = "") -> dict[str, Any]:
+    """One card per common mix-up: the question that exposes it, then the trap and how to fix it.
+
+    Text comes from data/misconceptions.json (written and checked by the team). The student's own
+    mix-ups and the topics on their plan are marked so the deck can put them first."""
+    data = json.loads((config.DATA_DIR / "misconceptions.json").read_text(encoding="utf-8"))
+    mine: set[str] = set()
+    plan_topics: set[str] = set()
+    if student_id.startswith("stu_"):
+        mine = {m["id"] for m in _open_misconceptions(learners.get_profile(student_id))}
+        assigned = ops.plan(student_id)
+        plan_topics = set((assigned or {}).get("concepts") or [])
+    titles = _concept_titles()
+    cards = [
+        {
+            "card_id": m["id"],
+            "chapter": m.get("chapter", ""),
+            "concept_id": m.get("concept_id"),
+            "concept": titles.get(m.get("concept_id"), m.get("concept_id")),
+            "front": m.get("diagnostic_probe", ""),
+            "trap": m.get("name", ""),
+            "why": m.get("description", ""),
+            "fix": m.get("scaffolding_hint", ""),
+            "mine": m["id"] in mine,
+            "on_plan": m.get("concept_id") in plan_topics,
+        }
+        for m in data
+        if m.get("diagnostic_probe")
+    ]
+    return {"items": cards}
+
+
+@api_router.get("/api/concepts")
+def concepts() -> dict[str, Any]:
+    graph_data = json.loads((config.DATA_DIR / "concept_graph.json").read_text(encoding="utf-8"))
+    return {"items": [{"concept_id": c["id"], "title": c.get("title", c["id"]), "chapter": c.get("chapter", ""), "prerequisites": c.get("prerequisites", [])} for c in graph_data.get("concepts", [])]}
+
+
+@api_router.get("/api/students")
+def class_list() -> dict[str, Any]:
+    """Names the teacher typed, for the "Who's learning?" picker. No progress, no alerts."""
+    return {"items": [{"student_id": sid, "name": name} for sid, name in ops.roster().items()]}
+
+
+@api_router.get("/api/student/{student_id}/plan")
+def student_plan(student_id: str) -> dict[str, Any]:
+    if not student_id.startswith("stu_"):
+        raise HTTPException(404)
+    return {"student_id": student_id, **_plan_for(student_id)}
 
 
 @api_router.get("/api/session/{session_id}/state")
@@ -637,6 +740,35 @@ def _pending_items() -> list[dict[str, Any]]:
     return items
 
 
+def _class_highlights() -> dict[str, Any]:
+    """Real numbers only: what the class achieved, and who passed a quiz in the last 7 days."""
+    passing = config.PASSING_MASTERY_THRESHOLD
+    since = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
+    mastered = sorted_mixups = 0
+    with sqlite3.connect(learners.db_path) as conn:
+        for mastery_json, misconceptions_json in conn.execute("SELECT mastery_json, misconceptions_json FROM learners WHERE student_id LIKE 'stu_%'"):
+            mastered += sum(1 for v in json.loads(mastery_json or "{}").values() if float(v) >= passing)
+            sorted_mixups += sum(1 for m in json.loads(misconceptions_json or "[]") if isinstance(m, dict) and m.get("resolved"))
+        recent = conn.execute(
+            "SELECT student_id, concept_id, MAX(score), MAX(created_at) FROM quiz_attempts WHERE student_id LIKE 'stu_%' AND created_at >= ? AND score >= ? "
+            "GROUP BY student_id, concept_id ORDER BY MAX(created_at) DESC LIMIT 8",
+            (since, passing),
+        ).fetchall()
+        correct_week = conn.execute("SELECT COUNT(*) FROM quiz_attempts WHERE student_id LIKE 'stu_%' AND created_at >= ? AND score >= 1.0", (since,)).fetchone()[0]
+    active_week = ops._all("SELECT COUNT(DISTINCT student_id) AS n FROM turns WHERE student_id LIKE 'stu_%' AND at >= ?", ((datetime.now(timezone.utc) - timedelta(days=7)).isoformat(timespec="seconds"),))[0]["n"]
+    roster, titles = ops.roster(), _concept_titles()
+    shout_outs = [
+        {"student_id": sid, "name": roster.get(sid) or _fallback_name(sid), "concept": titles.get(cid, cid), "score": round(float(score), 2), "at": at}
+        for sid, cid, score, at in recent
+    ]
+    return {"topics_mastered": mastered, "mixups_sorted": sorted_mixups, "quiz_correct_7d": correct_week, "active_students_7d": active_week, "shout_outs": shout_outs}
+
+
+def _named_alerts() -> list[dict[str, Any]]:
+    roster = ops.roster()
+    return [{**a, "student_name": roster.get(a["student_id"]) or _fallback_name(a["student_id"])} for a in ops.open_alerts()]
+
+
 @api_router.get("/api/teacher/dashboard", dependencies=[Depends(require_teacher)])
 def dashboard() -> dict[str, Any]:
     names = _misconception_names()
@@ -649,7 +781,8 @@ def dashboard() -> dict[str, Any]:
         "misconceptions_by_concept": by_misconception,
         "class_mastery": _class_mastery(),
         "waiting_approvals": len(_pending_items()),
-        "open_alerts": ops.open_alerts(),
+        "open_alerts": _named_alerts(),
+        "highlights": _class_highlights(),
         "demo_students": _demo_student_count(),
         "ops_demo": config.OPS_DEMO == "1",
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -816,6 +949,112 @@ def decide(item_id: str, body: DecisionIn) -> JSONResponse:
     if current_hash == "":
         current_hash = waiting_hash
     return _refused_response(item_id, body, note, current_hash)
+
+
+def _known_students() -> list[str]:
+    ids = set(ops.roster())
+    with sqlite3.connect(learners.db_path) as conn:
+        ids |= {row[0] for row in conn.execute("SELECT student_id FROM learners WHERE student_id LIKE 'stu_%'")}
+    ids |= {r["student_id"] for r in ops._all("SELECT DISTINCT student_id FROM sessions WHERE student_id LIKE 'stu_%' AND turns > 0")}
+    return sorted(ids)
+
+
+@api_router.get("/api/teacher/students", dependencies=[Depends(require_teacher)])
+def teacher_students() -> dict[str, Any]:
+    roster, plans, active = ops.roster(), ops.plans(), ops.last_active()
+    alerts: dict[str, int] = {}
+    for a in ops.open_alerts():
+        alerts[a["student_id"]] = alerts.get(a["student_id"], 0) + 1
+    items = []
+    for sid in _known_students():
+        profile = learners.get_profile(sid)
+        mastery = profile["mastery_map"]
+        plan = plans.get(sid)
+        plan_ids = json.loads(plan["concepts_json"]) if plan else []
+        items.append({
+            "student_id": sid,
+            "name": roster.get(sid) or _fallback_name(sid),
+            "named": sid in roster,
+            "avg_mastery": round(sum(mastery.values()) / len(mastery), 2) if mastery else None,
+            "topics": len(mastery),
+            "open_mixups": len(_open_misconceptions(profile)),
+            "open_alerts": alerts.get(sid, 0),
+            "last_active": active.get(sid),
+            "plan_topics": len(plan_ids),
+            "plan_done": sum(1 for c in plan_ids if study_plan.status_of(mastery, c) == "mastered"),
+            "plan_due": plan["due"] if plan else None,
+            "demo": sid.startswith(demo_data.DEMO_PREFIX),
+            **_game_brief(sid, profile),
+        })
+    items.sort(key=lambda i: (-i["open_alerts"], not i["named"], i["name"].lower()))
+    return {"items": items}
+
+
+def _game_brief(student_id: str, profile: dict[str, Any]) -> dict[str, Any]:
+    g = _game_for(student_id, profile)
+    return {"points": g["points"], "level": g["level"], "streak_days": g["streak_days"], "badges_earned": sum(1 for b in g["badges"] if b["earned"])}
+
+
+class StudentIn(BaseModel):
+    name: str = Field(min_length=1, max_length=60)
+
+
+def _clean_name(name: str) -> str:
+    cleaned = " ".join(name.split())
+    if not cleaned:
+        raise HTTPException(422, "Type a name")
+    return cleaned
+
+
+@api_router.post("/api/teacher/students", dependencies=[Depends(require_teacher)])
+def add_student(body: StudentIn) -> dict[str, Any]:
+    student_id = f"stu_{uuid.uuid4().hex[:12]}"
+    ops.add_student(student_id, _clean_name(body.name))
+    return {"student_id": student_id, "name": _clean_name(body.name)}
+
+
+@api_router.put("/api/teacher/students/{student_id}", dependencies=[Depends(require_teacher)])
+def rename_student(student_id: str, body: StudentIn) -> dict[str, Any]:
+    if not student_id.startswith("stu_"):
+        raise HTTPException(404)
+    ops.add_student(student_id, _clean_name(body.name))
+    return {"student_id": student_id, "name": _clean_name(body.name)}
+
+
+@api_router.get("/api/teacher/students/{student_id}", dependencies=[Depends(require_teacher)])
+def teacher_student(student_id: str) -> dict[str, Any]:
+    if not student_id.startswith("stu_"):
+        raise HTTPException(404)
+    progress = student_progress(student_id)
+    return {
+        **progress,
+        "name": ops.roster().get(student_id) or _fallback_name(student_id),
+        "named": student_id in ops.roster(),
+        "open_alerts": [a for a in ops.open_alerts() if a["student_id"] == student_id],
+        "last_active": ops.last_active().get(student_id),
+        "plan": _plan_for(student_id),
+        "game": _game_for(student_id),
+    }
+
+
+class PlanIn(BaseModel):
+    concepts: list[str] = Field(max_length=12)
+    note: str = Field(default="", max_length=500)
+    due: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+
+
+@api_router.put("/api/teacher/students/{student_id}/plan", dependencies=[Depends(require_teacher)])
+def assign_plan(student_id: str, body: PlanIn) -> dict[str, Any]:
+    if not student_id.startswith("stu_"):
+        raise HTTPException(404)
+    known = study_plan.concept_graph().concepts
+    unknown = [c for c in body.concepts if c not in known]
+    if unknown:
+        raise HTTPException(422, f"Unknown topics: {', '.join(unknown)}")
+    concepts = list(dict.fromkeys(body.concepts))
+    ops.set_plan(student_id, concepts, body.note.strip(), body.due)
+    trace.record("study_plan_assigned", student_id=student_id, topics=len(concepts))
+    return {"student_id": student_id, **_plan_for(student_id)}
 
 
 @api_router.post("/api/teacher/alerts/{alert_id}/ack", dependencies=[Depends(require_teacher)])

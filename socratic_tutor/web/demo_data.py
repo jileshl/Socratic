@@ -10,6 +10,8 @@ What is added, and what is not:
   learner records (mastery and misconceptions) and two open alerts, so the class overview
   and the alerts tab have something to show. No sessions, turns, costs or leaks are
   invented, so the dashboard's session, cost and leak numbers stay real.
+- Names: each demo student gets a name ending in "(demo)" in the teacher's class list, and
+  one demo student gets an assigned study plan marked [DEMO].
 - Personas A and B (Signature challenge A: same question, different help):
   A has mastered the laws of reflection but thinks concave mirrors always invert (MISCON_LIGHT_03);
   B is still weak on the laws of reflection, a prerequisite (MISCON_LIGHT_01).
@@ -38,6 +40,23 @@ DEMO_STUDENTS: dict[str, tuple[dict[str, float], list[str]]] = {
     "stu_demo_class05": ({"concept_myopia": 0.5, "concept_scattering": 0.7}, ["MISCON_EYE_11"]),
     "stu_demo_class06": ({"concept_refraction_laws": 0.55, "concept_refractive_index": 0.4}, ["MISCON_LIGHT_07", "MISCON_LIGHT_08"]),
 }
+# Names the "teacher" typed for the demo class. Every one says (demo).
+DEMO_NAMES: dict[str, str] = {
+    PERSONA_A: "Aarav (demo A)",
+    PERSONA_B: "Diya (demo B)",
+    "stu_demo_class01": "Meera (demo)",
+    "stu_demo_class02": "Kabir (demo)",
+    "stu_demo_class03": "Rohan (demo)",
+    "stu_demo_class04": "Isha (demo)",
+    "stu_demo_class05": "Arjun (demo)",
+    "stu_demo_class06": "Zara (demo)",
+}
+# One assigned study plan, so the plan views have something to show (teacher rule 2: Ohm's law first).
+DEMO_PLAN = (
+    "stu_demo_class03",
+    ["concept_ohms_law", "concept_series_combination", "concept_parallel_combination"],
+    "[DEMO] Ohm's law first, then series, then parallel. Try the quiz after each one.",
+)
 DEMO_ALERTS: list[tuple[str, str, str]] = [
     ("stu_demo_class03", "stuck", "[DEMO] Stuck on parallel resistors for 3 sessions (teacher rule: remediate Ohm's law first)."),
     ("stu_demo_class05", "distress", "[DEMO] Distress language detected; please check in with this student."),
@@ -86,6 +105,10 @@ def seed_demo_class(learners: Any, ops: Any) -> dict[str, int]:
             learners.update_mastery(student_id, concept_id, score)
         for misconception_id in misconceptions:
             learners.record_misconception(student_id, misconception_id)
+    for student_id, name in DEMO_NAMES.items():
+        ops.add_student(student_id, name)
+    plan_student, plan_concepts, plan_note = DEMO_PLAN
+    ops.set_plan(plan_student, plan_concepts, plan_note, None)
     added = 0
     for student_id, kind, detail in DEMO_ALERTS:
         if not ops.has_open_alert(student_id, kind):
@@ -95,10 +118,11 @@ def seed_demo_class(learners: Any, ops: Any) -> dict[str, int]:
 
 
 def clear_demo_class(learners: Any, ops: Any) -> dict[str, int]:
-    """Remove every stu_demo_ student: learner record, alerts and any sessions they had."""
+    """Remove every stu_demo_ student: learner record, name, plan, alerts and any sessions they had."""
     with sqlite3.connect(learners.db_path) as conn:
         ids = {row[0] for row in conn.execute("SELECT student_id FROM learners WHERE student_id LIKE ?", (DEMO_PREFIX + "%",))}
     ids |= {row["student_id"] for row in ops._all("SELECT DISTINCT student_id FROM alerts WHERE student_id LIKE ?", (DEMO_PREFIX + "%",))}
+    ids |= {sid for sid in ops.roster() if sid.startswith(DEMO_PREFIX)}
     for student_id in ids:
         learners.forget_student(student_id)
         ops.forget(student_id)

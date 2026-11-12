@@ -2,13 +2,16 @@
 
 Stores only what the teacher view and the operators need: pseudonymous session
 and student IDs, per-turn outcomes (latency, cost, leak flag, block reason),
-alerts and approval decisions. No message text is stored here; scrubbed text
+alerts and approval decisions, plus the teacher's class list (a display name the teacher
+types for each pseudonymous ID) and the study plan the teacher assigns. Names stay in this
+table: they are never sent to a model, a trace or a log. No message text is stored here; scrubbed text
 lives only in the traces (socratic_tutor/trace.py). "Forget my data" deletes a
 student's rows here as well as in the learner store and the checkpointer.
 """
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import threading
 from datetime import datetime, timedelta, timezone
@@ -60,6 +63,18 @@ CREATE TABLE IF NOT EXISTS pending_interrupts (
     payload_json TEXT NOT NULL,
     payload_hash TEXT NOT NULL,
     created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS roster (
+    student_id TEXT PRIMARY KEY,
+    display_name TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS study_plans (
+    student_id TEXT PRIMARY KEY,
+    concepts_json TEXT NOT NULL,
+    note TEXT,
+    due TEXT,
+    updated_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS approval_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -185,13 +200,48 @@ class OpsStore:
             "SELECT misconception_id, COUNT(DISTINCT student_id) AS students FROM turns WHERE misconception_id IS NOT NULL GROUP BY misconception_id ORDER BY students DESC"
         )
 
+    # class list and study plans (teacher-side) ----------------------------------
+    def add_student(self, student_id: str, display_name: str) -> None:
+        self._exec(
+            "INSERT INTO roster (student_id, display_name, created_at) VALUES (?, ?, ?) "
+            "ON CONFLICT(student_id) DO UPDATE SET display_name = excluded.display_name",
+            (student_id, display_name, now()),
+        )
+
+    def roster(self) -> dict[str, str]:
+        return {r["student_id"]: r["display_name"] for r in self._all("SELECT student_id, display_name FROM roster ORDER BY display_name COLLATE NOCASE")}
+
+    def set_plan(self, student_id: str, concepts: list[str], note: str, due: str | None) -> None:
+        self._exec(
+            "INSERT INTO study_plans (student_id, concepts_json, note, due, updated_at) VALUES (?, ?, ?, ?, ?) "
+            "ON CONFLICT(student_id) DO UPDATE SET concepts_json = excluded.concepts_json, note = excluded.note, due = excluded.due, updated_at = excluded.updated_at",
+            (student_id, json.dumps(concepts), note, due, now()),
+        )
+
+    def plan(self, student_id: str) -> dict[str, Any] | None:
+        rows = self._all("SELECT * FROM study_plans WHERE student_id = ?", (student_id,))
+        if not rows:
+            return None
+        row = rows[0]
+        return {"concepts": json.loads(row["concepts_json"]), "note": row["note"] or "", "due": row["due"], "updated_at": row["updated_at"]}
+
+    def plans(self) -> dict[str, dict[str, Any]]:
+        return {r["student_id"]: r for r in self._all("SELECT student_id, concepts_json, due, updated_at FROM study_plans")}
+
+    def message_times(self, student_id: str) -> list[str]:
+        """When the student sent each message (for points, streaks and badges)."""
+        return [r["at"] for r in self._all("SELECT at FROM turns WHERE student_id = ?", (student_id,))]
+
+    def last_active(self) -> dict[str, str]:
+        return {r["student_id"]: r["at"] for r in self._all("SELECT student_id, MAX(started_at) AS at FROM sessions GROUP BY student_id")}
+
     # privacy ----------------------------------------------------------------------
     def sessions_of(self, student_id: str) -> list[str]:
         return [r["session_id"] for r in self._all("SELECT session_id FROM sessions WHERE student_id = ?", (student_id,))]
 
     def forget(self, student_id: str) -> dict[str, int]:
         counts = {}
-        for table in ("turns", "alerts", "sessions", "pending_interrupts"):
+        for table in ("turns", "alerts", "sessions", "pending_interrupts", "roster", "study_plans"):
             counts[table] = self._exec(f"DELETE FROM {table} WHERE student_id = ?", (student_id,)).rowcount
         return counts
 
