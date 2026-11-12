@@ -132,7 +132,10 @@ async function loadApprovals() {
     shownSets[item.payload.set_id] = item;
     html += setPanel(item);
   }
-  if (html === "") {
+  // The list couldn't be read: say so, instead of "Nothing waiting" (the server counted the error).
+  if (body.list_error) {
+    html = `<div class="panel banner">${esc(body.list_error)}</div>` + html;
+  } else if (html === "") {
     html = "<div class='panel muted'>Nothing waiting for approval.</div>";
   }
   document.getElementById("apprList").innerHTML = html;
@@ -141,12 +144,17 @@ async function loadApprovals() {
 function setPanel(item) {
   const p = item.payload;
   const setId = esc(p.set_id);
+  // Version 1 is exactly what the question setter and the calculator made; a later version may hold edits.
+  let keyLabel = "Answer key (computed by the calculator)";
+  if (p.version > 1) {
+    keyLabel = "Answer key (this version may hold edits: check the key matches the question)";
+  }
   let questions = "";
   for (const q of p.questions) {
     questions += `<div style="margin-top:10px" data-qid="${esc(q.id)}">
       <div class="muted">${esc(q.concept_id)} · ${esc(q.difficulty)} · ${esc(q.id)}</div>
       <label class="muted">Question</label><textarea rows="2" data-k="prompt">${esc(q.prompt)}</textarea>
-      <label class="muted">Answer key (computed by the calculator)</label><textarea rows="1" data-k="gold_answer">${esc(q.gold_answer)}</textarea>
+      <label class="muted">${esc(keyLabel)}</label><textarea rows="1" data-k="gold_answer">${esc(q.gold_answer)}</textarea>
     </div>`;
   }
   return `<div class="panel" id="set-${setId}">
@@ -164,28 +172,38 @@ async function decide(setId, action) {
   const shown = shownSets[setId];
   const box = document.getElementById("set-" + setId);
   const out = box.querySelector("[data-out]");
-  // [H4] an edit sends only the changed fields: {question id: {field: new value}}.
-  let changes = null;
-  if (action === "edit") {
-    changes = {};
-    for (const q of shown.payload.questions) {
-      const fields = {};
-      for (const area of box.querySelectorAll(`[data-qid="${CSS.escape(q.id)}"] textarea`)) {
-        if (area.value !== q[area.dataset.k]) {
-          fields[area.dataset.k] = area.value;
-        }
-      }
-      if (Object.keys(fields).length > 0) {
-        changes[q.id] = fields;
+  // [H4] what the teacher changed on screen: {question id: {field: new value}}.
+  const changes = {};
+  for (const q of shown.payload.questions) {
+    const fields = {};
+    for (const area of box.querySelectorAll(`[data-qid="${CSS.escape(q.id)}"] textarea`)) {
+      if (area.value !== q[area.dataset.k]) {
+        fields[area.dataset.k] = area.value;
       }
     }
-    if (Object.keys(changes).length === 0) {
-      out.className = "error";
-      out.textContent = "Nothing changed.";
-      return;
+    if (Object.keys(fields).length > 0) {
+      changes[q.id] = fields;
     }
   }
-  const request = { action: action, payload_hash: shown.payload_hash, changes: changes };
+  const hasEdits = Object.keys(changes).length > 0;
+  // An edit sends only the changed fields; with nothing changed there is nothing to save.
+  if (action === "edit" && !hasEdits) {
+    out.className = "error";
+    out.textContent = "Nothing changed.";
+    return;
+  }
+  // Approve and reject apply to the version shown when the page loaded: with unsaved edits on screen, the
+  // teacher would approve text they no longer see. Save (or reload) first.
+  if (action !== "edit" && hasEdits) {
+    out.className = "error";
+    out.textContent = "You have unsaved edits. Click \"Save edits\" first (or reload the page to drop them).";
+    return;
+  }
+  let sentChanges = null;
+  if (action === "edit") {
+    sentChanges = changes;
+  }
+  const request = { action: action, payload_hash: shown.payload_hash, changes: sentChanges };
   const { status, body } = await api("/api/teacher/approvals/" + encodeURIComponent("qbset:" + setId), { method: "POST", body: JSON.stringify(request) });
   // 409: refused (an older version, or the bank changed); 503: approvals are off. Nothing was changed.
   if (status >= 400) {

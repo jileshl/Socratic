@@ -521,18 +521,25 @@ def _misconception_names() -> dict[str, dict[str, str]]:
     return {m["id"]: {"name": m["name"], "concept_id": m["concept_id"], "chapter": m["chapter"]} for m in data}
 
 
-def _pending_items() -> list[dict[str, Any]]:
-    """[L1]-[L2] The question sets waiting for the teacher (PR-2: sets only, decision P2-6).
+def _waiting_items() -> tuple[list[dict[str, Any]], str | None]:
+    """[L1]-[L2] The question sets waiting for the teacher (PR-2: sets only, decision P2-6), and why the list
+    couldn't be read, if it couldn't (so the view never shows "Nothing waiting" when the list is broken).
 
     The old per-question "qb:" rows and the "graph:" student-thread pauses are gone: a set's rows could otherwise
     be approved one by one, unsigned, around the gate. web/approvals.py stays in the repo, unused.
     """
-    # [L1] every waiting set, from the one shared approval graph. A failure is counted, and the list is empty.
+    # Flowchart (each [box] matches a comment below):
+    #
+    #   [L1] every waiting set from the one shared approval graph       a failure -> ([], why), counted
+    #   [L2] one item per set: "qbset:<set_id>", its payload, its hash and its note
+    #   [R]  (the items, None)
+
+    # [L1] every waiting set, from the one shared approval graph. A failure is counted and reported.
     try:
         sets: list[dict[str, Any]] = approval_gate.waiting_sets(approval_gate.get_approval_graph())
-    except Exception:
+    except Exception as error:
         metrics.ERRORS.labels("approvals_list").inc()
-        return []
+        return [], "The waiting question sets could not be read (" + type(error).__name__ + ")."
     # [L2] one item per set; its id is the set's thread id, "qbset:<set_id>".
     items: list[dict[str, Any]] = []
     for waiting in sets:
@@ -543,6 +550,13 @@ def _pending_items() -> list[dict[str, Any]]:
             "payload_hash": waiting["payload_hash"],
             "note": waiting["note"],
         })
+    # [R] the items, and no problem.
+    return items, None
+
+
+def _pending_items() -> list[dict[str, Any]]:
+    """The waiting question sets (for the counts on the dashboard and in /metrics)."""
+    items, _problem = _waiting_items()
     return items
 
 
@@ -565,8 +579,11 @@ def dashboard() -> dict[str, Any]:
 
 @api_router.get("/api/teacher/approvals", dependencies=[Depends(require_teacher)])
 def list_approvals() -> dict[str, Any]:
+    # PR-2: the waiting sets, and why the list couldn't be read (None when it could).
+    items, list_error = _waiting_items()
     return {
-        "items": _pending_items(),
+        "items": items,
+        "list_error": list_error,
         "recent_decisions": ops.approval_log(),
         # PR-2: the concepts the teacher can ask the question setter for, and whether decisions can be signed.
         "concept_ids": question_bank_server.load_concept_ids(),
@@ -575,7 +592,9 @@ def list_approvals() -> dict[str, Any]:
 
 
 class QuestionSetIn(BaseModel):
+    # The concept the teacher picked (checked against the concept graph by the route).
     concept_id: str = Field(min_length=1, max_length=60)
+    # How many questions to draft: 1 to 5, three by default (decision P2-2).
     count: int = Field(default=3, ge=1, le=5)
 
 
@@ -703,8 +722,12 @@ def decide(item_id: str, body: DecisionIn) -> JSONResponse:
     if status == "not_waiting":
         raise HTTPException(404, "Item not found or no longer pending")
     # An edit applied: the set waits again as a NEW version (a new hash), which needs its own approval.
-    edited: bool = (body.action == "edit" and status == "waiting" and body.payload_hash == waiting_hash
-                    and outcome["payload_hash"] != waiting_hash)
+    # The gate reports the version that was waiting WHEN it applied this decision (read under the set's lock):
+    # only a changed hash means this edit was applied. (A hash read here, before the lock, could already be
+    # stale: another tab's edit in between would make a refused edit look applied.)
+    hash_before: str = outcome["previous_payload_hash"]
+    edited: bool = (body.action == "edit" and status == "waiting" and hash_before != ""
+                    and outcome["payload_hash"] != hash_before)
     if edited:
         ops.log_approval(item_id, body.action, body.payload_hash, "ok")
         return JSONResponse({"item_id": item_id, "action": body.action, "status": "edited", "note": note,

@@ -1,6 +1,7 @@
 """Web service (R6): streaming chat, teacher login, approval tied to the exact payload, forget-me, metrics."""
 
 import json
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -38,7 +39,7 @@ def test_teacher_claim_in_chat_does_not_unlock_teacher_api(client):
     assert fresh.post("/api/teacher/login", json={"pin": "wrong"}).status_code == 401
 
 
-def test_edit_invalidates_an_earlier_approval(client, monkeypatch, tmp_path):
+def test_edit_invalidates_an_earlier_approval(client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """R4 plumbing PR-2: the teacher decides a whole question SET, signed on the server. An edit makes a new
     version, so an approval of the old version is refused. Runs on temporary files (bank, gate, ops log)."""
     monkeypatch.setattr(question_bank, "DB_PATH", tmp_path / "question_bank.db")
@@ -53,7 +54,11 @@ def test_edit_invalidates_an_earlier_approval(client, monkeypatch, tmp_path):
         qid = question_bank.propose_question("concept_ohms_law", "easy", "[TEST] 12 V across 4 ohm: current?", "3 A")["question_id"]
         submitted = approval_gate.submit_set(approval_gate.get_approval_graph(), [qid])
         item_id = "qbset:" + submitted["set_id"]
-        item = next(i for i in client.get("/api/teacher/approvals").json()["items"] if i["item_id"] == item_id)
+        # The set as the teacher view lists it.
+        item: dict[str, Any] = {}
+        for listed in client.get("/api/teacher/approvals").json()["items"]:
+            if listed["item_id"] == item_id:
+                item = listed
         old_hash = item["payload_hash"]
         changes = {qid: {"prompt": "[TEST] 12 V across 6 ohm: current?", "gold_answer": "2 A"}}
         edited = client.post(f"/api/teacher/approvals/{item_id}", json={"action": "edit", "payload_hash": old_hash, "changes": changes}).json()
