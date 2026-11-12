@@ -488,3 +488,10 @@ a.brand { color: inherit; text-decoration: none; border-radius: 10px; }
 a.brand:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; }
 .homebar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
 .homebar button { font-weight: 600; }
+
+/* A named student's sign-in code, asked once on a device. */
+dialog.codedlg { border: 1px solid var(--rule); border-radius: 14px; padding: 20px 22px; max-width: min(380px, calc(100vw - 32px)); background: var(--sheet); color: var(--ink); }
+dialog.codedlg::backdrop { background: rgba(15, 18, 40, .45); }
+dialog.codedlg h3 { margin: 0 0 6px; }
+dialog.codedlg input { width: 100%; font-size: 20px; letter-spacing: .2em; margin: 8px 0 4px; }
+#forgetNote { margin-left: 8px; }

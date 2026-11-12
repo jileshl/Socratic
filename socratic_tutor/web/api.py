@@ -122,6 +122,33 @@ def require_teacher(request: Request) -> None:
         raise HTTPException(status_code=401, detail="Teacher login required")
 
 
+def _is_teacher(request: Request) -> bool:
+    return hmac.compare_digest(request.cookies.get("teacher", ""), _teacher_token())
+
+
+def _student_token(student_id: str) -> str:
+    return hmac.new(config.get_teacher_secret(), f"student:{student_id}".encode(), "sha256").hexdigest()
+
+
+def _may_access(request: Request, student_id: str | None) -> bool:
+    """Team review (12 Nov): anyone on the student page could pick a classmate's name under "Learning as" and
+    read, or delete, their record. A NAMED student (one the teacher added) now needs their 4-digit sign-in code
+    once on a device (a signed cookie), or the teacher's login. A device's own random ID is its own secret, and
+    the clearly-labelled demo class stays open when OPS_DEMO=1 (presenter mode)."""
+    if not student_id or student_id not in ops.roster():
+        return True
+    if config.OPS_DEMO == "1" and student_id.startswith("stu_demo"):
+        return True
+    if _is_teacher(request):
+        return True
+    return hmac.compare_digest(request.cookies.get("student_" + student_id, ""), _student_token(student_id))
+
+
+def _guard_student(request: Request, student_id: str | None) -> None:
+    if not _may_access(request, student_id):
+        raise HTTPException(403, "Type your sign-in code first (your teacher has it).")
+
+
 # ------------------------------------------------------------------ health & metrics
 
 
@@ -133,7 +160,12 @@ def healthz() -> dict[str, Any]:
 @api_router.get("/metrics", include_in_schema=False)
 def prometheus_metrics() -> Response:
     metrics.PENDING_APPROVALS.set(len(_pending_items()))
-    metrics.STUCK_STUDENTS.set(sum(1 for a in ops.open_alerts() if a["kind"] == "stuck"))
+    open_alerts = ops.open_alerts()
+    metrics.STUCK_STUDENTS.set(sum(1 for a in open_alerts if a["kind"] == "stuck"))
+    # Open alerts by kind, so Prometheus can page while a distress alert is still waiting for a teacher
+    # (the old rule looked at new alerts in the last 5 minutes and went quiet by itself).
+    for kind in ("distress", "stuck", "conduct"):
+        metrics.OPEN_ALERTS.labels(kind).set(sum(1 for a in open_alerts if a["kind"] == kind))
     return Response(generate_latest(metrics.REGISTRY), media_type=CONTENT_TYPE_LATEST)
 
 
@@ -147,7 +179,8 @@ class SessionIn(BaseModel):
 
 
 @api_router.post("/api/session")
-def start_session(body: SessionIn) -> dict[str, Any]:
+def start_session(body: SessionIn, request: Request) -> dict[str, Any]:
+    _guard_student(request, body.student_id)
     student_id = body.student_id if body.student_id and body.student_id.startswith("stu_") else f"stu_{uuid.uuid4().hex[:12]}"
     session_id = f"ses_{uuid.uuid4().hex[:12]}"
     ops.start_session(session_id, student_id, body.mode, body.consent)
@@ -372,6 +405,10 @@ def _run_turn(
     outcome = "error" if error else ("blocked" if blocked_reason else "ok")
     metrics.REQUESTS.labels(mode, outcome).inc()
     metrics.LATENCY.labels(mode).observe(latency)
+    if mode == "practice":
+        # What kind of message each practice turn was (physics, "huh?", off-topic, fed up, ...): loops and
+        # frustration show up in Grafana.
+        metrics.INTENTS.labels(str(values.get("intent") or "physics")).inc()
     metrics.LLM_CALLS.inc(usage["llm_calls"])
     if usage["cost_usd"]:
         metrics.LLM_COST.inc(usage["cost_usd"])
@@ -464,9 +501,9 @@ def _cited_in(reply: str, citations: list[str]) -> list[str]:
     return [c for c in citations if c in named]
 
 
-def _safe_figure(text: str, concept_id: str | None) -> dict[str, Any] | None:
+def _safe_figure(text: str, concept_id: str | None, prefer_own: bool = False) -> dict[str, Any] | None:
     try:
-        return book.pick_figure(text, concept_id, book.CONCEPT_SECTIONS.get(concept_id or "", []))
+        return book.pick_figure(text, concept_id, book.CONCEPT_SECTIONS.get(concept_id or "", []), prefer_own=prefer_own)
     except Exception:
         return None
 
@@ -523,13 +560,15 @@ def models() -> dict[str, str]:
 
 
 @api_router.get("/api/lesson/{concept_id}")
-def lesson(concept_id: str, student_id: str | None = None) -> dict[str, Any]:
+def lesson(concept_id: str, request: Request, student_id: str | None = None) -> dict[str, Any]:
     """"Learn this topic from the start": real text, figure and formulas from the NCERT book, matched to the
     student's mastery of the topic (new / in progress / mastered). Code only; no model call."""
     titles = _concept_titles()
     if concept_id not in titles:
         raise HTTPException(404, "Unknown topic")
     mastery = None
+    if student_id and not _may_access(request, student_id):
+        student_id = None
     if student_id and student_id.startswith("stu_"):
         mastery = (learners.get_profile(student_id).get("mastery_map") or {}).get(concept_id)
     next_id = None
@@ -541,29 +580,52 @@ def lesson(concept_id: str, student_id: str | None = None) -> dict[str, Any]:
     out = book.lesson(concept_id, mastery, titles.get(concept_id, concept_id), next_id, titles.get(next_id or "", ""))
     out["chapter"] = _concept_chapters().get(concept_id, "")
     out["has_quiz"] = any(r.get("concept_id") == concept_id for r in approvals._qb_rows("approved"))
+    # How many more fully right answers reach "mastered" (mastery is the average of the last few quiz scores).
+    # The quiz used to say "One more right answer and it's yours" even at 33%.
+    out["right_needed"] = None
+    if student_id and mastery is not None and mastery < config.PASSING_MASTERY_THRESHOLD:
+        window = list(learners.recent_scores(student_id, concept_id, config.MASTERY_WINDOW_SIZE))
+        for k in range(1, config.MASTERY_WINDOW_SIZE + 1):
+            scores = ([1.0] * k + window)[: config.MASTERY_WINDOW_SIZE]
+            if sum(scores) / len(scores) >= config.PASSING_MASTERY_THRESHOLD:
+                out["right_needed"] = k
+                break
     return out
 
 
 def _update_stuck_alerts(student_id: str, session_id: str, concept_id: str | None, delta: float | None, grade_now: Any) -> bool:
     """"Stuck" alerts (teacher rules: 3 quiz answers in a row not yet right on one topic, or 10+ minutes in a
     session without progress). Progress closes them: a quiz answer fully right, or mastery going up, resolves
-    the student's open "stuck" alerts, and only the CURRENT topic's streak can raise a new one. (Before, the
-    worst streak on any topic counted, so the alert came back even after the student had sorted it out and
-    moved on to the next topic.) Returns True when a new alert was filed."""
+    the student's open "stuck" alerts, and only the CURRENT topic's streak can raise a new one.
+
+    Team review (12 Nov): after the teacher pressed "Mark as handled", the student's very next message filed
+    the same alert again (the streak was still 3, and the 10-minute rule fired on every turn). Now an alert the
+    teacher handled comes back only for NEW trouble: 3 more answers not yet right on that topic, and the
+    10-minute rule fires at most once per session. Returns True when a new alert was filed."""
     progressed: bool = (delta or 0) > 0 or (isinstance(grade_now, dict) and grade_now.get("is_correct") is True and not grade_now.get("error"))
     if progressed:
         ops.resolve_alerts(student_id, "stuck", "(Resolved automatically: the student then made progress.)")
         return False
     if ops.has_open_alert(student_id, "stuck"):
         return False
+    earlier = ops.alerts_of(student_id, "stuck")
     streak = int((learners.get_profile(student_id).get("failure_streaks") or {}).get(concept_id or "", 0))
     if streak >= config.STUCK_FAILURE_COUNT:
-        title = _concept_titles().get(concept_id or "", concept_id or "a topic")
-        ops.add_alert(student_id, session_id, "stuck", f"Stuck on {title}: {streak} quiz answers in a row not yet right.")
-        return True
+        # The last alert about this topic's streak, if the teacher handled it and the student hasn't made
+        # progress since (progress resets the streak and closes alerts as "progress").
+        handled = next((a for a in earlier if a["meta"].get("rule") == "streak" and a["meta"].get("concept") == concept_id), None)
+        if handled is None or handled.get("closed_by") != "teacher" or streak >= int(handled["meta"].get("streak", 0)) + config.STUCK_FAILURE_COUNT:
+            title = _concept_titles().get(concept_id or "", concept_id or "a topic")
+            ops.add_alert(student_id, session_id, "stuck", f"Stuck on {title}: {streak} quiz answers in a row not yet right.",
+                          meta={"rule": "streak", "concept": concept_id, "streak": streak})
+            return True
+        return False
     minutes, gained = ops.session_progress(session_id)
     if minutes >= config.STUCK_MINUTES_ON_PROBLEM and gained <= 0:
-        ops.add_alert(student_id, session_id, "stuck", f"{int(minutes)} minutes in this session without progress (teacher rule: 10+ minutes).")
+        if any(a["meta"].get("rule") == "minutes" and a.get("session_id") == session_id for a in earlier):
+            return False
+        ops.add_alert(student_id, session_id, "stuck", f"{int(minutes)} minutes in this session without progress (teacher rule: 10+ minutes).",
+                      meta={"rule": "minutes"})
         return True
     return False
 
@@ -617,20 +679,22 @@ def _grade_brief(grade: Any) -> dict[str, Any] | None:
 
 
 @api_router.get("/api/quiz/questions")
-def quiz_questions(student_id: str | None = None) -> dict[str, Any]:
+def quiz_questions(request: Request, student_id: str | None = None) -> dict[str, Any]:
     """Approved questions a student can be quizzed on. Answer keys never leave the server.
     If student_id is provided, questions already solved by the student with score >= 1.0 are omitted.
     """
     rows = approvals._qb_rows("approved")
     titles = _concept_titles()
     solved_ids: set[str] = set()
+    _guard_student(request, student_id)
     if student_id:
         solved_ids = learners.get_solved_question_ids(student_id)
     items = [
         {"question_id": r["id"], "concept_id": r["concept_id"], "concept": titles.get(r["concept_id"], r["concept_id"]),
          "chapter": _concept_chapters().get(r["concept_id"], ""), "difficulty": r["difficulty"], "prompt": r["prompt"],
          # the figure from the NCERT book that fits this question (code; never the worked answer)
-         "figure": _safe_figure(r["prompt"], r["concept_id"])}
+         # (the topic's own figure first: "find the image distance" once gave a lens question the mirror figure)
+         "figure": _safe_figure(r["prompt"], r["concept_id"], prefer_own=True)}
         for r in rows
         if not str(r["prompt"]).startswith("[TEST]") and r["id"] not in solved_ids
     ]
@@ -638,10 +702,15 @@ def quiz_questions(student_id: str | None = None) -> dict[str, Any]:
 
 
 @api_router.get("/api/student/{student_id}/progress")
-def student_progress(student_id: str) -> dict[str, Any]:
+def student_progress(student_id: str, request: Request) -> dict[str, Any]:
     """The student's own learner record (pseudonymous ID): mastery and misconceptions, nothing else."""
     if not student_id.startswith("stu_"):
         raise HTTPException(404)
+    _guard_student(request, student_id)
+    return _progress(student_id)
+
+
+def _progress(student_id: str) -> dict[str, Any]:
     profile = learners.get_profile(student_id)
     titles = _concept_titles()
     chapters = _concept_chapters()
@@ -694,14 +763,15 @@ def _game_for(student_id: str, profile: dict[str, Any] | None = None) -> dict[st
 
 
 @api_router.get("/api/student/{student_id}/game")
-def student_game(student_id: str) -> dict[str, Any]:
+def student_game(student_id: str, request: Request) -> dict[str, Any]:
     if not student_id.startswith("stu_"):
         raise HTTPException(404)
+    _guard_student(request, student_id)
     return {"student_id": student_id, **_game_for(student_id)}
 
 
 @api_router.get("/api/flashcards")
-def flashcards(student_id: str = "") -> dict[str, Any]:
+def flashcards(request: Request, student_id: str = "") -> dict[str, Any]:
     """One card per common mix-up: the question that exposes it, then the trap and how to fix it.
 
     Text comes from data/misconceptions.json (written and checked by the team). The student's own
@@ -709,7 +779,7 @@ def flashcards(student_id: str = "") -> dict[str, Any]:
     data = json.loads((config.DATA_DIR / "misconceptions.json").read_text(encoding="utf-8"))
     mine: set[str] = set()
     plan_topics: set[str] = set()
-    if student_id.startswith("stu_"):
+    if student_id.startswith("stu_") and _may_access(request, student_id):
         mine = {m["id"] for m in _open_misconceptions(learners.get_profile(student_id))}
         assigned = ops.plan(student_id)
         plan_topics = set((assigned or {}).get("concepts") or [])
@@ -747,16 +817,19 @@ def class_list() -> dict[str, Any]:
 
 
 @api_router.get("/api/student/{student_id}/plan")
-def student_plan(student_id: str) -> dict[str, Any]:
+def student_plan(student_id: str, request: Request) -> dict[str, Any]:
     if not student_id.startswith("stu_"):
         raise HTTPException(404)
+    _guard_student(request, student_id)
     return {"student_id": student_id, **_plan_for(student_id)}
 
 
 @api_router.get("/api/session/{session_id}/state")
-def session_state(session_id: str) -> dict[str, Any]:
-    if ops.session(session_id) is None:
+def session_state(session_id: str, request: Request) -> dict[str, Any]:
+    session = ops.session(session_id)
+    if session is None:
         raise HTTPException(404)
+    _guard_student(request, session["student_id"])
     snapshot = graph().get_state({"configurable": {"thread_id": session_id}})
     values = snapshot.values or {}
     return {
@@ -764,6 +837,12 @@ def session_state(session_id: str) -> dict[str, Any]:
         "next": list(snapshot.next or []),
         "steps": values.get("steps", []),
         "last_response": values.get("response"),
+        # The conversation so far (the page shows it again after a reload; it used to be lost).
+        "messages": [
+            {"role": "student" if getattr(m, "type", "") == "human" else "tutor", "text": str(getattr(m, "content", ""))}
+            for m in (values.get("messages") or [])[-20:]
+            if getattr(m, "type", "") in ("human", "ai") and str(getattr(m, "content", "")).strip()
+        ],
         "checkpoint_id": (snapshot.config or {}).get("configurable", {}).get("checkpoint_id"),
     }
 
@@ -786,8 +865,19 @@ class ForgetIn(BaseModel):
 
 
 @api_router.post("/api/forget_me")
-def forget_me(body: ForgetIn) -> dict[str, Any]:
-    """Delete everything stored for this pseudonymous student (memory policy)."""
+def forget_me(body: ForgetIn, request: Request) -> dict[str, Any]:
+    """Delete everything stored for this pseudonymous student (memory policy).
+
+    A student the teacher added (named, on the class list) is deleted by the teacher, from the teacher page:
+    on a shared class device anyone could otherwise pick a classmate's name and wipe their record (and drop
+    them from the class list). A device's own random ID can still delete itself here."""
+    if body.student_id in ops.roster() and not _is_teacher(request):
+        raise HTTPException(403, "Ask your teacher to delete your data: they can do it from the teacher page.")
+    return _forget(body.student_id)
+
+
+def _forget(student_id: str) -> dict[str, Any]:
+    body = ForgetIn(student_id=student_id)
     sessions = ops.sessions_of(body.student_id)
     graph()
     deleted_threads = 0
@@ -1101,6 +1191,7 @@ def decide(item_id: str, body: DecisionIn) -> JSONResponse:
     # [T6] what happened.
     if status == "published" or status == "rejected":
         ops.log_approval(item_id, body.action, body.payload_hash, "ok")
+        _observe_approval_wait(gate_graph, set_id)
         return JSONResponse({"item_id": item_id, "action": body.action, "status": status, "note": note,
                              "published": status == "published"})
     if status == "not_waiting":
@@ -1121,6 +1212,17 @@ def decide(item_id: str, body: DecisionIn) -> JSONResponse:
     if current_hash == "":
         current_hash = waiting_hash
     return _refused_response(item_id, body, note, current_hash)
+
+
+def _observe_approval_wait(gate_graph: Any, set_id: str) -> None:
+    """Time from the set's first proposal to the teacher's decision (the Grafana "approval wait" panel was
+    always empty: nothing recorded it)."""
+    try:
+        history = list(gate_graph.get_state_history(approval_gate.thread_config(set_id)))
+        started = min(datetime.fromisoformat(h.created_at) for h in history if h.created_at)
+        metrics.APPROVAL_LATENCY.observe(max(0.0, (datetime.now(timezone.utc) - started).total_seconds()))
+    except Exception:
+        metrics.ERRORS.labels("approval_latency").inc()
 
 
 def _known_students() -> list[str]:
@@ -1147,6 +1249,7 @@ def teacher_students() -> dict[str, Any]:
             "student_id": sid,
             "name": roster.get(sid) or _fallback_name(sid),
             "named": sid in roster,
+            "code": ops.student_code(sid) if sid in roster else None,
             "avg_mastery": round(sum(mastery.values()) / len(mastery), 2) if mastery else None,
             "topics": len(mastery),
             "open_mixups": len(_open_misconceptions(profile)),
@@ -1193,15 +1296,44 @@ def rename_student(student_id: str, body: StudentIn) -> dict[str, Any]:
     return {"student_id": student_id, "name": _clean_name(body.name)}
 
 
+@api_router.post("/api/teacher/students/{student_id}/forget", dependencies=[Depends(require_teacher)])
+def teacher_forget_student(student_id: str) -> dict[str, Any]:
+    """The teacher deletes a student's data (the student page can't, for a named student)."""
+    if not student_id.startswith("stu_"):
+        raise HTTPException(404)
+    return _forget(student_id)
+
+
+class CodeIn(BaseModel):
+    code: str = Field(min_length=1, max_length=12)
+
+
+@api_router.get("/api/student/{student_id}/access")
+def student_access(student_id: str, request: Request) -> dict[str, Any]:
+    """Whether this browser may learn as this student (a named student needs their sign-in code once)."""
+    return {"student_id": student_id, "allowed": _may_access(request, student_id), "named": student_id in ops.roster()}
+
+
+@api_router.post("/api/student/{student_id}/unlock")
+def student_unlock(student_id: str, body: CodeIn, response: Response) -> dict[str, Any]:
+    code = ops.student_code(student_id)
+    if code is None or not hmac.compare_digest(body.code.strip(), code):
+        metrics.ERRORS.labels("student_code_wrong").inc()
+        raise HTTPException(403, "That code isn't right. Check it with your teacher.")
+    response.set_cookie("student_" + student_id, _student_token(student_id), httponly=True, samesite="strict", max_age=180 * 24 * 3600)
+    return {"ok": True}
+
+
 @api_router.get("/api/teacher/students/{student_id}", dependencies=[Depends(require_teacher)])
 def teacher_student(student_id: str) -> dict[str, Any]:
     if not student_id.startswith("stu_"):
         raise HTTPException(404)
-    progress = student_progress(student_id)
+    progress = _progress(student_id)
     return {
         **progress,
         "name": ops.roster().get(student_id) or _fallback_name(student_id),
         "named": student_id in ops.roster(),
+        "code": ops.student_code(student_id),
         "open_alerts": [a for a in ops.open_alerts() if a["student_id"] == student_id],
         "last_active": ops.last_active().get(student_id),
         "plan": _plan_for(student_id),

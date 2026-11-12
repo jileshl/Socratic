@@ -12,6 +12,7 @@ student's rows here as well as in the learner store and the checkpointer.
 from __future__ import annotations
 
 import json
+import secrets
 import sqlite3
 import threading
 from datetime import datetime, timedelta, timezone
@@ -97,6 +98,13 @@ class OpsStore:
         self._lock = threading.Lock()
         with self._connect() as conn:
             conn.executescript(_SCHEMA)
+            # Added 12 Nov (team review): what a "stuck" alert was about and who closed it, so an alert the
+            # teacher handled doesn't come straight back; and each named student's sign-in code.
+            for table, column in (("alerts", "meta TEXT"), ("alerts", "closed_by TEXT"), ("roster", "code TEXT")):
+                try:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column}")
+                except sqlite3.OperationalError:
+                    pass  # already there
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path, check_same_thread=False)
@@ -145,19 +153,33 @@ class OpsStore:
         return minutes, float(gained)
 
     # alerts ------------------------------------------------------------------
-    def add_alert(self, student_id: str, session_id: str | None, kind: str, detail: str) -> None:
-        self._exec("INSERT INTO alerts (student_id, session_id, kind, detail, at) VALUES (?, ?, ?, ?, ?)", (student_id, session_id, kind, detail, now()))
+    def add_alert(self, student_id: str, session_id: str | None, kind: str, detail: str, meta: dict[str, Any] | None = None) -> None:
+        self._exec(
+            "INSERT INTO alerts (student_id, session_id, kind, detail, at, meta) VALUES (?, ?, ?, ?, ?, ?)",
+            (student_id, session_id, kind, detail, now(), json.dumps(meta) if meta else None),
+        )
+
+    def alerts_of(self, student_id: str, kind: str) -> list[dict[str, Any]]:
+        """All of a student's alerts of one kind, open or closed, newest first, with their meta as a dict."""
+        rows = self._all("SELECT * FROM alerts WHERE student_id = ? AND kind = ? ORDER BY id DESC", (student_id, kind))
+        for row in rows:
+            row["meta"] = json.loads(row.get("meta") or "{}")
+        return rows
 
     def open_alerts(self) -> list[dict[str, Any]]:
-        return self._all("SELECT * FROM alerts WHERE acknowledged = 0 ORDER BY at DESC")
+        # Distress first (a child who may be at risk), then stuck, then fed up; newest first within each.
+        return self._all(
+            "SELECT * FROM alerts WHERE acknowledged = 0 "
+            "ORDER BY CASE kind WHEN 'distress' THEN 0 WHEN 'stuck' THEN 1 ELSE 2 END, at DESC, id DESC"
+        )
 
     def ack_alert(self, alert_id: int) -> bool:
-        return self._exec("UPDATE alerts SET acknowledged = 1 WHERE id = ?", (alert_id,)).rowcount > 0
+        return self._exec("UPDATE alerts SET acknowledged = 1, closed_by = 'teacher' WHERE id = ?", (alert_id,)).rowcount > 0
 
     def resolve_alerts(self, student_id: str, kind: str, note: str) -> int:
         """Close a student's open alerts of one kind (e.g. "stuck" once they make progress), saying why."""
         return self._exec(
-            "UPDATE alerts SET acknowledged = 1, detail = detail || ' ' || ? WHERE student_id = ? AND kind = ? AND acknowledged = 0",
+            "UPDATE alerts SET acknowledged = 1, closed_by = 'progress', detail = detail || ' ' || ? WHERE student_id = ? AND kind = ? AND acknowledged = 0",
             (note, student_id, kind),
         ).rowcount
 
@@ -210,10 +232,20 @@ class OpsStore:
     # class list and study plans (teacher-side) ----------------------------------
     def add_student(self, student_id: str, display_name: str) -> None:
         self._exec(
-            "INSERT INTO roster (student_id, display_name, created_at) VALUES (?, ?, ?) "
+            "INSERT INTO roster (student_id, display_name, created_at, code) VALUES (?, ?, ?, ?) "
             "ON CONFLICT(student_id) DO UPDATE SET display_name = excluded.display_name",
-            (student_id, display_name, now()),
+            (student_id, display_name, now(), f"{secrets.randbelow(10000):04d}"),
         )
+
+    def student_code(self, student_id: str) -> str | None:
+        """A named student's 4-digit sign-in code (made on first use for students added before codes existed)."""
+        rows = self._all("SELECT code FROM roster WHERE student_id = ?", (student_id,))
+        if not rows:
+            return None
+        if not rows[0]["code"]:
+            self._exec("UPDATE roster SET code = ? WHERE student_id = ? AND code IS NULL", (f"{secrets.randbelow(10000):04d}", student_id))
+            rows = self._all("SELECT code FROM roster WHERE student_id = ?", (student_id,))
+        return rows[0]["code"]
 
     def roster(self) -> dict[str, str]:
         return {r["student_id"]: r["display_name"] for r in self._all("SELECT student_id, display_name FROM roster ORDER BY display_name COLLATE NOCASE")}

@@ -215,7 +215,8 @@ def node_input_guardrail(state: SocraticState) -> dict:
     # hint, so the tutor no longer answers every message with the same hint (team testing, 12 Nov).
     # Only for a student's own message: a teacher's "propose a question set" request runs the same graph.
     if state.get("mode", "practice") == "practice" and not state.get("teacher_approval_required"):
-        kind, rule = intent_check.classify(str(guard_res["sanitized_query"] or ""))
+        started = any(getattr(m, "type", "") == "ai" for m in (state.get("messages") or []))
+        kind, rule = intent_check.classify(str(guard_res["sanitized_query"] or ""), in_conversation=started)
         reset_state["intent"], reset_state["intent_rule"] = kind, rule
         if kind == "confused":
             # "huh?": the same topic, explained another way (and it counts as asking for more help).
@@ -299,6 +300,15 @@ def node_supervisor(state: SocraticState) -> dict:
         current_concept = asked
         chapter_out = CHAPTER_TITLE_TO_NUM.get(cg.concepts[asked].get("chapter", ""), chapter_out)
     lesson_pinned = bool(lesson_concept) and current_concept == lesson_concept
+    # A quiz answer belongs to its question's topic (team review, 12 Nov: one of three wrong answers to the same
+    # mirror question was logged under another topic, so the "3 in a row" stuck alert never fired).
+    if state.get("mode", "practice") == "quiz" and state.get("current_question_id"):
+        try:
+            asked_q = question_bank.get_approved_question(state["current_question_id"])
+            if asked_q and asked_q.get("concept_id") in cg.concepts:
+                current_concept = asked_q["concept_id"]
+        except Exception:
+            pass
 
     # Teacher Rule 3: Flag stuck student after 3 consecutive failures
     failure_streaks = profile.get("failure_streaks", {})
