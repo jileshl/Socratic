@@ -358,7 +358,8 @@ def _run_turn(
     blocked_reason: str | None = _block_reason(values)
     leak: bool = bool(values.get("answer_leak_flag")) and mode == "practice"
     misconception = values.get("identified_misconception") or {}
-    misconception_id = misconception.get("id") if isinstance(misconception, dict) else misconception
+    raw_mid = misconception.get("id") if isinstance(misconception, dict) else misconception
+    misconception_id = str(raw_mid).strip() if (raw_mid and isinstance(raw_mid, str) and str(raw_mid).strip().lower() not in ("null", "none", "nil", "n/a", "")) else None
     concept_id = values.get("current_concept_id")
     after = _mastery(student_id)
     delta = None
@@ -585,10 +586,19 @@ def _concept_chapters() -> dict[str, str]:
 
 
 def _misconception_brief(misconception_id: str | None) -> dict[str, str] | None:
-    if not misconception_id:
+    if not misconception_id or not isinstance(misconception_id, str):
         return None
-    info = _misconception_names().get(misconception_id, {})
-    return {"id": misconception_id, "name": info.get("name", misconception_id), "chapter": info.get("chapter")}
+    mid = misconception_id.strip()
+    if mid.lower() in ("null", "none", "nil", "n/a", ""):
+        return None
+    names = _misconception_names()
+    if mid not in names:
+        return None
+    info = names[mid]
+    name = info.get("name")
+    if not name or str(name).strip().lower() in ("null", "none", "nil", "n/a", ""):
+        return None
+    return {"id": mid, "name": name, "chapter": info.get("chapter")}
 
 
 def _grade_brief(grade: Any) -> dict[str, Any] | None:

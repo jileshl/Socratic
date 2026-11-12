@@ -258,8 +258,10 @@ let lastBook = {};   // per student: the book card opens when the page changes, 
 let lastMixup = {};  // per student: show the mix-up note when it is new, not on every reply
 function reply(ev, holder) {
   const body = [];
-  const mix = ev.misconception && ev.misconception.id; const fresh = mix && lastMixup[persona] !== mix; if (mix) lastMixup[persona] = mix;
-  if (fresh) body.push(`<div class="mixup"><b>Common mix-up:</b> ${esc(ev.misconception.name)}</div>`);
+  const mix = (ev.misconception && ev.misconception.id && ev.misconception.id !== "null" && ev.misconception.name && ev.misconception.name !== "null") ? ev.misconception : null;
+  const fresh = mix && lastMixup[persona] !== mix.id;
+  if (mix) lastMixup[persona] = mix.id;
+  if (fresh && mix.name) body.push(`<div class="mixup"><b>Common mix-up:</b> ${esc(mix.name)}</div>`);
   body.push(`<div class="bubble">${esc(ev.text || "")}</div>`);
   // The book card once per section: a repeat of the card just shown adds nothing.
   if (ev.book) {
@@ -707,7 +709,7 @@ async function loadProgress() {
   el.innerHTML = `<div class="panel">${p.mastery.length ? Object.entries(groups).map(([ch, rows]) => `<div class="chapter c-${CHAPTER_KEY[ch] || "other"}">${esc(ch)}</div>` + rows.map(m => `<div class="mrow"><span>${esc(m.title)}</span><span class="meter"><span style="width:${Math.round(m.mastery * 100)}%" class="${m.mastery >= .7 ? "hi" : m.mastery >= .4 ? "mid" : "lo"}"></span></span><span class="pct">${Math.round(m.mastery * 100)}%</span></div>`).join("")).join("")
       : "<p class='muted'>No topics yet. Answer a few quiz questions to see your mastery here.</p>"}
     <h3 style="margin-top:18px">Mix-ups to watch</h3>
-    <div class="chips" style="margin-top:8px">${p.misconceptions.length ? p.misconceptions.map(m => `<span class="chip ${m.resolved ? "ok" : "warn"}">${esc(m.name)}${m.resolved ? " (sorted)" : ""}</span>`).join("") : "<span class='muted'>None so far.</span>"}</div></div>`;
+    <div class="chips" style="margin-top:8px">${p.misconceptions.filter(m => m.id && m.id !== "null" && m.name && m.name !== "null").length ? p.misconceptions.filter(m => m.id && m.id !== "null" && m.name && m.name !== "null").map(m => `<span class="chip ${m.resolved ? "ok" : "warn"}">${esc(m.name)}${m.resolved ? " (sorted)" : ""}</span>`).join("") : "<span class='muted'>None so far.</span>"}</div></div>`;
 }
 async function forgetMe() {
   const id = studentId();
