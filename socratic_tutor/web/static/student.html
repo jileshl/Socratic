@@ -721,21 +721,23 @@ const FW = 460;
 const short = m => String(m || "").replace(/^[^/]+\//, "");
 const FNODES = {
   // key: [centre x, top y, width, title, who, colour, subtitle]
-  msg:   [128, 4,   240, "Student's message", "person", "#5b4fd1", () => "typed, or a quiz answer"],
-  safe:  [128, 70,  240, "Safety check", "code", "#e04a3b", () => "rules + " + short(MODELS.guard)],
-  stop:  [376, 70,  148, "Stopped", "code", "#c0362c", () => "refusal, tutor never sees it"],
-  alert: [376, 136, 148, "Teacher alert", "person", "#c0362c", () => "calm reply + teacher told"],
-  sup:   [128, 136, 240, "Supervisor", "code", "#ec7a1f", () => "routes by rules: practice or quiz"],
-  diag:  [128, 202, 240, "Diagnostician", "model", "#e0a100", () => "finds the mix-up · " + short(MODELS.agents)],
-  grade: [376, 202, 148, "Grader", "code", "#1b9aa8", () => "calculator (math-tools)"],
-  tutor: [128, 268, 240, "Tutor", "model", "#3fa34d", () => "NCERT search · " + short(MODELS.agents)],
-  mast:  [376, 268, 148, "Mastery, points", "code", "#1b9aa8", () => "learner record"],
-  leak:  [128, 334, 240, "Answer-leak check", "code", "#7446c4", () => "code + " + short(MODELS.guard)],
-  book:  [376, 334, 148, "Book card", "code", "#23845a", () => "text, formula, figure"],
-  reply: [128, 400, 240, "Reply to the student", "code", "#2c3fb8", () => "a question back, never the answer"],
+  msg:    [128, 4,   240, "Student's message", "person", "#5b4fd1", () => "typed, or a quiz answer"],
+  safe:   [128, 70,  240, "Safety check", "code", "#e04a3b", () => "rules + " + short(MODELS.guard)],
+  stop:   [376, 70,  148, "Stopped", "code", "#c0362c", () => "refusal, tutor never sees it"],
+  alert:  [376, 136, 148, "Teacher alert", "person", "#c0362c", () => "calm reply + teacher told"],
+  intent: [128, 136, 240, "Intent check", "code", "#d1477a", () => "physics, or chat, rude, others' data"],
+  other:  [376, 202, 148, "Short reply", "code", "#d1477a", () => "no hint, no model"],
+  sup:    [128, 202, 240, "Supervisor", "code", "#ec7a1f", () => "routes by rules: practice or quiz"],
+  diag:   [128, 268, 240, "Diagnostician", "model", "#e0a100", () => "finds the mix-up · " + short(MODELS.agents)],
+  grade:  [376, 268, 148, "Grader", "code", "#1b9aa8", () => "calculator (math-tools)"],
+  tutor:  [128, 334, 240, "Tutor", "model", "#3fa34d", () => "NCERT search · " + short(MODELS.agents)],
+  mast:   [376, 334, 148, "Mastery, points", "code", "#1b9aa8", () => "learner record"],
+  leak:   [128, 400, 240, "Answer-leak check", "code", "#7446c4", () => "code + " + short(MODELS.guard)],
+  book:   [376, 400, 148, "Book card", "code", "#23845a", () => "text, formula, figure"],
+  reply:  [128, 466, 240, "Reply to the student", "code", "#2c3fb8", () => "a question back, never the answer"],
 };
-const FEDGES = [["msg", "safe"], ["safe", "stop"], ["safe", "alert"], ["safe", "sup"], ["sup", "diag"], ["sup", "grade"], ["diag", "tutor"],
-  ["grade", "mast"], ["tutor", "leak"], ["tutor", "book"], ["leak", "reply"], ["book", "reply"], ["mast", "reply"], ["stop", "reply"], ["alert", "reply"]];
+const FEDGES = [["msg", "safe"], ["safe", "stop"], ["safe", "alert"], ["safe", "intent"], ["intent", "other"], ["intent", "sup"], ["sup", "diag"], ["sup", "grade"], ["diag", "tutor"],
+  ["grade", "mast"], ["tutor", "leak"], ["tutor", "book"], ["leak", "reply"], ["book", "reply"], ["mast", "reply"], ["stop", "reply"], ["alert", "reply"], ["other", "reply"]];
 const LNODES = {
   msg:   [230, 4,   240, "“Teach me this topic”", "person", "#5b4fd1", () => "Learn from the start"],
   rec:   [230, 70,  240, "Learner record", "code", "#1b9aa8", () => "new, in progress or mastered"],
@@ -776,14 +778,16 @@ function renderRay(steps = [], t = null) {
   const map = { input_guardrail: "safe", supervisor: "sup", diagnostician: "diag", tutor: "tutor", grader: "grade", output_guardrail: "leak" };
   const lit = new Set(); if (steps.length || t) lit.add("msg");
   steps.forEach(s => map[s.node] && lit.add(map[s.node]));
+  if (steps.some(s => s.node === "supervisor") && !(t && t.grade)) lit.add("intent");
   if (t) {
     if (t.blocked) { lit.add("stop"); lit.delete("sup"); }
+    if (t.behind && t.behind.off_topic) { lit.add("intent"); lit.add("other"); }
     if (t.teacher_alerted) lit.add("alert");
     if (t.grade) { lit.add("grade"); lit.add("mast"); }
     if (t.book) lit.add("book");
     if (!t.error) lit.add("reply");
   }
-  el.innerHTML = flowSvg(FNODES, FEDGES, lit, 452) + (t && t.flash ? `<div class="flow-then">Then, to fix the idea</div>` + flowSvg(CNODES, CEDGES, new Set(Object.keys(CNODES)), 252) : "");
+  el.innerHTML = flowSvg(FNODES, FEDGES, lit, 518) + (t && t.flash ? `<div class="flow-then">Then, to fix the idea</div>` + flowSvg(CNODES, CEDGES, new Set(Object.keys(CNODES)), 252) : "");
 }
 // Behind the scenes: each step of the last turn, who decided it (code, a model or a person), and what it saw.
 const BLOCK_LABEL = by => !by ? "" : by.startsWith("word_rule:teacher_claim") ? "a student claiming to be the teacher (only the teacher's sign-in gives that role)"
@@ -819,7 +823,8 @@ function renderHood() {
   const b = t.behind || {}; const sf = b.safety || {}; const ran = new Set((t.steps || []).map(s => s.node));
   const by = node => ((t.steps || []).find(s => s.node === node) || {}).decided_by || (STATIONS.find(x => x[0] === node) || [])[2] || "code";
   const M = b.models || {}; const model = name => name ? `<span class="model">Model: ${esc(name)}</span>` : null;
-  kind = t.blocked ? "Stopped by the safety check" : t.distress_level ? "A student who needs care" : t.grade ? "Quiz answer" : "Practice question";
+  const INTENT = { others_data: "another student's results", role_claim: "a role claim (faculty, parent, ...)", rude: "a rude message", opt_out: "opting out", small_talk: "small talk", confused: "\u201chuh?\u201d: explain it another way", physics: "a physics question or answer" };
+  kind = t.blocked ? "Stopped by the safety check" : t.distress_level ? "A student who needs care" : t.grade ? "Quiz answer" : b.off_topic ? "Not a physics question" : "Practice question";
   // 1. safety
   add("Safety check", "code + model", t.blocked ? "stop" : (t.distress_level ? "care" : "ok"), [
     t.blocked ? `<b>Stopped</b>: ${esc(BLOCK_LABEL(sf.blocked_by))}. Nothing reached the tutor.` :
@@ -828,6 +833,10 @@ function renderHood() {
     sf.personal_details_masked ? "Name and phone number <b>masked</b> before any model saw them" : null,
     t.teacher_alerted ? "<b>Teacher alerted</b>: the teacher's Alerts tab shows it straight away" : null,
     `<span class="model">Rules in code, then the content-safety model: ${esc(M.guard || "")}</span>`]);
+  if (!t.blocked && !t.grade && (b.intent || b.off_topic)) add("Intent check", "code", b.off_topic ? "warn" : "ok", [
+    `This message is <b>${esc(INTENT[b.intent] || b.intent || "a physics question or answer")}</b>`,
+    b.off_topic ? "So a short fixed reply: no diagnosis, no new hint, nothing about other students" : b.intent === "confused" ? "So the tutor explains the same idea another way" : "So it goes on to the tutor",
+    `<span class="model">No model: word rules in code</span>`]);
   if (!t.blocked && ran.has("supervisor")) add("Supervisor", by("supervisor"), "ok", [
     t.concept ? `Topic: <b>${esc(t.concept.title)}</b>${b.concept_pinned ? " (the student picked it)" : ""}` : null,
     (t.plan || []).length ? `Plan: ${esc(t.plan.join(" → "))}` : null,

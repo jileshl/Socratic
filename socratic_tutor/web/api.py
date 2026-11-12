@@ -395,6 +395,11 @@ def _run_turn(
         alert_filed = True
     if _update_stuck_alerts(student_id, session_id, concept_id, delta, values.get("grade_result") if error is None else None):
         alert_filed = True
+    # Rude three times in one session: often frustration, so a gentle heads-up for the teacher (once per session).
+    if values.get("off_topic") and values.get("intent") == "rude" and int(values.get("rude_count") or 0) >= 3 \
+            and not ops.has_open_alert(student_id, "conduct"):
+        ops.add_alert(student_id, session_id, "conduct", "Rude or fed-up messages three times in one session; they may be frustrated. A quick check-in could help.")
+        alert_filed = True
     # PR-2: a student's turn never pauses for the teacher any more (question sets wait on their own "qbset:"
     # thread), so nothing is saved here. The old save hashed the whole interrupt value, while the graph's gate
     # compared the inner payload's hash, so every approval of such an item was refused.
@@ -488,6 +493,9 @@ def _behind(values: dict[str, Any], message: str, mode: str, blocked_reason: str
         "concept_pinned": bool(values.get("concept_pinned")),
         "sources": sources[:4],
         "lesson_used": values.get("effective_lesson_applied"),
+        "intent": values.get("intent") or "physics",
+        "intent_rule": values.get("intent_rule"),
+        "off_topic": bool(values.get("off_topic")),
         # The models behind the steps (from config / .env), so the side panel can name them.
         "models": {"guard": config.GUARD_MODEL, "agents": config.SPECIALIST_MODEL, "search": "BM25 keywords + local embeddings (Chroma)"},
     }
