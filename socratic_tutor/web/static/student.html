@@ -90,6 +90,7 @@
   </section>
 </main>
 
+<button type="button" class="hood-toggle presenter-only" id="hoodToggle" onclick="document.body.classList.toggle('hood-open'); this.textContent = document.body.classList.contains('hood-open') ? 'Close' : 'How it works'">How it works</button>
 <!-- ============ PRESENTER PANEL (only with ?demo=1) ============ -->
 <aside class="presenter-only" aria-label="Presenter tools">
   <div class="tabs">
@@ -790,6 +791,7 @@ function hoodCard(n, title, who, status, lines) {
 function renderHood() {
   const t = lastTurn; if (!t || !PRESENTER) return;
   side("hood");
+  const tg = document.getElementById("hoodToggle"); if (tg) { tg.classList.remove("ping"); void tg.offsetWidth; tg.classList.add("ping"); }
   renderRay(t.steps || [], t);
   const cards = []; let n = 0; const add = (...a) => cards.push(hoodCard(++n, ...a));
   let kind = "";

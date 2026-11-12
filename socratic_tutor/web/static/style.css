@@ -247,7 +247,20 @@ body.presenter .presenter-only { display: revert !important; }
 body.presenter .layout-p { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr); gap: 20px; align-items: start; max-width: 1280px; margin: 0 auto; }
 body.presenter .layout-p > aside { position: sticky; top: 76px; max-height: calc(100vh - 92px); overflow-y: auto; }
 .presenter-badge { font-size: 12.5px; font-weight: 700; color: #fff; background: var(--eye); padding: 2px 10px; border-radius: 999px; }
-@media (max-width: 920px) { body.presenter .layout-p { grid-template-columns: minmax(0, 1fr); } body.presenter .layout-p > aside { position: static; max-height: none; } .topnav button { padding: 6px 10px; } }
+/* In a narrow window the panel is a drawer on the right, opened with the "How it works" button. */
+body.presenter .hood-toggle.presenter-only { display: none !important; }
+@media (max-width: 920px) {
+  body.presenter .layout-p { grid-template-columns: minmax(0, 1fr); }
+  body.presenter .layout-p > aside { position: fixed; top: 0; right: 0; bottom: 0; width: min(440px, 94vw); max-height: none; z-index: 30;
+    background: var(--paper); box-shadow: -8px 0 24px rgba(20, 24, 50, .18); padding: 12px; overflow-y: auto; transform: translateX(105%); transition: transform .25s ease; }
+  body.presenter.hood-open .layout-p > aside { transform: none; }
+  body.presenter .hood-toggle.presenter-only { display: inline-flex !important; }
+  body.presenter .hood-toggle { position: fixed; right: 14px; bottom: 14px; z-index: 31; gap: 6px; align-items: center;
+    background: var(--eye); color: #fff; border: none; border-radius: 999px; padding: 10px 16px; font-weight: 700; box-shadow: 0 4px 14px rgba(20, 24, 50, .25); }
+  body.presenter .hood-toggle.ping { animation: ping 1.2s ease 2; }
+  .topnav button { padding: 6px 10px; }
+}
+@keyframes ping { 50% { transform: scale(1.08); } }
 /* the ray in the narrow presenter panel: two rows of four, no beam */
 aside .ray { grid-template-columns: repeat(4, minmax(0, 1fr)); row-gap: 16px; }
 aside .ray::before, aside .ray .beam { display: none; }
