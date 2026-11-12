@@ -77,7 +77,17 @@ def summary(profile: dict[str, Any], messages: int, message_days: list[str], cha
     misconceptions = [m for m in profile.get("misconceptions", []) if isinstance(m, dict)]
 
     mastered = sum(1 for v in mastery.values() if v >= passing)
-    correct = sum(1 for q in quizzes if float(q.get("score") or 0) >= 1.0)
+    solved_questions: set[str] = set()
+    correct = 0
+    for q in quizzes:
+        if float(q.get("score") or 0) >= 1.0:
+            qid = q.get("question_id")
+            if qid:
+                if qid not in solved_questions:
+                    solved_questions.add(qid)
+                    correct += 1
+            else:
+                correct += 1
     sorted_mixups = sum(1 for m in misconceptions if m.get("resolved"))
     days = {d for d in (_day(t) for t in message_days) if d} | {d for d in (_day(q.get("created_at")) for q in quizzes) if d}
     in_a_row = streak(days)

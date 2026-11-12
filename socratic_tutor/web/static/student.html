@@ -202,7 +202,7 @@ function setPersona(p, quiet) {
   if (!quiet && PRESENTER) note(p ? `Now learning as ${label(p)}${PERSONAS[p] ? ", who " + PERSONAS[p].note : ""}.` : `Now learning as ${label("")}.`);
   refreshNextUp(); refreshGame();
   const open = document.querySelector(".topnav button.on").dataset.view;
-  if (open === "plan") loadPlan(); if (open === "progress") loadProgress(); if (open === "cards") loadCards();
+  if (open === "plan") loadPlan(); if (open === "progress") loadProgress(); if (open === "cards") loadCards(); if (open === "quiz") loadQuiz();
 }
 // Names come from the teacher's class list. They are shown here only; chats use the random ID.
 async function loadRoster() {
@@ -330,7 +330,10 @@ function startWith(i, j) {
 
 // ---------- quiz ----------
 async function loadQuiz(focus) {
-  try { quiz = (await (await fetch("/api/quiz/questions")).json()).items || []; } catch (e) { quiz = []; }
+  quizFocus = focus;
+  const id = studentId();
+  const url = "/api/quiz/questions" + (id ? `?student_id=${encodeURIComponent(id)}` : "");
+  try { quiz = (await (await fetch(url)).json()).items || []; } catch (e) { quiz = []; }
   const shown = focus ? quiz.filter(q => q.concept_id === focus) : quiz;
   const head = focus && shown.length ? `<div class="row" style="justify-content:space-between;margin-bottom:10px"><b>Questions on ${esc(shown[0].concept)}</b><button class="ghost" onclick="loadQuiz()">Show all questions</button></div>` : "";
   document.getElementById("quizList").innerHTML = head + (shown.length ? shown.map(q => {
@@ -340,7 +343,7 @@ async function loadQuiz(focus) {
       <div class="q">${esc(q.prompt.replace(/^\[DEMO\]\s*/, ""))}</div>
       <form onsubmit="checkAnswer(event,'${esc(q.question_id)}')"><input placeholder="Your answer, with its unit" aria-label="Your answer"><button class="primary">Check answer</button></form>
       <div data-result role="status"></div></div>`;
-  }).join("") : `<div class="panel empty"><h3>No quiz questions yet</h3><p>Your teacher approves every question before it appears here. Try the Learn tab in the meantime.</p></div>`);
+  }).join("") : `<div class="panel empty"><h3>No quiz questions available</h3><p>${id ? "You have solved all available quiz questions, or your teacher has not approved new ones yet." : "Your teacher approves every question before it appears here."} Try the Learn tab in the meantime.</p></div>`);
 }
 async function checkAnswer(e, qid) {
   e.preventDefault(); if (busy) return;
@@ -350,9 +353,18 @@ async function checkAnswer(e, qid) {
     stream.onstep = steps => renderRay(steps);
     const ev = await stream("quiz", answer, qid); stream.onstep = null;
     refreshNextUp();
-    if (ev.grade) out.innerHTML = `<div class="result ${ev.grade.is_correct ? "ok" : "bad"}">${ev.grade.is_correct ? `Correct. Well done.${studentId() ? ` <span class="plus">+10 points</span>` : ""}` : "Not yet. Check your sign convention and units, then try again, or ask for a hint in Learn."}</div>`;
-    if (ev.grade && ev.grade.is_correct) { celebrate(card); refreshGame(true); }
-    else out.innerHTML = `<div class="result bad">${esc(ev.text || "This answer couldn't be checked.")}</div>`;
+    if (ev.grade) out.innerHTML = `<div class="result ${ev.grade.is_correct ? "ok" : "bad"}">${ev.grade.is_correct ? `Correct. Well done.${studentId() ? (ev.grade.already_solved ? " (Already solved)" : ` <span class="plus">+10 points</span>`) : ""}` : "Not yet. Check your sign convention and units, then try again, or ask for a hint in Learn."}</div>`;
+    if (ev.grade && ev.grade.is_correct) {
+      celebrate(card);
+      refreshGame(true);
+      setTimeout(() => {
+        card.style.transition = "opacity 0.4s ease, transform 0.4s ease";
+        card.style.opacity = "0";
+        card.style.transform = "scale(0.95)";
+        setTimeout(() => loadQuiz(quizFocus), 450);
+      }, 1500);
+    }
+    else if (!ev.grade) out.innerHTML = `<div class="result bad">${esc(ev.text || "This answer couldn't be checked.")}</div>`;
   });
 }
 

@@ -35,12 +35,26 @@ CONCEPT_FALLBACK_QUESTIONS: dict[str, dict[str, Any]] = {
         "difficulty": "medium",
         "calculation": {"formula": "lens_formula", "u": -30, "f": 20, "length_unit": "cm", "find": "v"},
     },
-    "concept_ohms_law": {
-        "question_text": "A potential difference of 12 V is applied across a 4 ohm resistor. Find the current flowing through it.",
-        "gold_answer": "3 A",
-        "difficulty": "easy",
-        "calculation": {"formula": "ohms_law", "v": 12, "r": 4, "find": "i"},
-    },
+    "concept_ohms_law": [
+        {
+            "question_text": "A potential difference of 12 V is applied across a 4 ohm resistor. Find the current flowing through it.",
+            "gold_answer": "3 A",
+            "difficulty": "easy",
+            "calculation": {"formula": "ohms_law", "v": 12, "r": 4, "find": "i"},
+        },
+        {
+            "question_text": "A potential difference of 24 V is applied across a conductor carrying a current of 6 A. Find its resistance.",
+            "gold_answer": "4 ohm",
+            "difficulty": "medium",
+            "calculation": {"formula": "ohms_law", "v": 24, "i": 6, "find": "r"},
+        },
+        {
+            "question_text": "A current of 0.5 A flows through a 100 ohm resistor. Find the potential difference across it.",
+            "gold_answer": "50 V",
+            "difficulty": "hard",
+            "calculation": {"formula": "ohms_law", "i": 0.5, "r": 100, "find": "v"},
+        },
+    ],
     "concept_resistors_parallel": [
         {
             "question_text": "Two resistors of 6 ohm and 3 ohm are connected in parallel across a 6 V battery. Calculate the effective resistance.",
@@ -96,11 +110,45 @@ CONCEPT_FALLBACK_QUESTIONS: dict[str, dict[str, Any]] = {
 }
 
 
-def select_question(concept_id: str, difficulty: str = "medium") -> dict[str, Any]:
+def get_existing_questions(concept_id: str, limit: int = 15) -> list[str]:
+    """Retrieve existing question prompts from the bank for this concept to avoid generating duplicates."""
+    try:
+        import sqlite3
+        from socratic_tutor.tools import question_bank
+        conn = sqlite3.connect(question_bank.DB_PATH)
+        rows = conn.execute(
+            "SELECT prompt FROM questions WHERE concept_id = ? ORDER BY id DESC LIMIT ?",
+            (concept_id, limit),
+        ).fetchall()
+        conn.close()
+        return [r[0] for r in rows if r[0]]
+    except Exception:
+        return []
+
+
+def select_question(
+    concept_id: str,
+    difficulty: str = "medium",
+    existing_questions: list[str] | None = None,
+) -> dict[str, Any]:
     prompt = f"Concept ID: {concept_id}\nDifficulty: {difficulty}\n"
+
+    existing: list[str] = list(existing_questions or [])
+    for bq in get_existing_questions(concept_id):
+        if bq not in existing:
+            existing.append(bq)
+
+    if existing:
+        prompt += (
+            "\nThe following questions ALREADY exist in the bank. You MUST create a different question "
+            "with DIFFERENT numerical values, scenario, or asking for a different quantity (do NOT duplicate or rephrase these):\n"
+        )
+        for ex in existing[:10]:
+            prompt += f"- {ex}\n"
+
     # PR-2 (R4): the solver's formula list, so the model names a formula and its inputs exactly as code expects.
     prompt = prompt + "\nFormulas you may use:\n" + solver_key.formula_list_for_the_model()
-    res = llm.chat_json(prompt=prompt, system_prompt=QUESTION_SETTER_PROMPT)
+    res = llm.chat_json(prompt=prompt, system_prompt=QUESTION_SETTER_PROMPT, temperature=0.7)
     # PR-2 (R4): a usable reply has a question and a calculation. The model no longer writes the answer key
     # (the solver computes it from the calculation), so a reply is not dropped for having no gold_answer.
     if isinstance(res, dict) and res.get("question_text") and res.get("calculation") and "error" not in res:

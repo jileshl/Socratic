@@ -65,9 +65,11 @@ Return JSON only, with exactly these keys:
 Rules:
 - Use only a formula name and its input names from the list you are given. The question must need only that one formula.
 - Every number in "values" must also be written in question_text.
+- In "values", include ONLY the known given numbers. Do NOT include "find" or null/None in "values" (the unknown quantity to find is omitted completely from "values").
 - Optics: use the New Cartesian sign convention. u is negative; a concave mirror or lens has a negative f, a convex one a positive f.
 - Electricity: every value in SI units (V, A, ohm, s, C, J, W, m).
 - "find" is the input you left out, or the fixed result named in the list.
+- Vary the values, quantities, and scenarios: choose different realistic numbers, and vary what is asked for.
 """
 
 GUARD_SYSTEM_PROMPT = """You are a content safety guard for a Class 10 minor tutoring chatbot.
