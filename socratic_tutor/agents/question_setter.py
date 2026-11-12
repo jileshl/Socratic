@@ -147,7 +147,7 @@ CONCEPT_FALLBACK_QUESTIONS: dict[str, Any] = {
     "concept_refractive_index": [
         {
             "question_text": "The speed of light in a diamond is 124000000 m/s. Calculate the absolute refractive index of diamond if the speed of light in vacuum is 300000000 m/s.",
-            "gold_answer": "2.41935",
+            "gold_answer": "2.42",
             "difficulty": "easy",
             "calculation": {"formula": "absolute_refractive_index", "v": 124000000, "find": "n"},
         },
@@ -301,7 +301,7 @@ CONCEPT_FALLBACK_QUESTIONS: dict[str, Any] = {
     "concept_rainbow_formation": [
         {
             "question_text": "In a rainbow, light refracts into a spherical water droplet where its speed is 225000000 m/s. Given that the speed of light in air is 300000000 m/s, calculate the refractive index of water.",
-            "gold_answer": "1.33333",
+            "gold_answer": "1.33",
             "difficulty": "easy",
             "calculation": {"formula": "absolute_refractive_index", "v": 225000000, "find": "n"},
         },
@@ -321,7 +321,7 @@ CONCEPT_FALLBACK_QUESTIONS: dict[str, Any] = {
         },
         {
             "question_text": "Light enters from an upper atmospheric layer where its speed is 299900000 m/s into a lower layer where its speed is 299700000 m/s. Find the relative refractive index of the lower layer with respect to the upper layer.",
-            "gold_answer": "1.00067",
+            "gold_answer": "1.0007",
             "difficulty": "medium",
             "calculation": {"formula": "relative_refractive_index", "v1": 299900000, "v2": 299700000, "find": "n21"},
         },
@@ -335,7 +335,7 @@ CONCEPT_FALLBACK_QUESTIONS: dict[str, Any] = {
     "concept_scattering": [
         {
             "question_text": "Light is scattered by particles in a colloidal smoke chamber where the speed of light is 299000000 m/s. If the speed of light in vacuum is 300000000 m/s, calculate the refractive index of the medium.",
-            "gold_answer": "1.00334",
+            "gold_answer": "1.0033",
             "difficulty": "easy",
             "calculation": {"formula": "absolute_refractive_index", "v": 299000000, "find": "n"},
         },

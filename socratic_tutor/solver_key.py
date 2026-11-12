@@ -465,8 +465,21 @@ def run_solver(formula: str, values: dict[str, Any], length_unit: str | None) ->
 
 
 def format_number(value: float) -> str:
-    """A number as a short key: 6 significant digits, so float noise goes (-59.999999999999986 -> "-60")."""
-    return format(value, ".6g")
+    """Format a numerical answer key following NCERT conventions:
+    - 2 decimal places for standard values (e.g. 1.33, 2.42, 0.18, -0.83).
+    - Up to 4 decimal places for atmospheric/gas refractive indices close to 1 (e.g. 1.0003, 1.0007).
+    - Scientific notation for very small quantities (< 1e-4).
+    - Exact integers formatted without trailing decimals (e.g. -60, 3, 110).
+    """
+    if value == 0.0:
+        return "0"
+    if abs(value) >= 1e6 or abs(value) < 1e-4:
+        return format(value, ".6g")
+    if abs(value - round(value)) < 1e-6:
+        return str(int(round(value)))
+    if 1.0 < abs(value) < 1.01:
+        return f"{value:.4f}".rstrip("0").rstrip(".")
+    return f"{round(value, 2):.2f}".rstrip("0").rstrip(".")
 
 
 def format_answer_key(result: dict[str, Any]) -> str:

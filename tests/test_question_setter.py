@@ -72,6 +72,27 @@ def test_conceptual_image_nature_key_and_grade(monkeypatch: pytest.MonkeyPatch) 
     assert keyed2["gold_answer"] == "virtual and erect, diminished"
 
 
+def test_ncert_roundoff_precision_two_decimal_places() -> None:
+    """Numerical answer keys round to 2 decimal places per NCERT standard, and up to 4 for air."""
+    # From the user's screenshot: 2 x 10^8 / 1.5 x 10^8 and 3 x 10^8 / 2.25 x 10^8
+    assert solver_key.format_number(2.0 / 1.5) == "1.33"
+    assert solver_key.format_number(3.0 / 2.25) == "1.33"
+
+    # NCERT Table 9.3 air refractive index: 4 decimal places
+    assert solver_key.format_number(1.0003) == "1.0003"
+    assert solver_key.format_number(1.001) == "1.001"
+
+    # NCERT Example 10.1 myopia power: -0.83 D
+    assert solver_key.format_number(-0.833333) == "-0.83"
+
+    # NCERT Example 11.3 electricity current: 0.18 A
+    assert solver_key.format_number(0.183333) == "0.18"
+
+    # Exact integers have no trailing decimals
+    assert solver_key.format_number(-60.0) == "-60"
+    assert solver_key.format_number(110.0) == "110"
+
+
 def test_select_question_in_flight_repair_for_sign_convention(monkeypatch: pytest.MonkeyPatch) -> None:
     """When the LLM gives a positive radius for a concave mirror, select_question sends the solver error for repair."""
     calls: list[dict] = []
