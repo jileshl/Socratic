@@ -478,6 +478,12 @@ def _behind(values: dict[str, Any], message: str, mode: str, blocked_reason: str
     }
 
 
+@api_router.get("/api/models")
+def models() -> dict[str, str]:
+    """The models behind the steps (from config / .env), for the workflow in the side panel."""
+    return {"guard": config.GUARD_MODEL, "agents": config.SPECIALIST_MODEL, "search": "BM25 keywords + local embeddings (Chroma)"}
+
+
 @api_router.get("/api/lesson/{concept_id}")
 def lesson(concept_id: str, student_id: str | None = None) -> dict[str, Any]:
     """"Learn this topic from the start": real text, figure and formulas from the NCERT book, matched to the

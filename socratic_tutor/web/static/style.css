@@ -436,3 +436,17 @@ table.class td .meter { width: 90px; display: inline-block; vertical-align: midd
 .unlocked { margin-top: 10px; padding: 10px 12px; border-radius: var(--r-sm); background: var(--ok-soft); display: grid; gap: 6px; }
 @media (max-width: 640px) { .howto ol, .journey ol { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .hc-l .model { display: inline-block; margin-top: 2px; font-size: 12.5px; color: var(--model); background: var(--eye-soft); padding: 1px 8px; border-radius: 999px; }
+
+/* ---------- the workflow in the side panel: the path the last message took lights up ---------- */
+#flow svg { display: block; margin-top: 8px; font-family: var(--font); }
+#flow .fn rect { fill: var(--sheet); stroke: var(--rule); stroke-width: 1.5; }
+#flow .fn .ft { font-size: 13.5px; font-weight: 700; fill: var(--ink-2); }
+#flow .fn .fs { font-size: 11px; fill: var(--ink-2); opacity: .8; }
+#flow .fn .fw { font-size: 11px; font-weight: 700; }
+#flow .fn .fw.who-model { fill: var(--model); } #flow .fn .fw.who-code { fill: var(--code); } #flow .fn .fw.who-person { fill: var(--person); }
+#flow .fn.on rect { fill: color-mix(in srgb, var(--c) 12%, var(--sheet)); stroke: var(--c); stroke-width: 2.5; }
+#flow .fn.on .ft { fill: var(--ink); }
+#flow .fe { fill: none; stroke: var(--rule); stroke-width: 1.6; }
+#flow .fe.on { stroke: var(--c); stroke-width: 3; }
+#flow .fa { fill: var(--rule); } #flow .fa.on { fill: var(--ink-2); }
+@media (prefers-reduced-motion: no-preference) { #flow .fn rect, #flow .fe { transition: all .3s ease; } }

@@ -98,9 +98,9 @@
   </div>
   <div id="s-hood">
     <div class="panel ray-wrap">
-      <h3>The agent team on the last message</h3>
+      <h3>How the last message flowed</h3>
       <div class="legend"><span style="--c:var(--model)">a model decides</span><span style="--c:var(--code)">code decides</span><span style="--c:var(--person)">a person decides</span></div>
-      <div class="ray" id="ray"></div>
+      <div id="flow" aria-label="Workflow of the last message"></div>
     </div>
     <div id="turnTable"><div class="panel muted">Learn a topic, ask a question or answer a quiz question, and each step the tutor takes shows up here.</div></div>
   </div>
@@ -666,11 +666,68 @@ async function forgetMe() {
 function alertBox(text) { document.getElementById("progressBody").insertAdjacentHTML("afterbegin", `<div class="panel banner" role="status">${esc(text)}</div>`); }
 
 // ---------- presenter tools ----------
-function renderRay(steps = []) {
-  const order = STATIONS.map(s => s[0]); const lit = {}; steps.forEach(s => lit[s.node] = s.decided_by);
-  const last = Math.max(-1, ...Object.keys(lit).map(id => order.indexOf(id)));
-  document.getElementById("ray").innerHTML = `<div class="beam" style="width:${last < 0 ? 0 : (last / (order.length - 1)) * 92}%"></div>` +
-    STATIONS.map(([id, name, who, color], i) => `<div class="station ${lit[id] ? "lit" : (last >= 0 && i < last ? "skip" : "")}" style="--c:${color}"><span class="dot"></span><b>${name}</b><span class="who who-${lit[id] || who}">${lit[id] || who}</span></div>`).join("");
+// The workflow, drawn as a flowchart. The path the last message took lights up step by step as it runs.
+let MODELS = { guard: "content-safety model", agents: "agents' model" };
+fetch("/api/models").then(r => r.json()).then(m => { MODELS = m; if (!lastTurn) renderRay(); }).catch(() => {});
+const FW = 460;
+const short = m => String(m || "").replace(/^[^/]+\//, "");
+const FNODES = {
+  // key: [centre x, top y, width, title, who, colour, subtitle]
+  msg:   [128, 4,   240, "Student's message", "person", "#5b4fd1", () => "typed, or a quiz answer"],
+  safe:  [128, 70,  240, "Safety check", "code", "#e04a3b", () => "rules + " + short(MODELS.guard)],
+  stop:  [376, 70,  148, "Stopped", "code", "#c0362c", () => "refusal, tutor never sees it"],
+  alert: [376, 136, 148, "Teacher alert", "person", "#c0362c", () => "calm reply + teacher told"],
+  sup:   [128, 136, 240, "Supervisor", "code", "#ec7a1f", () => "routes by rules: practice or quiz"],
+  diag:  [128, 202, 240, "Diagnostician", "model", "#e0a100", () => "finds the mix-up · " + short(MODELS.agents)],
+  grade: [376, 202, 148, "Grader", "code", "#1b9aa8", () => "calculator (math-tools)"],
+  tutor: [128, 268, 240, "Tutor", "model", "#3fa34d", () => "NCERT search · " + short(MODELS.agents)],
+  mast:  [376, 268, 148, "Mastery, points", "code", "#1b9aa8", () => "learner record"],
+  leak:  [128, 334, 240, "Answer-leak check", "code", "#7446c4", () => "code + " + short(MODELS.guard)],
+  book:  [376, 334, 148, "Book card", "code", "#23845a", () => "text, formula, figure"],
+  reply: [128, 400, 240, "Reply to the student", "code", "#2c3fb8", () => "a question back, never the answer"],
+};
+const FEDGES = [["msg", "safe"], ["safe", "stop"], ["safe", "alert"], ["safe", "sup"], ["sup", "diag"], ["sup", "grade"], ["diag", "tutor"],
+  ["grade", "mast"], ["tutor", "leak"], ["tutor", "book"], ["leak", "reply"], ["book", "reply"], ["mast", "reply"], ["stop", "reply"], ["alert", "reply"]];
+const LNODES = {
+  msg:   [128, 4,   240, "“Teach me this topic”", "person", "#5b4fd1", () => "Learn from the start"],
+  rec:   [128, 70,  240, "Learner record", "code", "#1b9aa8", () => "new, in progress or mastered"],
+  ncert: [128, 136, 240, "NCERT book", "code", "#23845a", () => "real text, the figure, the formula"],
+  reply: [128, 202, 240, "Lesson", "code", "#2c3fb8", () => "no model is called"],
+};
+const LEDGES = [["msg", "rec"], ["rec", "ncert"], ["ncert", "reply"]];
+function flowSvg(nodes, edges, lit, height) {
+  const H = 46; const box = k => { const [cx, y, w] = nodes[k]; return { x: cx - w / 2, y, w, cx, cy: y + H / 2, r: cx + w / 2 }; };
+  const path = (a, b) => {
+    const A = box(a), B = box(b);
+    if (Math.abs(A.cy - B.cy) < 2) return `M${A.r},${A.cy} L${B.x - 7},${B.cy}`;                                   // same row: across
+    if (Math.abs(A.cx - B.cx) < 2) return `M${A.cx},${A.y + H} L${B.cx},${B.y - 7}`;                               // same column: down
+    if (A.cx < B.cx) { const gx = (A.r + B.x) / 2; return `M${A.r},${A.cy + 10} C${gx},${A.cy + 10} ${gx},${B.cy} ${B.x - 7},${B.cy}`; } // into the side box
+    const mx = FW - 6; return `M${A.r},${A.cy} L${mx},${A.cy} L${mx},${B.cy} L${B.r + 7},${B.cy}`;                  // back to the reply, along the edge
+  };
+  const e = edges.map(([a, b]) => { const on = lit.has(a) && lit.has(b); return `<path d="${path(a, b)}" class="fe ${on ? "on" : ""}" style="--c:${nodes[b][5]}" marker-end="url(#${on ? "arr-on" : "arr"})"/>`; });
+  const order = [...e.filter(x => !x.includes("fe on")), ...e.filter(x => x.includes("fe on"))].join("");   // lit edges on top
+  const n = Object.keys(nodes).map(k => { const [cx, y, w, title, who, color, sub] = nodes[k]; const on = lit.has(k);
+    return `<g class="fn ${on ? "on" : ""}" style="--c:${color}"><rect x="${cx - w / 2}" y="${y}" width="${w}" height="${H}" rx="9"/>
+      <text x="${cx - w / 2 + 10}" y="${y + 19}" class="ft">${esc(title)}</text><text x="${cx + w / 2 - 8}" y="${y + 19}" class="fw who-${who}" text-anchor="end">${who}</text>
+      <text x="${cx - w / 2 + 10}" y="${y + 36}" class="fs">${esc(sub())}</text></g>`; }).join("");
+  return `<svg viewBox="0 0 ${FW} ${height}" width="100%" role="img"><defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fa"/></marker>
+    <marker id="arr-on" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fa on"/></marker></defs>${order}${n}</svg>`;
+}
+function renderRay(steps = [], t = null) {
+  const el = document.getElementById("flow"); if (!el) return;
+  if (t && t.kind === "lesson") { el.innerHTML = flowSvg(LNODES, LEDGES, new Set(Object.keys(LNODES)), 252); return; }
+  const map = { input_guardrail: "safe", supervisor: "sup", diagnostician: "diag", tutor: "tutor", grader: "grade", output_guardrail: "leak" };
+  const lit = new Set(); if (steps.length || t) lit.add("msg");
+  steps.forEach(s => map[s.node] && lit.add(map[s.node]));
+  if (t) {
+    if (t.blocked) { lit.add("stop"); lit.delete("sup"); }
+    if (t.teacher_alerted) lit.add("alert");
+    if (t.grade) { lit.add("grade"); lit.add("mast"); }
+    if (t.book) lit.add("book");
+    if (!t.error) lit.add("reply");
+  }
+  el.innerHTML = flowSvg(FNODES, FEDGES, lit, 452);
 }
 // Behind the scenes: each step of the last turn, who decided it (code, a model or a person), and what it saw.
 const BLOCK_LABEL = by => !by ? "" : by.startsWith("word_rule:teacher_claim") ? "a student claiming to be the teacher (only the teacher's sign-in gives that role)"
@@ -684,7 +741,7 @@ function hoodCard(n, title, who, status, lines) {
 function renderHood() {
   const t = lastTurn; if (!t || !PRESENTER) return;
   side("hood");
-  renderRay(t.steps || []);
+  renderRay(t.steps || [], t);
   const cards = []; let n = 0; const add = (...a) => cards.push(hoodCard(++n, ...a));
   let kind = "";
   if (t.kind === "lesson") {
