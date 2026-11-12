@@ -415,6 +415,8 @@ def _run_turn(
             "citations": values.get("citations") or [],
             "blocked": shown_as_blocked,
             "teacher_alerted": alert_filed,
+            # "academic" (study stress or frustration) or "severe": the page offers study steps only for the first.
+            "distress_level": values.get("distress_level") if values.get("distress_detected") else None,
             "graded": graded,
             "pending_approval": bool(interrupted),
             "next_concept": values.get("next_recommended_concept"),

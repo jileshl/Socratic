@@ -4,7 +4,11 @@ Uses the rubric our consulting teacher agreed to (questionnaire section 4.1):
 conceptual accuracy, identified misconception and Socratic guidance, each 1-5.
 
 Step 1 — export transcripts for people to label:
-    python -m evalkit.calibrate export --run evalkit/results/runs/<run_id> [--n 24]
+    python -m evalkit.calibrate export --real [--n 24]
+  takes the judged sessions of every real-model run in experiment_log.csv
+  (stub runs are skipped: their tutor and judge replies are placeholders), or
+    python -m evalkit.calibrate export --run evalkit/results/runs/<run_id> [--run ...] [--n 24]
+  for chosen runs.
   writes evalkit/results/labels/to_label.csv. The teacher view's "Label
   transcripts" page reads the same file. Labellers score each transcript on
   the three dimensions without seeing the judge's scores.
@@ -44,18 +48,31 @@ def _transcript_text(turns: list) -> str:
     return "\n".join(f"{speaker}: {text}" for speaker, text in turns)
 
 
-def export(run_dir: Path, n: int, seed: int = 7) -> Path:
-    rows = [json.loads(line) for line in (run_dir / "cases.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
-    sessions = [r for r in rows if r.get("suite") == "sessions" and r.get("transcript") and r.get("judge", {}).get("scores")]
+def real_runs() -> list[Path]:
+    """Run folders logged with the real models (stub = False), oldest first."""
+    log = config.EVAL_RESULTS_DIR / "experiment_log.csv"
+    if not log.exists():
+        return []
+    with open(log, newline="", encoding="utf-8") as handle:
+        ids = [row["run_id"] for row in csv.DictReader(handle) if row.get("stub") == "False"]
+    return [config.EVAL_RESULTS_DIR / "runs" / run_id for run_id in ids if (config.EVAL_RESULTS_DIR / "runs" / run_id / "cases.jsonl").exists()]
+
+
+def export(run_dirs: Path | list[Path], n: int, seed: int = 7) -> Path:
+    run_dirs = [run_dirs] if isinstance(run_dirs, Path) else list(run_dirs)
+    sessions: list[tuple[str, dict]] = []
+    for run_dir in run_dirs:
+        rows = [json.loads(line) for line in (run_dir / "cases.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
+        sessions += [(run_dir.name, r) for r in rows if r.get("suite") == "sessions" and r.get("transcript") and r.get("judge", {}).get("scores")]
     if len(sessions) < n:
-        print(f"Only {len(sessions)} judged sessions in this run; exporting all of them.")
+        print(f"Only {len(sessions)} judged sessions in {len(run_dirs)} run(s); exporting all of them.")
     random.Random(seed).shuffle(sessions)
     LABEL_DIR.mkdir(parents=True, exist_ok=True)
     with open(TO_LABEL, "w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
         writer.writerow(["item_id", "run_id", "case_id", "misconception", "transcript"])
-        for row in sessions[:n]:
-            writer.writerow([f"{run_dir.name}::{row['case_id']}", run_dir.name, row["case_id"], "; ".join(row.get("seeded", [])), _transcript_text(row["transcript"])])
+        for run_name, row in sessions[:n]:
+            writer.writerow([f"{run_name}::{row['case_id']}", run_name, row["case_id"], "; ".join(row.get("seeded", [])), _transcript_text(row["transcript"])])
     print(f"Wrote {min(n, len(sessions))} transcripts to {TO_LABEL}. Label them in the teacher view (Label transcripts) or in a copy of the CSV.")
     return TO_LABEL
 
@@ -117,12 +134,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Judge calibration against human labels")
     sub = parser.add_subparsers(dest="command", required=True)
     p_export = sub.add_parser("export")
-    p_export.add_argument("--run", type=Path, required=True)
+    which = p_export.add_mutually_exclusive_group(required=True)
+    which.add_argument("--run", type=Path, action="append", help="a run folder; repeat for several")
+    which.add_argument("--real", action="store_true", help="every real-model run in experiment_log.csv")
     p_export.add_argument("--n", type=int, default=24)
     sub.add_parser("score")
     args = parser.parse_args()
     if args.command == "export":
-        export(args.run, args.n)
+        export(real_runs() if args.real else args.run, args.n)
     else:
         score()
 
