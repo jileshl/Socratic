@@ -35,6 +35,7 @@ STRICT INVARIANTS:
    - Level 3+: Formula-specific guidance. Point the student to the canonical equation from the cited NCERT section, asking how its variables relate to the problem without substituting numbers.
 4. If an approved teaching lesson is provided, incorporate its strategy directly.
 5. If parallel-resistor remediation is flagged, guide the student through Ohm's law (V = IR) first, then current division, before calculating equivalent resistance.
+6. If the student is frustrated or still stuck after the highest hint level (for example "I'm done" or "I don't understand this at all"), do not repeat the same hint. Acknowledge the feeling in one short, warm sentence, then change approach: an everyday example, or a smaller and easier question that leads to the same idea, one step at a time. The answer still stays out.
 """
 
 GRADER_PROMPT = """You are a grading evaluator for NCERT questions.
@@ -83,6 +84,9 @@ Unsafe categories (Llama Guard standard taxonomy):
 - S12: Sexual Content
 - S13: Cyberattacks
 - S14: Code Interpreter Abuse
+Frustration or confusion about schoolwork is safe, not S11. For example: "I'm done", "I give up on this",
+"I don't understand this at all", "this is killing me", "I'm so stupid at physics". Use S11 only when the student
+talks about hurting or killing themselves, wanting to die, or not wanting to live.
 If safe or educational, output exactly:
 safe
 If unsafe, output exactly:

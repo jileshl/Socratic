@@ -125,6 +125,8 @@ SEVERE_DISTRESS_PATTERNS: dict[str, str] = {
     "pills": r"\b(took|take|taking|swallowed) (too many|a lot of|all (the|my)) (pills|tablets)\b|\boverdose\b",
     "unalive": r"\bunalive\b",
     "depressed": r"\bdepress(ed|ion)\b",
+    "done_with_life": r"\b(done|finished) with (life|living|everything|it all|being alive)\b",
+    "not_wake_up": r"\b(don'?t|do not) want to wake up\b",
 }
 # Academic: stress about study. The gentle reply, plus a quiet alert to the teacher.
 ACADEMIC_DISTRESS_PATTERNS: dict[str, str] = {
@@ -137,6 +139,23 @@ ACADEMIC_DISTRESS_PATTERNS: dict[str, str] = {
     "hates_study": r"\bi hate (physics|studying|this subject|school)\b",
     "crying": r"\b(i'?m|i am|i keep) crying\b",
 }
+
+# Frustration with the work itself ("I'm done", "I don't understand this at all"). Not distress on its own:
+# the tutor carries on, gently. Used to stop the content guard reading study frustration as self-harm.
+FRUSTRATION_PATTERNS: dict[str, str] = {
+    "im_done": r"\bi'?m (so |just )?done\b",
+    "dont_understand": r"\bi (still )?(don'?t|do not|can'?t|cannot) (understand|get) (this|it|any|anything)",
+    "makes_no_sense": r"\b(makes|making) no sense\b",
+    "lost_confused": r"\bi'?m (so |totally |completely )?(lost|confused)\b",
+    "too_hard": r"\b(this|it) is (too|so) (hard|difficult|confusing)\b",
+}
+# Shown when the content guard flags plain study frustration as self-harm: calm, a person is told, and a gentle
+# safety line in case it really is more than physics.
+FRUSTRATION_CHECK_REPLY: str = (
+    "That sounds really frustrating, and it's okay to feel that way. I've let your teacher know, so you're not on "
+    "your own with this. When you're ready, we'll try it a different way, one small step at a time. "
+    "If you're feeling low about more than physics, please talk to a trusted adult too."
+)
 
 # ---------------------------------------------------------------- [I3] personal details (on the text sent on)
 
@@ -284,6 +303,13 @@ def tidy_for_matching(text: str) -> str:
             swapped = swapped + character
     # Runs of spaces become one space, so extra spaces can't split a phrase.
     return re.sub(r"[ \t]+", " ", swapped).strip()
+
+
+def is_study_frustration(match_text: str) -> bool:
+    """True for frustration with the work ("I'm done", "I don't understand this") and no self-harm phrase."""
+    if any(re.search(pattern, match_text) for pattern in SEVERE_DISTRESS_PATTERNS.values()):
+        return False
+    return any(re.search(pattern, match_text) for pattern in FRUSTRATION_PATTERNS.values())
 
 
 def find_distress(match_text: str) -> str:
@@ -464,6 +490,11 @@ def run_input_checks(text: str) -> dict[str, Any]:
     # [I5] the content guard reads the masked text (skipped when the switch is off).
     if guard_models.guard_models_on():
         verdict: dict[str, str] = content_guard_verdict([("user", masked)])
+        if verdict["verdict"] == "self_harm" and is_study_frustration(match_text):
+            # The guard model can read "I'm done, I don't understand this" as self-harm. A person is still told,
+            # but the student gets a calm reply rather than a crisis message (with a gentle safety line).
+            log_block("input", "content_guard:self_harm_frustration")
+            return make_input_result(masked, False, False, "academic", "distress", FRUSTRATION_CHECK_REPLY)
         if verdict["verdict"] == "self_harm":
             log_block("input", "content_guard:self_harm")
             return make_input_result(masked, False, False, "severe", "content_guard:self_harm", SEVERE_DISTRESS_REPLY)
