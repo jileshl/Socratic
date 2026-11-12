@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
-from socratic_tutor import llm, config
+from socratic_tutor import llm, config, solver_key
 from socratic_tutor.prompts import QUESTION_SETTER_PROMPT
 
 CONCEPT_FALLBACK_QUESTIONS: dict[str, dict[str, Any]] = {
@@ -91,15 +91,19 @@ CONCEPT_FALLBACK_QUESTIONS: dict[str, dict[str, Any]] = {
         "question_text": "A convex lens has a focal length of 0.5 m. Find its power.",
         "gold_answer": "2 D",
         "difficulty": "easy",
-        "calculation": {"formula": "lens_power", "f": 0.5, "length_unit": "m"},
+        "calculation": {"formula": "lens_power", "f": 0.5, "length_unit": "m", "find": "p"},
     },
 }
 
 
 def select_question(concept_id: str, difficulty: str = "medium") -> dict[str, Any]:
     prompt = f"Concept ID: {concept_id}\nDifficulty: {difficulty}\n"
+    # PR-2 (R4): the solver's formula list, so the model names a formula and its inputs exactly as code expects.
+    prompt = prompt + "\nFormulas you may use:\n" + solver_key.formula_list_for_the_model()
     res = llm.chat_json(prompt=prompt, system_prompt=QUESTION_SETTER_PROMPT)
-    if isinstance(res, dict) and res.get("question_text") and res.get("gold_answer") and "error" not in res:
+    # PR-2 (R4): a usable reply has a question and a calculation. The model no longer writes the answer key
+    # (the solver computes it from the calculation), so a reply is not dropped for having no gold_answer.
+    if isinstance(res, dict) and res.get("question_text") and res.get("calculation") and "error" not in res:
         res.setdefault("concept_id", concept_id)
         res.setdefault("difficulty", difficulty)
         return res
@@ -119,6 +123,8 @@ def select_question(concept_id: str, difficulty: str = "medium") -> dict[str, An
         "difficulty": fallback.get("difficulty", difficulty),
         "question_text": fallback["question_text"],
         "gold_answer": fallback["gold_answer"],
+        # PR-2 (R4): marks a fixed fallback question, so the teacher view can say the model gave none.
+        "source": "fallback",
     }
     if "calculation" in fallback:
         result["calculation"] = fallback["calculation"]

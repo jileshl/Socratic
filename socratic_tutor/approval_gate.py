@@ -28,6 +28,7 @@ For the rest of the app:
                              and get the line to tell the student ("Your teacher will review N new ...")
     get_approval_graph()   - the one shared approval graph (on .index/checkpoints.sqlite), for the question
                              setter and the teacher view alike
+    waiting_sets(graph)    - every set waiting for the teacher, for the teacher view's list
 """
 
 import hashlib
@@ -637,6 +638,69 @@ def pending_set(graph: Any, set_id: str) -> dict[str, Any] | None:
     return None
 
 
+# The set threads in a SqliteSaver's table, the most recently active first (checkpoint ids sort by time).
+# Only thread ids are read, so no student's checkpoint is loaded.
+SET_THREADS_QUERY: str = (
+    "SELECT thread_id FROM checkpoints WHERE substr(thread_id, 1, ?) = ? "
+    "GROUP BY thread_id ORDER BY MAX(checkpoint_id) DESC"
+)
+
+
+def set_thread_ids(checkpointer: Any) -> list[str]:
+    """[W2] The "qbset:" thread ids the checkpointer holds, the most recently active first.
+
+    With the app's SqliteSaver, one small query on its table (a broken or huge student history can't slow it down
+    or hide the sets). Any other saver (e.g. InMemorySaver in tests) is read in one pass over its saved runs.
+    """
+    thread_ids: list[str] = []
+    # The app's SqliteSaver: ask its table for the set threads only.
+    connection: Any = getattr(checkpointer, "conn", None)
+    if isinstance(connection, sqlite3.Connection) and hasattr(checkpointer, "cursor"):
+        # cursor() takes the saver's lock for this read, and gives it back when the block ends.
+        with checkpointer.cursor(transaction=False) as cursor:
+            cursor.execute(SET_THREADS_QUERY, (len(THREAD_PREFIX), THREAD_PREFIX))
+            rows: list[Any] = cursor.fetchall()
+        for row in rows:
+            thread_ids.append(str(row[0]))
+        return thread_ids
+    # Any other saver: every saved run once. FINISH this loop before any get_state (a saver may hold its lock
+    # while it yields, as SqliteSaver.list does, and get_state takes the same lock).
+    for saved in checkpointer.list(None):
+        thread_id: str = str(saved.config["configurable"]["thread_id"])
+        # The shared checkpoint file also holds the students' threads: only "qbset:" threads are sets.
+        if thread_id.startswith(THREAD_PREFIX) and thread_id not in thread_ids:
+            thread_ids.append(thread_id)
+    return thread_ids
+
+
+def waiting_sets(graph: Any) -> list[dict[str, Any]]:
+    """[W1]-[W3] Every question set waiting for the teacher, the most recently active first (for the teacher view).
+
+    Each item is pending_set()'s {"set_id", "payload", "payload_hash", "note"}. Returns [] without a checkpointer.
+    """
+    # Flowchart (each [box] matches a comment below):
+    #
+    #   [W1] the graph's checkpointer                                   none -> []
+    #   [W2] the "qbset:" thread ids (set_thread_ids), newest first; the saver's lock is free again after this
+    #   [W3] for each id: pending_set (still waiting?)                  yes -> keep it
+    #   [R]  the waiting sets
+
+    # [W1] the checkpointer keeps every set's paused run.
+    checkpointer: Any = getattr(graph, "checkpointer", None)
+    if checkpointer is None:
+        return []
+    # [W2] the set threads, read BEFORE any get_state: get_state (inside pending_set) takes the saver's lock.
+    thread_ids: list[str] = set_thread_ids(checkpointer)
+    # [W3] the sets that are still waiting (a published, rejected or refused set has finished).
+    waiting: list[dict[str, Any]] = []
+    for thread_id in thread_ids:
+        found: dict[str, Any] | None = pending_set(graph, thread_id[len(THREAD_PREFIX):])
+        if found is not None:
+            waiting.append(found)
+    # [R] the waiting sets.
+    return waiting
+
+
 # ---------------------------------------------------------------------------
 # For the rest of the app: one shared approval graph, and one call for the question setter
 # ---------------------------------------------------------------------------
@@ -732,25 +796,33 @@ def propose_set(drafts: list[dict[str, Any]], set_id: str | None = None, graph: 
 
 
 def decide(graph: Any, set_id: str, decision: Any) -> dict[str, Any]:
-    """[D1]-[D3] Hand the teacher's decision to a waiting set. Returns {"status", "note", "payload_hash"}.
+    """[D1]-[D3] Hand the teacher's decision to a waiting set.
 
-    status: "waiting" (refused, or edited: a version still needs approval), "published", "rejected",
-    "refused" (the set couldn't be completed), or "not_waiting" (nothing waits: e.g. a double click).
+    Returns {"status", "note", "payload_hash", "previous_payload_hash"}. status: "waiting" (refused, or edited:
+    a version still needs approval), "published", "rejected", "refused" (the set couldn't be completed), or
+    "not_waiting" (nothing waits: e.g. a double click). previous_payload_hash is the version that was waiting
+    when this decision was applied, read under the set's lock: if an edit leaves the set waiting with a
+    DIFFERENT hash, that edit was applied; the same hash means it was refused (PR-2; a stale edit from a
+    second browser tab must not look like a success).
     """
     if not is_safe_set_id(set_id):
-        return {"status": "not_waiting", "note": "This set isn't waiting for a decision.", "payload_hash": ""}
+        return {"status": "not_waiting", "note": "This set isn't waiting for a decision.", "payload_hash": "",
+                "previous_payload_hash": ""}
     # The checkpointer saves the decision with the run, so it must be plain JSON data. Anything else is refused
     # here, before the gate runs: saving would otherwise fail after the bank had already changed.
     try:
         json.dumps(decision)
     except (TypeError, ValueError):
         log_event(set_id, "unknown", "refused", "", 0, None, "", "the decision is not plain JSON data")
-        return {"status": "waiting", "note": "The decision can't be read, so it wasn't applied.", "payload_hash": ""}
+        return {"status": "waiting", "note": "The decision can't be read, so it wasn't applied.", "payload_hash": "",
+                "previous_payload_hash": ""}
     with lock_for(set_id):
         # [D1] only a waiting set can be decided; a second click after it finished changes nothing.
-        if pending_set(graph, set_id) is None:
+        before = pending_set(graph, set_id)
+        if before is None:
             log_event(set_id, "unknown", "not_waiting", "", 0, None, "", "")
-            return {"status": "not_waiting", "note": "This set isn't waiting for a decision.", "payload_hash": ""}
+            return {"status": "not_waiting", "note": "This set isn't waiting for a decision.", "payload_hash": "",
+                    "previous_payload_hash": ""}
         # [D2] resume the gate with the decision.
         graph.invoke(Command(resume=decision), thread_config(set_id))
         # [D3] how it ended (or why it waits again).
@@ -759,4 +831,5 @@ def decide(graph: Any, set_id: str, decision: Any) -> dict[str, Any]:
         "status": str(values.get("status", "")),
         "note": str(values.get("note", "")),
         "payload_hash": str(values.get("payload_hash", "")),
+        "previous_payload_hash": before["payload_hash"],
     }

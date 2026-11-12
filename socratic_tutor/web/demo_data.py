@@ -20,6 +20,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
+from socratic_tutor import approval_gate
 from socratic_tutor.tools import math_tools, question_bank
 
 DEMO_PREFIX = "stu_demo_"
@@ -44,23 +45,37 @@ DEMO_ALERTS: list[tuple[str, str, str]] = [
 
 
 def propose_demo_questions() -> list[dict[str, Any]]:
-    """Questions for the approval demo. Every key is computed by math-tools."""
+    """Questions for the approval demo. Every key is computed by math-tools.
+
+    R4 plumbing PR-2: the keys are written "value unit" ("-60 cm"), the form the grader's code reads ("v = -60 cm"
+    can't be read, so a demo quiz answer fell back to the model), and the questions wait for the teacher as ONE
+    question set on the approval gate (the teacher view lists and decides whole sets). Each item carries the set id.
+    """
     mirror = math_tools.solve_mirror_formula("cm", u=-30.0, f=-20.0)
     lens = math_tools.solve_lens_formula("cm", u=-60.0, f=20.0)
     parallel = math_tools.solve_parallel_resistance([6.0, 3.0])
     series = math_tools.solve_series_resistance([4.0, 12.0])
     power = math_tools.solve_lens_power("m", f=-0.5)
     items = [
-        ("concept_mirror_formula", "medium", "[DEMO] An object is 30 cm in front of a concave mirror of focal length 20 cm. Find the image distance.", f"v = {mirror['value']:g} cm"),
-        ("concept_lens_formula", "medium", "[DEMO] An object is 60 cm from a convex lens of focal length 20 cm. Find the image distance.", f"v = +{lens['value']:g} cm"),
+        ("concept_mirror_formula", "medium", "[DEMO] An object is 30 cm in front of a concave mirror of focal length 20 cm. Find the image distance.", f"{mirror['value']:g} cm"),
+        ("concept_lens_formula", "medium", "[DEMO] An object is 60 cm from a convex lens of focal length 20 cm. Find the image distance.", f"{lens['value']:g} cm"),
         ("concept_parallel_combination", "easy", "[DEMO] Find the equivalent resistance of 6 ohm and 3 ohm in parallel.", f"{parallel['value']:g} ohm"),
         ("concept_series_combination", "easy", "[DEMO] A 6 V battery is connected to resistors of 4 ohm and 12 ohm in series. Find the total resistance.", f"{series['value']:g} ohm"),
         ("concept_lens_power", "easy", "[DEMO] A concave lens has a focal length of 0.5 m. Find its power.", f"{power['value']:g} D"),
     ]
     out = []
+    question_ids: list[str] = []
     for concept, difficulty, prompt, answer in items:
         proposed = question_bank.propose_question(concept, difficulty, prompt, answer)
+        question_ids.append(proposed["question_id"])
         out.append({"question_id": proposed["question_id"], "prompt": prompt, "answer": answer})
+    # PR-2: the demo questions wait for approval as one set (a new random set id each time).
+    submitted: dict[str, Any] = approval_gate.submit_set(approval_gate.get_approval_graph(), question_ids)
+    set_id: str = ""
+    if submitted.get("ok") is True:
+        set_id = str(submitted["set_id"])
+    for item in out:
+        item["set_id"] = set_id
     return out
 
 

@@ -349,7 +349,8 @@ def test_a_signed_rejection_rejects_the_whole_set(gate: Any) -> None:
     ids = propose_two()
     submitted = submit(gate, ids)
     result = approval_gate.decide(gate, "set_a", sign("set_a", "reject", submitted["payload_hash"]))
-    assert result == {"status": "rejected", "note": "Rejected by teacher_1.", "payload_hash": submitted["payload_hash"]}
+    assert result == {"status": "rejected", "note": "Rejected by teacher_1.", "payload_hash": submitted["payload_hash"],
+                      "previous_payload_hash": submitted["payload_hash"]}
     for question_id in ids:
         assert status_of(question_id) == "rejected"
 
@@ -866,6 +867,90 @@ def test_propose_set_uses_the_shared_graph_by_default(shared_graph_in_tmp: Any, 
     result = approval_gate.propose_set([draft("concept_ohms_law", OHMS_PROMPT, "3 A")], set_id="set_default")
     assert result["ok"] is True
     assert approval_gate.pending_set(approval_gate.get_approval_graph(), "set_default") is not None
+
+
+# ---------------------------------------------------------------------------
+# The teacher view's list of waiting sets (R4 plumbing PR-2)
+# ---------------------------------------------------------------------------
+
+
+def waiting_sets_within(gate: Any, seconds: float = 10.0) -> list[dict[str, Any]]:
+    """waiting_sets, run in a separate thread: if it hangs on the checkpointer's lock, the test FAILS after a few
+    seconds instead of hanging the whole test run (SqliteSaver.list holds the lock that get_state needs)."""
+    results: list[Any] = []
+
+    def run() -> None:
+        results.append(approval_gate.waiting_sets(gate))
+
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    worker.join(seconds)
+    assert not worker.is_alive(), "waiting_sets hung on the checkpointer's lock"
+    return results[0]
+
+
+def test_waiting_sets_lists_only_waiting_question_sets(gate: Any) -> None:
+    """Two waiting sets, one published set, and a paused run on a thread that isn't a set: only the two sets."""
+    ids = propose_two()
+    submit(gate, [ids[0]], set_id="set_one")
+    submit(gate, [ids[1]], set_id="set_two")
+    # A third set, approved: it has finished, so it isn't listed.
+    third = question_bank.propose_question("concept_ohms_law", "easy", "A 6 V battery is across 3 ohm. Current?", "2 A")
+    done = submit(gate, [third["question_id"]], set_id="set_done")
+    assert approval_gate.decide(gate, "set_done", sign("set_done", "approve", done["payload_hash"]))["status"] == "published"
+    # A run paused on a thread that doesn't start with "qbset:" (the shared file also holds students' threads).
+    fourth = question_bank.propose_question("concept_ohms_law", "easy", "A 9 V battery is across 3 ohm. Current?", "3 A")
+    gate.invoke({"set_id": "set_other", "question_ids": [fourth["question_id"]]}, {"configurable": {"thread_id": "session-123"}})
+    # Only the two waiting sets, the most recently active first.
+    listed = waiting_sets_within(gate)
+    listed_ids: list[str] = []
+    for item in listed:
+        listed_ids.append(item["set_id"])
+    assert listed_ids == ["set_two", "set_one"]
+    # Each item is exactly what pending_set gives for that set.
+    assert listed[1] == approval_gate.pending_set(gate, "set_one")
+
+
+def test_waiting_sets_does_not_hang_on_the_checkpointer_lock(gate: Any) -> None:
+    """SqliteSaver.list holds the saver's lock while it yields; asking each set inside that loop would hang.
+    Run waiting_sets in a separate thread and check that it finishes."""
+    submit(gate, propose_two(), set_id="set_lock")
+    submit(gate, [question_bank.propose_question("concept_ohms_law", "easy", "A 6 V battery is across 2 ohm. Current?", "3 A")["question_id"]], set_id="set_lock_2")
+    assert len(waiting_sets_within(gate)) == 2
+
+
+def test_waiting_sets_shows_the_current_version_after_an_edit(gate: Any) -> None:
+    """After an edit, the list shows the NEW version and its hash, so the teacher approves what they see."""
+    submitted = submit(gate, propose_two(), set_id="set_edit")
+    first_id = submitted["payload"]["questions"][0]["id"]
+    changes = {first_id: {"prompt": "A 12 V battery is connected across a 6 ohm resistor. What is the current?",
+                          "gold_answer": "2 A"}}
+    edited = approval_gate.decide(gate, "set_edit", sign("set_edit", "edit", submitted["payload_hash"], changes=changes))
+    assert edited["status"] == "waiting"
+    listed = waiting_sets_within(gate)
+    assert len(listed) == 1
+    assert listed[0]["payload_hash"] == edited["payload_hash"]
+    assert listed[0]["payload_hash"] != submitted["payload_hash"]
+    assert listed[0]["payload"]["version"] == 2
+
+
+def test_waiting_sets_with_another_kind_of_saver(bank: None) -> None:
+    """Any saver other than SqliteSaver (here an in-memory one) is listed in one pass over its saved runs."""
+    from langgraph.checkpoint.memory import InMemorySaver
+
+    memory_gate = approval_gate.build_approval_graph(InMemorySaver())
+    ids = propose_two()
+    submit(memory_gate, [ids[0]], set_id="set_m1")
+    submit(memory_gate, [ids[1]], set_id="set_m2")
+    listed_ids: list[str] = []
+    for item in waiting_sets_within(memory_gate):
+        listed_ids.append(item["set_id"])
+    assert sorted(listed_ids) == ["set_m1", "set_m2"]
+
+
+def test_waiting_sets_without_a_checkpointer_is_empty() -> None:
+    """A graph compiled without a checkpointer keeps no sets, so there is nothing to list."""
+    assert approval_gate.waiting_sets(approval_gate.build_approval_graph(None)) == []
 
 
 # ---------------------------------------------------------------------------

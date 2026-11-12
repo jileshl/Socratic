@@ -3,24 +3,30 @@
 from __future__ import annotations
 
 import re
-import uuid
-import json
-import hashlib
 from typing import Any
 from langgraph.graph import StateGraph, START, END
-from langgraph.types import interrupt, Command
+from langgraph.types import Command
 from langchain_core.messages import AnyMessage, AIMessage, HumanMessage
 
 from socratic_tutor import config
+from socratic_tutor import approval_gate, solver_key
 from socratic_tutor.state import SocraticState
-from socratic_tutor.policy import check_input_guardrails, check_answer_leak
+from socratic_tutor.policy import check_input_guardrails, check_answer_leak, check_reply, keep_retrieved_citations
 from socratic_tutor.concept_graph import ConceptGraph
 from socratic_tutor.learner_store import LearnerStore
 from socratic_tutor.reflexion import ReflexionPlaybook
-from socratic_tutor.tools import textbook_kb, math_tools, math_tools_server, question_bank
+from socratic_tutor.tools import textbook_kb, question_bank, question_bank_server
 from socratic_tutor.agents import diagnostician, tutor, grader, question_setter
 
 REFUSAL = "I cannot fulfill this request as entered. Let's focus on our NCERT study goals."
+# How many questions the question setter drafts for one teacher request, unless the request says (PR-2, P2-2).
+QUESTION_SET_SIZE: int = 3
+# Used only if the guardrail ever stops a message without giving its own reply (it always gives one today).
+SUPPORTIVE_REPLY_FALLBACK = (
+    "It is completely normal to feel stuck or frustrated when studying physics. "
+    "Let's take a deep breath and take this one small step at a time. "
+    "What specific part or formula are you looking at right now?"
+)
 _SECTION_RE = re.compile(r"(?<![\d.])(9|10|11)\.(\d{1,2})(?:\.(\d{1,2}))?(?![\d])")
 
 
@@ -113,28 +119,61 @@ def node_input_guardrail(state: SocraticState) -> dict:
         "teacher_alert_triggered": False,
     }
 
+    # Flowchart of the blocked case (each [box] matches a comment below):
+    #
+    #   [IG1] start the three new per-turn safety facts empty
+    #          |
+    #          v
+    #   [IG2] did the guardrail stop the message?                    no -> carry on to the supervisor
+    #          | yes: keep its reason and its distress level
+    #          v
+    #   [IG3] distress (academic, severe, or a safety concern)?      yes -> its OWN reply + teacher alert, end
+    #          | no
+    #          v
+    #   [IG4] any other block (word rule, content guard, guard down) -> its OWN reply, end
+
+    # [IG1] Which check stopped the message (e.g. "word_rule:teacher_claim"), and how worried we are.
+    reset_state["input_blocked_by"] = None
+    reset_state["distress_level"] = "none"
+    # The reply check at the end of the turn fills this in if it has to replace the reply (output_guardrail).
+    reset_state["output_blocked_by"] = None
+
+    # [IG2] The guardrail stopped this message.
     if not guard_res["passed"]:
+        # The guardrail chooses the right words for each case: the helpline for severe distress, a calm small
+        # step for exam stress, a refusal for an attack. We show ITS reply. (Before, the graph replaced it with
+        # one generic sentence, so a student in severe distress never saw the helpline.)
+        policy_reply: str | None = guard_res.get("reply")
+        # Keep the reason and the level in the state, so the web app can label the turn and word the alert.
+        reset_state["input_blocked_by"] = guard_res.get("blocked_by")
+        distress_level: str | None = guard_res.get("distress_level")
+        if distress_level:
+            reset_state["distress_level"] = distress_level
+
+        # [IG3] Distress or a safety concern: end the turn and tell the teacher (Teacher Rule 4).
         if guard_res.get("is_distress"):
-            # Teacher Rule 4: Academic distress protocol
-            # Supportive de-escalation, down-scale to a micro-step, raise silent teacher alert
-            supportive_reply = (
-                "It is completely normal to feel stuck or frustrated when studying physics. "
-                "Let's take a deep breath and take this one small step at a time. "
-                "What specific part or formula are you looking at right now?"
-            )
+            # Start from the old text, and use the guardrail's reply whenever it gives one.
+            distress_reply: str = SUPPORTIVE_REPLY_FALLBACK
+            if policy_reply:
+                distress_reply = policy_reply
             reset_state.update({
                 "injection_detected": False,
                 "distress_detected": True,
                 "teacher_alert_triggered": True,
-                "response": supportive_reply,
+                "response": distress_reply,
             })
             return reset_state
 
+        # [IG4] Any other block. injection_detected stays True here, as before, so the E2 evaluation still
+        # counts every stopped attack as blocked; input_blocked_by says exactly which check it was.
+        refusal_reply: str = REFUSAL
+        if policy_reply:
+            refusal_reply = policy_reply
         reset_state.update({
             "injection_detected": True,
             "distress_detected": False,
             "teacher_alert_triggered": False,
-            "response": REFUSAL,
+            "response": refusal_reply,
         })
         return reset_state
 
@@ -303,7 +342,7 @@ def node_supervisor(state: SocraticState) -> dict:
         return {
             "steps": ["supervisor"],
             "turn_steps": turn_steps + ["supervisor"],
-            "plan": ["propose_question", "teacher_gate"],
+            "plan": ["draft_questions", "solve_keys", "propose_set"],
             "mastery_map": mastery,
             "current_concept_id": current_concept,
             "next_recommended_concept": next_concept,
@@ -504,23 +543,52 @@ def node_tutor(state: SocraticState) -> dict:
 
 
 def node_output_guardrail(state: SocraticState) -> dict:
+    # Flowchart (each [box] matches a comment below):
+    #
+    #   [OG1] the answer key and the question text (if the student is on a bank question)
+    #          |
+    #          v
+    #   [OG2] leak check: the key and the question's own numbers (free questions: rule off, see below)
+    #          |
+    #          |-- leak in practice mode -> retry the hint, or the scaffold question (unchanged)
+    #          v
+    #   [OG3] reply check (R4's check_reply, practice mode): links out, retrieved citations only, guard
+    #          |
+    #          v
+    #        the reply the student sees
     response = state.get("response", "")
     expected_answer = None
+    # [OG1] The question's own text: numbers it already gives are not a leak when the reply repeats them.
+    question_text: str | None = None
     qid = state.get("current_question_id")
     if qid:
         q = question_bank.get_approved_question(qid) or question_bank.get_question(qid)
         if q:
             expected_answer = q.get("gold_answer")
+            question_text = q.get("prompt")
     if not expected_answer:
         expected_answer = state.get("gold_answer")
 
-    leak = check_answer_leak(response, expected_answer)
+    # [OG2] The leak check: the key, and the question's own numbers (which a hint may repeat).
+    # The student's message is NOT passed here on purpose. With it, check_answer_leak would also judge FREE
+    # questions (no key) by "a new number with a unit leaks", and in a review that flagged normal hints:
+    # "Remember that 1 m = 100 cm", "the near point is about 25 cm", or a second turn that repeats the numbers
+    # from the first. That rule stays off until the E1 runs have measured it.
+    leak: bool = check_answer_leak(response, expected_answer, question_text=question_text)
+    # The student's message still goes to the reply check below, as context for the content guard.
+    student_text: str = str(state.get("query") or "")
 
-    # Validate citations against retrieved sections (checking grounded in NCERT)
-    retrieved = state.get("retrieved_sections", [])
-    valid_secs = {str(p.get("section_id")) for p in retrieved if p.get("section_id")}
-    citations = state.get("citations", [])
-    validated_citations = [c for c in citations if not valid_secs or c in valid_secs]
+    # The sections that were really retrieved, and the citations kept from them (the same rule everywhere:
+    # a citation of a section that was never retrieved was made up, so it is dropped).
+    retrieved: list[dict] = state.get("retrieved_sections", [])
+    citations: list[str] = state.get("citations", [])
+    retrieved_ids: list[str] = []
+    for passage in retrieved:
+        # Each retrieved passage carries the NCERT section it came from, e.g. "9.2.4".
+        section_id: Any = passage.get("section_id")
+        if section_id:
+            retrieved_ids.append(str(section_id))
+    validated_citations: list[str] = keep_retrieved_citations(citations, retrieved_ids)
 
     # Socratic Invariant: If leak occurs in practice mode
     if leak and state.get("mode", "practice") == "practice":
@@ -545,12 +613,29 @@ def node_output_guardrail(state: SocraticState) -> dict:
             "answer_leak_flag": True,
         }
 
+    # [OG3] R4's reply check (policy.check_reply) on the reply that is about to go out:
+    #   - removes links and images, so nothing opens or loads by itself;
+    #   - keeps only citations of sections that were really retrieved (a cited section we never fetched was
+    #     made up);
+    #   - when the guard models are on, the content guard reads the reply (unsafe for a minor -> a safe fallback).
+    # It never raises: if a check breaks, the student gets the safe fallback reply (fail closed).
+    # In quiz mode the reply is the grader's fixed feedback ("Correct! Well done."), written by code, so the
+    # check is skipped: the content guard would cost a model call for nothing, and if the guard were down its
+    # practice-mode fallback would replace the student's right/wrong verdict.
+    checked: dict[str, Any] = {"reply": response, "citations": validated_citations, "blocked_by": None}
+    if state.get("mode", "practice") != "quiz":
+        checked = check_reply(response, citations, retrieved_ids, student_text)
+
     return {
         "steps": ["output_guardrail"],
         "turn_steps": state.get("turn_steps", []) + ["output_guardrail"],
-        "response": response,
-        "citations": validated_citations,
+        # The cleaned reply (or the safe fallback, if the reply check replaced it).
+        "response": checked["reply"],
+        # Only the citations of sections that were really retrieved.
+        "citations": checked["citations"],
         "answer_leak_flag": False,
+        # None when the reply passed; otherwise which check replaced it (for the web app's labels).
+        "output_blocked_by": checked["blocked_by"],
     }
 
 
@@ -590,313 +675,89 @@ def node_grader(state: SocraticState) -> dict:
     }
 
 
-def _compute_payload_hash(payload: dict) -> str:
-    canonical = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-
-
-FORMULA_ALIASES: dict[str, str] = {
-    "mirror": "mirror_formula",
-    "mirror_formula": "mirror_formula",
-    "lens": "lens_formula",
-    "lens_formula": "lens_formula",
-    "lens_power": "lens_power",
-    "power": "lens_power",
-    "parallel": "parallel_resistance",
-    "parallel_resistance": "parallel_resistance",
-    "resistors_parallel": "parallel_resistance",
-    "series": "series_resistance",
-    "series_resistance": "series_resistance",
-    "resistors_series": "series_resistance",
-    "ohms": "ohms_law",
-    "ohm": "ohms_law",
-    "ohms_law": "ohms_law",
-    "joule": "joule_heating",
-    "heating": "joule_heating",
-    "joule_heating": "joule_heating",
-    "charge_current": "charge_current",
-    "voltage_work_charge": "voltage_work_charge",
-    "resistivity": "resistivity",
-    "wire_area": "wire_area",
-    "power_voltage_current": "power_voltage_current",
-    "power_current_resistance": "power_current_resistance",
-    "power_voltage_resistance": "power_voltage_resistance",
-    "energy_power_time": "energy_power_time",
-    "energy_cost": "energy_cost",
-    "focal_length_from_radius": "focal_length_from_radius",
-    "mirror_magnification": "mirror_magnification",
-    "lens_magnification": "lens_magnification",
-    "image_height": "image_height",
-    "image_nature": "image_nature",
-    "combine_lens_powers": "combine_lens_powers",
-    "absolute_refractive_index": "absolute_refractive_index",
-    "relative_refractive_index": "relative_refractive_index",
-    "relative_index_from_absolute": "relative_index_from_absolute",
-}
-
-
-def _calculate_or_verify_answer(
-    prompt_text: str,
-    gold_answer: str,
-    concept: str,
-    calculation: dict[str, Any] | None = None,
-) -> tuple[str, bool]:
-    """Ground and calculate numerical answer keys using deterministic math_tools before showing/proposing.
-
-    Returns (answer_key, is_verified) where is_verified is True only when calculated or verified by math-tools.
-    """
-    # 1. Structured calculation from question setter model (guide p.2, rule 1)
-    if isinstance(calculation, dict) and calculation:
-        raw_formula = str(calculation.get("formula", "")).strip().lower()
-        formula = FORMULA_ALIASES.get(raw_formula, raw_formula)
-
-        if isinstance(calculation.get("values"), dict):
-            raw_values = dict(calculation["values"])
-        else:
-            raw_values = {
-                k: v for k, v in calculation.items()
-                if k not in ("formula", "find", "length_unit", "unit", "solve_for", "target")
-            }
-
-        length_unit = calculation.get("length_unit") or calculation.get("unit")
-
-        try:
-            # Handle resistors list if passed as separate keys (e.g. r1, r2)
-            if formula in ("parallel_resistance", "series_resistance"):
-                if "resistors" not in raw_values:
-                    res_vals = [float(v) for k, v in raw_values.items() if isinstance(v, (int, float))]
-                    if len(res_vals) >= 2:
-                        raw_values = {"resistors": res_vals}
-                elif isinstance(raw_values.get("resistors"), (list, tuple)):
-                    raw_values["resistors"] = [float(x) for x in raw_values["resistors"]]
-
-            # Sign convention adjustments for optics
-            if formula in ("mirror_formula", "lens_formula"):
-                length_unit = length_unit or ("m" if " m " in f" {prompt_text} " else "cm")
-                if "u" in raw_values:
-                    raw_values["u"] = -abs(float(raw_values["u"]))
-                if "f" in raw_values:
-                    f_val = float(raw_values["f"])
-                    if "concave" in prompt_text.lower() or "concave" in str(calculation).lower():
-                        raw_values["f"] = -abs(f_val)
-                    elif "convex" in prompt_text.lower() or "convex" in str(calculation).lower():
-                        raw_values["f"] = abs(f_val)
-
-            clean_values: dict[str, Any] = {}
-            for k, v in raw_values.items():
-                if k == "resistors" and isinstance(v, list):
-                    clean_values[k] = v
-                elif isinstance(v, (int, float)):
-                    clean_values[k] = float(v)
-                elif isinstance(v, str):
-                    try:
-                        clean_values[k] = float(v)
-                    except ValueError:
-                        clean_values[k] = v
-                else:
-                    clean_values[k] = v
-
-            sol = None
-            if formula in math_tools_server.OPTICS_FORMULAS:
-                lu = length_unit or ("m" if formula == "lens_power" else "cm")
-                sol = math_tools_server.solve_optics(formula, clean_values, length_unit=lu)
-            elif formula in math_tools_server.ELECTRICITY_FORMULAS:
-                sol = math_tools_server.solve_electricity(formula, clean_values)
-
-            if sol and sol.get("ok"):
-                val = sol["value"]
-                unit = sol.get("unit", "").strip()
-                ans = f"{val:g} {unit}".strip() if unit else f"{val:g}"
-                return ans, True
-        except Exception:
-            pass
-
-    # 2. Regex fallback: Parallel combination (only match resistors with ohm/Ω/ohms, not V/A)
-    if "parallel" in prompt_text.lower() and any(w in prompt_text.lower() for w in ["ohm", "ω", "resistor"]):
-        vals = [float(x) for x in re.findall(r"(\d+(?:\.\d+)?)\s*(?:ohm|Ω|ohms)\b", prompt_text, re.I)]
-        if len(vals) >= 2:
-            try:
-                res = math_tools_server.solve_electricity("parallel_resistance", {"resistors": vals[:5]})
-                if res.get("ok"):
-                    return f"{res['value']:g} ohm", True
-            except Exception:
-                pass
-
-    # 3. Regex fallback: Series combination (only match resistors with ohm/Ω/ohms, not V/A)
-    if "series" in prompt_text.lower() and any(w in prompt_text.lower() for w in ["ohm", "ω", "resistor"]):
-        vals = [float(x) for x in re.findall(r"(\d+(?:\.\d+)?)\s*(?:ohm|Ω|ohms)\b", prompt_text, re.I)]
-        if len(vals) >= 2:
-            try:
-                res = math_tools_server.solve_electricity("series_resistance", {"resistors": vals[:5]})
-                if res.get("ok"):
-                    return f"{res['value']:g} ohm", True
-            except Exception:
-                pass
-
-    # 4. Regex fallback: Spherical mirror formula
-    if "mirror" in prompt_text.lower() and "cm" in prompt_text.lower():
-        u_m = re.search(r"(\d+(?:\.\d+)?)\s*cm\s+(?:in\s+front|from)", prompt_text, re.I) or re.search(r"object.*?(\d+(?:\.\d+)?)\s*cm", prompt_text, re.I)
-        f_m = re.search(r"focal\s+length.*?(\d+(?:\.\d+)?)\s*cm", prompt_text, re.I)
-        if u_m and f_m:
-            try:
-                u_val = -abs(float(u_m.group(1)))
-                is_concave = "concave" in prompt_text.lower()
-                f_val = -abs(float(f_m.group(1))) if is_concave else abs(float(f_m.group(1)))
-                res = math_tools_server.solve_optics("mirror_formula", {"u": u_val, "f": f_val}, length_unit="cm")
-                if res.get("ok"):
-                    return f"{res['value']:g} cm", True
-            except Exception:
-                pass
-
-    # 5. Regex fallback: Spherical lens formula
-    if "lens" in prompt_text.lower() and "cm" in prompt_text.lower():
-        u_m = re.search(r"(\d+(?:\.\d+)?)\s*cm\s+(?:in\s+front|from)", prompt_text, re.I) or re.search(r"object.*?(\d+(?:\.\d+)?)\s*cm", prompt_text, re.I)
-        f_m = re.search(r"focal\s+length.*?(\d+(?:\.\d+)?)\s*cm", prompt_text, re.I)
-        if u_m and f_m:
-            try:
-                u_val = -abs(float(u_m.group(1)))
-                is_convex = "convex" in prompt_text.lower()
-                f_val = abs(float(f_m.group(1))) if is_convex else -abs(float(f_m.group(1)))
-                res = math_tools_server.solve_optics("lens_formula", {"u": u_val, "f": f_val}, length_unit="cm")
-                if res.get("ok"):
-                    return f"{res['value']:g} cm", True
-            except Exception:
-                pass
-
-    # 6. Regex fallback: Lens power (supports metres and cm, catches unexpected errors)
-    if "power" in prompt_text.lower() and ("focal length" in prompt_text.lower() or " dioptre" in prompt_text.lower() or " d\b" in prompt_text.lower() or " d." in prompt_text.lower()):
-        # A concave (diverging) lens has a negative focal length, so a negative power.
-        sign = -1.0 if "concave" in prompt_text.lower() else 1.0
-        f_m = re.search(r"focal\s+length.*?(\d+(?:\.\d+)?)\s*m\b", prompt_text, re.I)
-        if f_m:
-            try:
-                res = math_tools_server.solve_optics("lens_power", {"f": sign * float(f_m.group(1))}, length_unit="m")
-                if res.get("ok"):
-                    return f"{res['value']:g} D", True
-            except Exception:
-                pass
-        f_cm = re.search(r"focal\s+length.*?(\d+(?:\.\d+)?)\s*cm\b", prompt_text, re.I)
-        if f_cm:
-            try:
-                res = math_tools_server.solve_optics("lens_power", {"f": sign * float(f_cm.group(1))}, length_unit="cm")
-                if res.get("ok"):
-                    return f"{res['value']:g} D", True
-            except Exception:
-                pass
-
-    # 7. Fallback: clean and standardize numeric answer if readable by math_tools, or return original text
-    if gold_answer:
-        tidy = math_tools.tidy_answer_text(gold_answer)
-        q = math_tools.read_quantity(tidy)
-        if q.get("ok"):
-            return tidy, False
-
-    return gold_answer, False
-
-
 def node_question_setter(state: SocraticState) -> dict:
-    concept = state.get("current_concept_id", "concept_reflection_laws")
-    res = question_setter.select_question(concept)
-    if not isinstance(res, dict) or res.get("error") or not res.get("question_text") or not res.get("gold_answer"):
-        return {
-            "steps": ["question_setter"],
-            "turn_steps": state.get("turn_steps", []) + ["question_setter"],
-            "teacher_approval_required": False,
-            "teacher_approval_payload": None,
-            "response": f"No question proposal available for concept '{concept}'.",
-        }
+    """The question setter (R4 plumbing PR-2, decision I2): the model drafts the questions, the SOLVER computes
+    every answer key, and the drafts wait for the teacher as ONE set on the approval gate's own thread.
 
-    prompt_text = res["question_text"]
-    raw_gold_answer = res["gold_answer"]
-    difficulty = res.get("difficulty", "medium")
-    calculation = res.get("calculation")
-    if calculation is None and "formula" in res:
-        calculation = {k: v for k, v in res.items() if k not in ("question_text", "gold_answer", "concept_id", "difficulty", "error")}
+    Nothing pauses in this graph: the set waits on "qbset:<set_id>" (approval_gate), so this run ends at once
+    (question_setter -> END). No answer key is ever put in this graph's state.
+    """
+    # Flowchart (each [box] matches a comment below):
+    #
+    #   [QS1] which concept (the teacher's pick), and how many questions?   no or unknown concept -> [QS4]
+    #   [QS2] one model call per question (easy, medium, hard); the solver keys each draft (solver_key)
+    #   [QS3] any draft left?                                             no -> [QS4], nothing is sent
+    #         yes -> approval_gate.propose_set(drafts): ONE set, waiting for the teacher
+    #   [QS4] the summary: ok, the set id, the question ids, every refusal with its difficulty. Never a key.
 
-    # Step 5: Solver calculates or grounds numeric answers before the question is proposed/shown
-    gold_answer, is_verified = _calculate_or_verify_answer(
-        prompt_text, raw_gold_answer, concept, calculation=calculation
-    )
+    # This turn's trajectory, plus what the summary will report (filled in below).
+    turn_steps: list[str] = state.get("turn_steps", []) + ["question_setter"]
+    # Every refused draft: {"difficulty", "error"}.
+    refused: list[dict[str, Any]] = []
+    # The set that went to the teacher ("" if none did), and its question ids.
+    set_id: str = ""
+    question_ids: list[str] = []
+    # One sentence for the teacher about what happened.
+    note: str = ""
+    # How many of the drafts are the agent's fixed fallback questions (the model gave none).
+    fallback_count: int = 0
 
-    # Propose question to bank in pending_approval status
-    prop = question_bank.propose_question(
-        concept_id=concept,
-        difficulty=difficulty,
-        prompt=prompt_text,
-        gold_answer=gold_answer,
-    )
-    qid = prop["question_id"]
-    set_id = f"set_{uuid.uuid4().hex[:8]}"
+    # [QS1] the concept the teacher asked for, and the set size (QUESTION_SET_SIZE unless the request says).
+    concept: Any = state.get("current_concept_id")
+    count: int = QUESTION_SET_SIZE
+    asked_size: Any = state.get("question_set_size")
+    if isinstance(asked_size, int) and not isinstance(asked_size, bool):
+        count = asked_size
+    if not isinstance(concept, str) or concept == "":
+        note = "No concept was given, so no questions were drafted."
+    elif concept not in question_bank_server.load_concept_ids():
+        note = "Unknown concept '" + concept + "', so no questions were drafted."
+    else:
+        # [QS2] one model call per draft; the solver computes each key, and refuses what it can't compute.
+        made: dict[str, Any] = solver_key.drafts_for_concept(concept, count, question_setter.select_question)
+        drafts: list[dict[str, Any]] = made["drafts"]
+        fallback_count = made["fallback_count"]
+        for item in made["refused"]:
+            refused.append({"difficulty": item["difficulty"], "error": item["error"]})
+        # [QS3] nothing left to send: the teacher gets nothing to approve.
+        if len(drafts) == 0:
+            note = "No draft could be keyed by the solver, so nothing was sent to the teacher."
+        else:
+            # The drafts go to the teacher as one set (the question-bank checks run inside propose_set).
+            proposed: dict[str, Any] = approval_gate.propose_set(drafts)
+            # A draft the bank refused (e.g. a duplicate) is reported with its difficulty.
+            for item in proposed.get("refused", []):
+                position: Any = item.get("draft")
+                difficulty: str = ""
+                if isinstance(position, int) and 0 <= position < len(drafts):
+                    difficulty = drafts[position]["difficulty"]
+                refused.append({"difficulty": difficulty, "error": str(item.get("error", ""))})
+            if proposed.get("ok") is True:
+                set_id = str(proposed["set_id"])
+                question_ids = list(proposed["question_ids"])
+                note = (str(len(question_ids)) + " question(s) are waiting for the teacher's approval in set "
+                        + set_id + ".")
+                # Say so when fixed fallback questions stood in for the model's own (e.g. the model is down).
+                if fallback_count > 0:
+                    note = (note + " " + str(fallback_count) + " of the drafts were fixed fallback questions, "
+                            "because the model gave no usable question.")
+            else:
+                note = str(proposed.get("error", "The set could not be sent to the teacher."))
 
-    payload_data = {
+    # [QS4] what the caller (the teacher's request) learns. Ids and reasons only, never an answer key.
+    summary: dict[str, Any] = {
+        "ok": set_id != "",
         "set_id": set_id,
-        "question_id": qid,
-        "concept": concept,
-        "prompt": prompt_text,
-        "gold_answer": gold_answer,
-        "difficulty": difficulty,
-        "verified": is_verified,
-        "solver_verified": is_verified,
+        "question_ids": question_ids,
+        "refused": refused,
+        "note": note,
     }
-    payload_data["payload_hash"] = _compute_payload_hash(payload_data)
-
     return {
         "steps": ["question_setter"],
-        "turn_steps": state.get("turn_steps", []) + ["question_setter"],
-        "teacher_approval_required": True,
-        "teacher_approval_payload": payload_data,
-    }
-
-
-def node_teacher_approval_gate(state: SocraticState) -> dict:
-    payload = state.get("teacher_approval_payload")
-    if not payload:
-        return {
-            "steps": ["teacher_approval_gate"],
-            "turn_steps": state.get("turn_steps", []) + ["teacher_approval_gate"],
-            "teacher_approval_required": False,
-            "response": state.get("response", "No question proposal to review."),
-        }
-
-    decision = interrupt({"payload": payload, "prompt": "Approve new question for shared bank?"})
-
-    is_dict = isinstance(decision, dict)
-    action = decision.get("action") if is_dict else None
-    decision_hash = decision.get("payload_hash") if is_dict else None
-
-    # Expected payload hash
-    raw_payload = {k: v for k, v in payload.items() if k != "payload_hash"}
-    expected_hash = payload.get("payload_hash") or _compute_payload_hash(raw_payload)
-
-    # Validate payload hash if provided
-    hash_valid = True
-    if decision_hash is not None:
-        hash_valid = (decision_hash == expected_hash)
-
-    approved = is_dict and (action == "approve") and hash_valid
-
-    qid = payload.get("question_id")
-    if approved:
-        if qid:
-            question_bank.publish_approved_question(qid)
-        else:
-            prop = question_bank.propose_question(
-                concept_id=payload.get("concept", "concept_reflection_laws"),
-                difficulty=payload.get("difficulty", "medium"),
-                prompt=payload.get("prompt", ""),
-                gold_answer=payload.get("gold_answer", ""),
-            )
-            qid = prop["question_id"]
-            question_bank.publish_approved_question(qid)
-        msg = "Question approved and published."
-    else:
-        msg = "Question proposal rejected."
-
-    return {
-        "steps": ["teacher_approval_gate"],
-        "turn_steps": state.get("turn_steps", []) + ["teacher_approval_gate"],
+        "turn_steps": turn_steps,
         "teacher_approval_required": False,
-        "response": msg,
+        "response": note,
+        "proposed_set": summary,
     }
 
 
@@ -952,7 +813,6 @@ def build_graph(checkpointer=None):
     workflow.add_node("output_guardrail", node_output_guardrail)
     workflow.add_node("grader", node_grader)
     workflow.add_node("question_setter", node_question_setter)
-    workflow.add_node("teacher_approval_gate", node_teacher_approval_gate)
 
     workflow.add_edge(START, "input_guardrail")
     workflow.add_conditional_edges(
@@ -974,8 +834,8 @@ def build_graph(checkpointer=None):
     workflow.add_edge("diagnostician", "supervisor")
     workflow.add_edge("tutor", "supervisor")
     workflow.add_edge("grader", "supervisor")
-    workflow.add_edge("question_setter", "teacher_approval_gate")
-    workflow.add_edge("teacher_approval_gate", END)
+    # PR-2: the question setter's set waits on the approval gate's own thread, so this run ends here.
+    workflow.add_edge("question_setter", END)
     workflow.add_conditional_edges(
         "output_guardrail",
         route_output,

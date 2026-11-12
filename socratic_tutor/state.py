@@ -46,9 +46,13 @@ class SocraticState(TypedDict, total=False):
     # --- Safety & Teacher Gate ------------------------------------------------
     injection_detected: bool
     distress_detected: bool                  # Distress detected on current turn
+    distress_level: str                      # "none", "academic" or "severe" (from policy.check_input_guardrails)
+    input_blocked_by: str | None             # Which input check stopped this turn, e.g. "word_rule:teacher_claim"
+    output_blocked_by: str | None            # Which reply check replaced the reply (policy.check_reply), or None
     answer_leak_flag: bool                   # Triggered if practice response gave direct answer
     teacher_approval_required: bool
-    teacher_approval_payload: dict | None    # Question proposal payload for interrupt()
+    question_set_size: int                   # How many questions the teacher asked the question setter for (PR-2)
+    proposed_set: dict | None                # The set sent to the teacher: ok, set id, question ids, refusals; never a key
     teacher_alert_triggered: bool            # Student stuck or in distress
     
     # --- Final Output ---------------------------------------------------------
