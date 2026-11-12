@@ -171,7 +171,7 @@ const SCENARIOS = [
 
 const store = { get(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }, set(k,v){ try { localStorage.setItem(k,v); } catch(e){} }, del(k){ try { localStorage.removeItem(k); } catch(e){} } };
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-let persona = "", sessions = {}, busy = false, quiz = [], lastTurn = null, quizFocus = null;
+let persona = "", sessions = {}, busy = false, quiz = [], lastTurn = null, quizFocus = null, lastQuizFocus = null;
 // Topic sent with the next message: the chapter keeps the tutor in the right chapter; a concept is sent once,
 // when the student picks a topic (Practise it), so a new question typed later can move to its own topic.
 let activeChapter = null, activeConcept = null;
@@ -211,7 +211,7 @@ function setPersona(p, quiet) {
   if (!quiet && PRESENTER) note(p ? `Now learning as ${label(p)}${PERSONAS[p] ? ", who " + PERSONAS[p].note : ""}.` : `Now learning as ${label("")}.`);
   refreshNextUp(); refreshGame();
   const open = document.querySelector(".topnav button.on").dataset.view;
-  if (open === "plan") loadPlan(); if (open === "progress") loadProgress(); if (open === "cards") loadCards();
+  if (open === "plan") loadPlan(); if (open === "progress") loadProgress(); if (open === "cards") loadCards(); if (open === "quiz") loadQuiz();
 }
 // Names come from the teacher's class list. They are shown here only; chats use the random ID.
 async function loadRoster() {
@@ -452,11 +452,15 @@ function renderChapterCards() {
 // ---------- quiz ----------
 const figHtml = (f, cls = "") => f ? `<figure class="qfig ${cls}"><img src="${esc(f.url)}" alt="Figure ${esc(f.figure)} from the NCERT book: ${esc(f.caption || "")}" loading="lazy"><figcaption><b>Figure ${esc(f.figure)}</b> ${esc(f.caption || "")} <span class="muted">· NCERT</span></figcaption></figure>` : "";
 async function loadQuiz(focus) {
-  try { quiz = (await (await fetch("/api/quiz/questions")).json()).items || []; } catch (e) { quiz = []; }
+  quizFocus = focus; lastQuizFocus = focus;
+  const id = studentId();
+  // Questions this student has already answered right are left out (Jilesh, #65), so each visit has new ones.
+  const url = "/api/quiz/questions" + (id ? `?student_id=${encodeURIComponent(id)}` : "");
+  try { quiz = (await (await fetch(url)).json()).items || []; } catch (e) { quiz = []; }
   let shown = focus ? quiz.filter(q => q.concept_id === focus) : quiz;
   const ft = focus ? ((concepts.find(c => c.concept_id === focus) || {}).title || "this topic") : "";
   let head = focus && shown.length ? `<div class="row" style="justify-content:space-between;margin-bottom:10px"><b>Quiz on ${esc(ft)}</b><button class="ghost" onclick="loadQuiz()">Show all questions</button></div>` : "";
-  if (focus && !shown.length) { head = `<div class="panel banner">There's no approved quiz on ${esc(ft)} yet: your teacher approves every question first. Here are the other questions.</div>`; shown = quiz; }
+  if (focus && !shown.length) { head = `<div class="panel banner">No quiz on ${esc(ft)} for you right now: you've solved its questions, or your teacher hasn't approved any yet. Here are the others.</div>`; shown = quiz; }
   document.getElementById("quizList").innerHTML = head + (shown.length ? shown.map(q => {
     const c = CHAPTER_KEY[q.chapter] || "light";
     return `<div class="qcard" style="--c:var(--${c})" id="q-${esc(q.question_id)}">
@@ -465,7 +469,7 @@ async function loadQuiz(focus) {
       ${figHtml(q.figure)}
       <form onsubmit="checkAnswer(event,'${esc(q.question_id)}')"><input placeholder="Your answer, with its unit" aria-label="Your answer"><button class="primary">Check answer</button></form>
       <div data-result role="status"></div></div>`;
-  }).join("") : `<div class="panel empty"><h3>No quiz questions yet</h3><p>Your teacher approves every question before it appears here. Try the Learn tab in the meantime.</p></div>`);
+  }).join("") : `<div class="panel empty"><h3>No quiz questions available</h3><p>${id ? "You have solved all available quiz questions, or your teacher has not approved new ones yet." : "Your teacher approves every question before it appears here."} Try the Learn tab in the meantime.</p></div>`);
   if (focus) { window.scrollTo(0, 0); const first = document.querySelector("#quizList .qcard input"); if (first) first.focus({ preventScroll: true }); }
 }
 async function checkAnswer(e, qid) {
@@ -476,7 +480,7 @@ async function checkAnswer(e, qid) {
     stream.onstep = steps => renderRay(steps);
     const ev = await stream("quiz", answer, qid); stream.onstep = null;
     refreshNextUp();
-    if (ev.grade) out.innerHTML = `<div class="result ${ev.grade.is_correct ? "ok" : "bad"}">${ev.grade.is_correct ? `Correct. Well done.${studentId() ? ` <span class="plus">+10 points</span>` : ""}` : "Not yet. Check your sign convention and units, then try again, or ask for a hint in Learn."}</div>`;
+    if (ev.grade) out.innerHTML = `<div class="result ${ev.grade.is_correct ? "ok" : "bad"}">${ev.grade.is_correct ? `Correct. Well done.${studentId() ? (ev.grade.already_solved ? " (Already solved)" : ` <span class="plus">+10 points</span>`) : ""}` : "Not yet. Check your sign convention and units, then try again. That's how learning works: let's fix the idea behind it."}</div>`;
     const q = (quiz || []).find(x => x.question_id === qid) || {};
     if (ev.grade && ev.grade.is_correct) {
       celebrate(card);
@@ -485,11 +489,13 @@ async function checkAnswer(e, qid) {
       if (q.concept_id && !journey()) setJourney(q.concept_id, 3);
       const j = journey(); if (j && j.cid === q.concept_id) { j.step = 4; renderJourney(); }
       if (q.concept_id) out.insertAdjacentHTML("beforeend", nextTopicsBox(q.concept_id));
+      // A solved question leaves the list (#65); the student moves on when ready, so the encouragement stays readable.
+      out.insertAdjacentHTML("beforeend", `<div class="quick" style="margin-top:8px"><button type="button" onclick="loadQuiz(lastQuizFocus)">Next question</button></div>`);
     }
-    else {
-      out.innerHTML = `<div class="result bad">${esc(ev.text || "This answer couldn't be checked.")} That's how learning works: let's fix the idea behind it.</div>`;
+    else if (ev.grade) {
       if (q.concept_id) { out.insertAdjacentHTML("beforeend", await revisionCards(q.concept_id)); showFlashFlow(q.concept_id); }
     }
+    else out.innerHTML = `<div class="result bad">${esc(ev.text || "This answer couldn't be checked.")}</div>`;
   });
 }
 

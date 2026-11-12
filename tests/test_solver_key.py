@@ -424,3 +424,33 @@ def test_fallback_questions_are_counted() -> None:
     made: dict[str, Any] = solver_key.drafts_for_concept("concept_mirror_formula", 1, fallback_model)
     assert len(made["drafts"]) == 1
     assert made["fallback_count"] == 1
+
+
+def test_target_variable_with_null_in_values_is_accepted_and_solved() -> None:
+    # Regression: LLMs setting find='h' often include 'h': None in values (or alias 'joules_heating').
+    # This must not be rejected with "The value of h must be a number".
+    question: str = "A wire has a resistance of 5 ohm, and it carries a current of 2 A for 10 seconds. Calculate the heat produced in joules."
+    calc: dict[str, Any] = {
+        "formula": "joule_heating",
+        "values": {"h": None, "i": 2, "r": 5, "t": 10},
+        "length_unit": "",
+        "find": "h",
+    }
+    result: dict[str, Any] = solver_key.solve_answer_key(question, calc)
+    assert result["ok"] is True
+    assert result["gold_answer"] == "200 J"
+    assert result["formula"] == "joule_heating"
+
+    # Also works with alias "joules_heating" and flat shape
+    calc_alias: dict[str, Any] = {
+        "formula": "joules_heating",
+        "h": None,
+        "i": 2,
+        "r": 5,
+        "t": 10,
+        "find": "h",
+    }
+    result_alias: dict[str, Any] = solver_key.solve_answer_key(question, calc_alias)
+    assert result_alias["ok"] is True
+    assert result_alias["gold_answer"] == "200 J"
+

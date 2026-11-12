@@ -313,3 +313,51 @@ def test_supervisor_is_not_stuck_because_of_another_topic():
         assert out.get("teacher_alert_triggered") is True
     finally:
         mp.undo()
+
+
+def test_solved_quiz_question_omitted_and_no_duplicate_points(client):
+    from socratic_tutor.tools import question_bank
+    from socratic_tutor.web import api, game
+
+    # Create & publish a question
+    prop = question_bank.propose_question("concept_ohms_law", "easy", "Quiz test: 12 V across 6 ohm: current?", "2 A")
+    qid = prop["question_id"]
+    question_bank.publish_approved_question(qid)
+
+    # Start session for student
+    session = client.post("/api/session", json={"mode": "quiz", "consent": True}).json()
+    sid = session["student_id"]
+    ses_id = session["session_id"]
+
+    # Before solving: question is in /api/quiz/questions for student
+    all_qs = client.get(f"/api/quiz/questions?student_id={sid}").json()["items"]
+    assert any(q["question_id"] == qid for q in all_qs)
+
+    # Before solving: next_quiz_question serves it
+    next_q = client.get(f"/api/quiz/next?session_id={ses_id}").json()
+    assert next_q["question_id"] is not None
+
+    # Student solves it correctly (score 1.0)
+    res1 = api.learners.record_quiz_result(sid, "concept_ohms_law", 1.0, duration_seconds=10, question_id=qid)
+    assert res1["already_solved"] is False
+    assert qid in api.learners.get_solved_question_ids(sid)
+
+    # After solving: question is OMITTED from /api/quiz/questions for this student
+    after_qs = client.get(f"/api/quiz/questions?student_id={sid}").json()["items"]
+    assert all(q["question_id"] != qid for q in after_qs)
+
+    # Still appears for other students (no student_id or different student_id)
+    assert any(q["question_id"] == qid for q in client.get("/api/quiz/questions").json()["items"])
+    assert any(q["question_id"] == qid for q in client.get("/api/quiz/questions?student_id=stu_other").json()["items"])
+
+    # Attempting the same question again flags already_solved=True
+    res2 = api.learners.record_quiz_result(sid, "concept_ohms_law", 1.0, duration_seconds=5, question_id=qid)
+    assert res2["already_solved"] is True
+
+    # game.summary only awards 10 points once for this question
+    profile = api.learners.get_profile(sid)
+    g = game.summary(profile, 0, [], {}, None)
+    assert g["stats"]["quiz_correct"] == 1
+    # points for correct answers must be 10, not 20
+    assert g["points"] == round(sum(v * 100 for v in profile["mastery_map"].values())) + 10
+

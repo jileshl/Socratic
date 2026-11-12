@@ -62,6 +62,10 @@ FORMULA_ALIASES: dict[str, str] = {
     "ohms": "ohms_law",
     "joule": "joule_heating",
     "heating": "joule_heating",
+    "joules": "joule_heating",
+    "joules_heating": "joule_heating",
+    "joule_law": "joule_heating",
+    "joules_law": "joule_heating",
 }
 # The keys of a calculation that are not given values.
 NOT_VALUE_KEYS: list[str] = ["formula", "find", "length_unit", "values"]
@@ -197,7 +201,7 @@ def read_calculation(calculation: Any) -> tuple[dict[str, Any] | None, str | Non
     if "values" in calculation:
         if not isinstance(calculation["values"], dict):
             return None, "The calculation's values must be an object: {input name: number}."
-        raw_values = calculation["values"]
+        raw_values = dict(calculation["values"])
         # In this shape, no other keys are allowed next to the four settings.
         for key in calculation:
             if key not in NOT_VALUE_KEYS:
@@ -207,6 +211,35 @@ def read_calculation(calculation: Any) -> tuple[dict[str, Any] | None, str | Non
         for key in calculation:
             if key not in NOT_VALUE_KEYS:
                 raw_values[key] = calculation[key]
+
+    # [C5] what the question asks for. Read before validating values so that an unknown
+    # explicitly marked as null / None / placeholder by the model in values can be handled.
+    find: Any = calculation.get("find")
+    if find is None or find == "":
+        if formula not in ONE_WAY_RESULTS:
+            # Check if there is a single key in raw_values with None or placeholder indicating the unknown
+            null_keys = [
+                k for k, v in raw_values.items()
+                if v is None or (isinstance(v, str) and v.strip().lower() in ("none", "null", "?", "find", "unknown"))
+            ]
+            if len(null_keys) == 1:
+                find = null_keys[0]
+            else:
+                return None, "The calculation must say which quantity the question asks for (find)."
+        else:
+            find = ONE_WAY_RESULTS[formula]
+    if not isinstance(find, str):
+        return None, "find must be the name of the quantity the question asks for."
+    find = find.strip()
+
+    # If the unknown quantity was included in values with None / null / placeholder,
+    # remove it so the solver calculates it from the given numbers.
+    for key in list(raw_values.keys()):
+        if str(key).lower() == find.lower():
+            val = raw_values[key]
+            if val is None or (isinstance(val, str) and not is_plain_number(val)):
+                del raw_values[key]
+
     # A calculation must give at least one value.
     if len(raw_values) == 0:
         return None, "The calculation gives no values."
@@ -219,15 +252,6 @@ def read_calculation(calculation: Any) -> tuple[dict[str, Any] | None, str | Non
             return None, problem
         values[str(name)] = value
 
-    # [C5] what the question asks for. Only a one-way formula may leave it out (its result is fixed).
-    find: Any = calculation.get("find")
-    if find is None or find == "":
-        if formula not in ONE_WAY_RESULTS:
-            return None, "The calculation must say which quantity the question asks for (find)."
-        find = ONE_WAY_RESULTS[formula]
-    if not isinstance(find, str):
-        return None, "find must be the name of the quantity the question asks for."
-
     # [C6] the unit of the distances (optics only); missing or empty means none.
     length_unit: Any = calculation.get("length_unit")
     if length_unit == "":
@@ -236,7 +260,7 @@ def read_calculation(calculation: Any) -> tuple[dict[str, Any] | None, str | Non
         return None, "length_unit must be text, for example \"cm\"."
 
     # [R] the calculation, read.
-    return {"formula": formula, "values": values, "find": find.strip(), "length_unit": length_unit}, None
+    return {"formula": formula, "values": values, "find": find, "length_unit": length_unit}, None
 
 
 # ---------------------------------------------------------------------------
@@ -441,8 +465,21 @@ def run_solver(formula: str, values: dict[str, Any], length_unit: str | None) ->
 
 
 def format_number(value: float) -> str:
-    """A number as a short key: 6 significant digits, so float noise goes (-59.999999999999986 -> "-60")."""
-    return format(value, ".6g")
+    """Format a numerical answer key following NCERT conventions:
+    - 2 decimal places for standard values (e.g. 1.33, 2.42, 0.18, -0.83).
+    - Up to 4 decimal places for atmospheric/gas refractive indices close to 1 (e.g. 1.0003, 1.0007).
+    - Scientific notation for very small quantities (< 1e-4).
+    - Exact integers formatted without trailing decimals (e.g. -60, 3, 110).
+    """
+    if value == 0.0:
+        return "0"
+    if abs(value) >= 1e6 or abs(value) < 1e-4:
+        return format(value, ".6g")
+    if abs(value - round(value)) < 1e-6:
+        return str(int(round(value)))
+    if 1.0 < abs(value) < 1.01:
+        return f"{value:.4f}".rstrip("0").rstrip(".")
+    return f"{round(value, 2):.2f}".rstrip("0").rstrip(".")
 
 
 def format_answer_key(result: dict[str, Any]) -> str:
@@ -627,13 +664,20 @@ def drafts_for_concept(
         refused.append({"draft": 0, "difficulty": "", "error": "Ask for 1 to " + str(MAX_DRAFTS) + " questions."})
         return {"drafts": drafts, "refused": refused, "fallback_count": fallback_count}
     # [N2] one model call per draft; one bad reply fails alone.
+    drafted_prompts: list[str] = []
     for position, chosen_difficulty in enumerate(plan):
         try:
-            model_reply: Any = ask_model(chosen_concept, chosen_difficulty)
+            try:
+                model_reply: Any = ask_model(chosen_concept, chosen_difficulty, drafted_prompts)
+            except TypeError:
+                model_reply = ask_model(chosen_concept, chosen_difficulty)
             made: dict[str, Any] = draft_from_model_reply(chosen_concept, chosen_difficulty, model_reply)
         except Exception as error:  # a model, network or unexpected-input failure is a refused draft, not a crash
             made = {"ok": False, "error": "The draft could not be made (" + type(error).__name__ + ")."}
         if made.get("ok") is True:
+            prompt_text = made["draft"].get("prompt", "")
+            if prompt_text:
+                drafted_prompts.append(prompt_text)
             drafts.append(made["draft"])
             if made.get("fallback") is True:
                 fallback_count = fallback_count + 1

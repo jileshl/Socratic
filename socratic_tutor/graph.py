@@ -338,8 +338,8 @@ def node_supervisor(state: SocraticState) -> dict:
             score = float(grade_res.get("score", 0.0))
             # N1: quiz results filed under the question's own concept, not the student's current concept
             quiz_concept = grade_res.get("concept_id")
+            qid = state.get("current_question_id")
             if not quiz_concept:
-                qid = state.get("current_question_id")
                 if qid:
                     q = question_bank.get_approved_question(qid)
                     if q and q.get("concept_id"):
@@ -347,14 +347,17 @@ def node_supervisor(state: SocraticState) -> dict:
             quiz_concept = quiz_concept or current_concept
 
             concept_failures = 0
+            quiz_res: dict[str, Any] = {}
             if student_id and quiz_concept:
-                quiz_res = store.record_quiz_result(student_id, quiz_concept, score)
+                quiz_res = store.record_quiz_result(student_id, quiz_concept, score, question_id=qid)
                 if quiz_res.get("teacher_alert_triggered"):
                     teacher_alert = True
                 updated_profile = store.get_profile(student_id)
                 mastery = dict(updated_profile.get("mastery_map", {}))
                 failure_streaks = updated_profile.get("failure_streaks", {})
                 concept_failures = failure_streaks.get(quiz_concept or "", 0)
+            if isinstance(grade_res, dict):
+                grade_res["already_solved"] = quiz_res.get("already_solved", False)
 
             # N2: 'mastered' is decided by updated mastery, not by a single answer
             concept_mastery = mastery.get(quiz_concept)
