@@ -555,6 +555,7 @@ def test_node_tutor_passes_resolved_chapter_to_search_textbook(monkeypatch):
 
     # 1. Resolved from concept_id (concept_reflection_laws is Chapter 9)
     state1 = {
+        "session_id": "ses_test", "student_id": "stu_test", "mode": "practice",  # the facts R4's tool hooks need
         "query": "What is the law of reflection?",
         "current_concept_id": "concept_reflection_laws",
     }
@@ -563,6 +564,7 @@ def test_node_tutor_passes_resolved_chapter_to_search_textbook(monkeypatch):
 
     # 2. Direct from state["chapter"] = "11"
     state2 = {
+        "session_id": "ses_test", "student_id": "stu_test", "mode": "practice",  # the facts R4's tool hooks need
         "query": "What is current?",
         "chapter": "11",
     }
@@ -571,6 +573,7 @@ def test_node_tutor_passes_resolved_chapter_to_search_textbook(monkeypatch):
 
     # 3. From identified_misconception
     state3 = {
+        "session_id": "ses_test", "student_id": "stu_test", "mode": "practice",  # the facts R4's tool hooks need
         "query": "Why does eye lens change?",
         "identified_misconception": {"id": "M1", "chapter": "Human Eye and the Colourful World"},
     }
@@ -950,6 +953,7 @@ def test_node_tutor_falls_back_to_unfiltered_search_when_filtered_empty(monkeypa
     monkeypatch.setattr(graph.tutor, "generate_hint", lambda **kw: "Use Ohm's law.")
 
     state = {
+        "session_id": "ses_test", "student_id": "stu_test", "mode": "practice",  # the facts R4's tool hooks need
         "query": "What is Ohm's law?",
         "current_concept_id": "concept_reflection_laws",  # Chapter 9
     }

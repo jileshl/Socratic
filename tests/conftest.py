@@ -24,3 +24,19 @@ def _offline_dense_search(monkeypatch):
     from socratic_tutor.tools import textbook_kb
 
     monkeypatch.setattr(textbook_kb.retriever, "search_dense", lambda query, top_k=5: [])
+
+
+@pytest.fixture(autouse=True)
+def _fresh_tool_budget():
+    """Every test starts with fresh tool-hook counts (R4's per-turn budget).
+
+    The counts live in one module-level dict, keyed by session id. Tests that call graph nodes directly never
+    start a turn, so without this their tool calls would add up across the whole run, and after 20 of them
+    every later test would see its tool calls blocked, depending on test order.
+    """
+    from socratic_tutor import tool_hooks
+
+    # Empty the counts before the test (under the hooks' own lock, as start_turn does).
+    with tool_hooks._COUNTS_LOCK:
+        tool_hooks._TURN_COUNTS.clear()
+    yield

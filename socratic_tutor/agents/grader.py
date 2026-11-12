@@ -23,13 +23,16 @@ Flowchart (each [box] matches a comment in the code):
 
 from typing import Any
 import re
-from socratic_tutor import llm, config
+from socratic_tutor import llm, config, tool_hooks
 from socratic_tutor.prompts import GRADER_PROMPT
 from socratic_tutor.tools import math_tools
 
 # The only two sentences a student is ever shown by the grader. Neither depends on the answer key.
 CORRECT_FEEDBACK: str = "Correct! Well done."
 WRONG_FEEDBACK: str = "Not quite right. Let's review the concept."
+# When R4's tool hooks block the grader's check (budget used up, tools paused, session facts missing), the answer
+# was not checked at all, so the student is told that, never "right" or "wrong".
+CANNOT_CHECK_FEEDBACK: str = "I can't check this answer right now. Please try again in a moment."
 
 
 def extract_numeric_quantities(text: str) -> list[str]:
@@ -111,34 +114,108 @@ def for_the_student(result: Any) -> dict[str, Any]:
     return safe
 
 
-def grade_answer(student_text: str, gold_answer: str, is_numeric: bool = False) -> dict[str, Any]:
-    """Grade one answer against the key. The result's "feedback" is always safe to show the student."""
+def check_numeric_answer(student_text: str, gold_text: str) -> dict[str, Any]:
+    """The grader's WHOLE numeric check, as ONE tool call, under the name R4's permission map knows.
+
+    R4's tool hooks count this once per grade, however many numbers the answer has. (Counting each pair of
+    numbers separately ran a long answer out of budget, and the student was told "can't check".)
+    Returns {"ok": True, "value": True or False, "detail"}, or {"ok": False, "error"} if nothing could be read.
+    It calls math_tools.check_numeric_answer at call time, so a test that swaps that function still works.
+    """
+    # Flowchart (each [box] matches a comment below):
+    #
+    #   [N1] the whole answer against the whole key                      readable -> that verdict
+    #   [N2] labels like "v = -37.5 cm"? each number in the answer against each number in the key,
+    #        each pair checked ONCE: the first match -> right; else the first readable pair -> wrong
+    #   [N3] nothing readable -> {"ok": False}: the grader then uses the rubric
+
+    # [N1] The whole answer against the whole key.
+    whole: dict[str, Any] = math_tools.check_numeric_answer(student_text, gold_text)
+    if whole["ok"]:
+        return whole
+    # [N2] Pairs of numbers, when labels stopped [N1] from reading them.
+    gold_candidates: list[str] = extract_numeric_quantities(gold_text)
+    student_candidates: list[str] = extract_numeric_quantities(student_text)
+    first_readable: dict[str, Any] | None = None
+    already_checked: list[tuple[str, str]] = []
+    for student_number in student_candidates:
+        for gold_number in gold_candidates:
+            pair: tuple[str, str] = (student_number, gold_number)
+            # The same pair twice (an answer that repeats its number) gives the same verdict: skip it.
+            if pair in already_checked:
+                continue
+            already_checked.append(pair)
+            one: dict[str, Any] = math_tools.check_numeric_answer(student_number, gold_number)
+            if one["ok"]:
+                # A matching pair: the answer is right.
+                if one["value"]:
+                    return one
+                # Keep the first readable non-match, for the "wrong" verdict's detail.
+                if first_readable is None:
+                    first_readable = one
+    if first_readable is not None:
+        return first_readable
+    # [N3] Nothing could be read.
+    return whole
+
+
+def run_check(student_text: str, gold_text: str, state: dict[str, Any] | None) -> dict[str, Any]:
+    """[H] One numeric check for the grader: through R4's tool hooks when the graph's state is given.
+
+    Returns the check's own result, or {"ok": False, "blocked": True, "error": "BLOCKED: <reason>"} when the
+    hook blocked it. Without a state (the eval harness and older callers), the check runs directly, as before.
+    """
+    # Flowchart (each [box] matches a comment below):
+    #
+    #   [H1] no graph state? -> run the check directly (as before)
+    #   [H2] through the hook, as the agent "grader" (permission, quiz rule, budget, kill switch, log)
+    #   [H3] blocked? -> a "blocked" result; the grader then fails closed (never the LLM)
+
+    # The check's two inputs, by name, as the hook logs them.
+    arguments: dict[str, Any] = {"student_text": student_text, "gold_text": gold_text}
+    # [H1] No graph state: the direct call.
+    if state is None:
+        return check_numeric_answer(student_text, gold_text)
+    # [H2] Through the hook.
+    result: Any = tool_hooks.run_tool("grader", check_numeric_answer, arguments, state)
+    # [H3] A blocked call returns "BLOCKED: <reason>" instead of a dict.
+    if tool_hooks.is_blocked(result):
+        return {"ok": False, "blocked": True, "error": str(result)}
+    return result
+
+
+def blocked_grade(check: dict[str, Any]) -> dict[str, Any]:
+    """The grade when the hook blocked a check: not right, score 0, and an "error" so it isn't recorded."""
+    blocked: dict[str, Any] = for_the_student(
+        {"is_correct": False, "score": 0.0, "feedback": "", "error": "tool_blocked: " + str(check["error"])}
+    )
+    # The answer was never checked, so the saved grade must not say "Not quite right" either.
+    blocked["feedback"] = CANNOT_CHECK_FEEDBACK
+    return blocked
+
+
+def grade_answer(student_text: str, gold_answer: str, is_numeric: bool = False,
+                 state: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Grade one answer against the key. The result's "feedback" is always safe to show the student.
+
+    state: the graph's state. The graph ALWAYS passes it, so the check runs through R4's tool hooks. None
+    means a caller outside the graph (the eval harness, unit tests): the check then runs directly, as before.
+    """
     # [G1] only a numeric question can be checked by code.
     if is_numeric:
         # [G2] Numbers with units ("-30 cm", "-0.3 m") are checked by code, not by the LLM
         # (capstone guide p.2, rule 1).
-        check = math_tools.check_numeric_answer(student_text, gold_answer)
+        # ONE check (through the hook when the graph's state is given), however many numbers the answer has.
+        check: dict[str, Any] = run_check(student_text, gold_answer, state)
+        # The hook blocked the check: fail closed (no grade, and never the LLM rubric instead).
+        if check.get("blocked"):
+            return blocked_grade(check)
         if check["ok"]:
-            correct = check["value"]
-            return for_the_student(
-                {"is_correct": correct, "score": 1.0 if correct else 0.0, "feedback": check["detail"]}
-            )
-
-        # If direct check could not read the answer key or student attempt due to variable labels
-        # (e.g. "v = -37.5 cm", "P = +1.5 D", "I = 2.5 A"):
-        gold_candidates = extract_numeric_quantities(gold_answer)
-        student_candidates = extract_numeric_quantities(student_text)
-        if gold_candidates and student_candidates:
-            best_check = None
-            for s_cand in student_candidates:
-                for g_cand in gold_candidates:
-                    c = math_tools.check_numeric_answer(s_cand, g_cand)
-                    if c["ok"]:
-                        best_check = c
-                        if c["value"]:
-                            return for_the_student({"is_correct": True, "score": 1.0, "feedback": c["detail"]})
-            if best_check:
-                return for_the_student({"is_correct": False, "score": 0.0, "feedback": best_check["detail"]})
+            correct: bool = check["value"] is True
+            score: float = 0.0
+            if correct:
+                score = 1.0
+            return for_the_student({"is_correct": correct, "score": score, "feedback": check["detail"]})
         # Only if the answer key itself cannot be read does grading fall back to the rubric below.
 
     # [G3] the LLM grades against the rubric. It sees the key, so its feedback goes to "detail" like the checker's.

@@ -9,7 +9,7 @@ from langgraph.types import Command
 from langchain_core.messages import AnyMessage, AIMessage, HumanMessage
 
 from socratic_tutor import config
-from socratic_tutor import approval_gate, solver_key
+from socratic_tutor import approval_gate, solver_key, tool_hooks
 from socratic_tutor.state import SocraticState
 from socratic_tutor.policy import check_input_guardrails, check_answer_leak, check_reply, keep_retrieved_citations
 from socratic_tutor.concept_graph import ConceptGraph
@@ -99,6 +99,13 @@ def _resolve_chapter(state: SocraticState) -> str | None:
 def node_input_guardrail(state: SocraticState) -> dict:
     query = state.get("query", "")
     guard_res = check_input_guardrails(query)
+
+    # [H1] R4's tool hooks: every student turn starts with a fresh tool budget, shared by all the agents
+    # (config.MAX_TOOL_CALLS_PER_TURN calls, and the same call at most MAX_IDENTICAL_TOOL_CALLS times).
+    # Without this, the budget would run out after a few turns and every tool call would be blocked.
+    hooks_session_id: Any = state.get("session_id")
+    if isinstance(hooks_session_id, str) and hooks_session_id.strip() != "":
+        tool_hooks.start_turn(hooks_session_id)
 
     # Reset per-turn fields at the start of each turn
     reset_state: dict[str, Any] = {
@@ -252,6 +259,11 @@ def node_supervisor(state: SocraticState) -> dict:
         else:
             # N3: If grader encountered an error (e.g. unapproved question), do not run replan
             if grade_res.get("error"):
+                # A question that isn't available tells the teacher. A check that R4's tool hooks blocked
+                # (budget used up, tools paused) is about the system, not the student, so the alert stays as it was.
+                error_alert: bool = True
+                if str(grade_res.get("error")).startswith("tool_blocked"):
+                    error_alert = teacher_alert
                 return {
                     "steps": ["supervisor"],
                     "turn_steps": turn_steps + ["supervisor"],
@@ -259,7 +271,7 @@ def node_supervisor(state: SocraticState) -> dict:
                     "mastery_map": mastery,
                     "current_concept_id": current_concept,
                     "next_recommended_concept": next_concept,
-                    "teacher_alert_triggered": True,
+                    "teacher_alert_triggered": error_alert,
                     "hint_step": hint_step,
                     "hint_raised_this_turn": hint_raised,
                     "last_concept_id": current_concept,
@@ -490,16 +502,46 @@ def node_diagnostician(state: SocraticState) -> dict:
     }
 
 
+def search_textbook(query: str, chapter: str | None = None, top_k: int = 4) -> list[dict[str, Any]]:
+    """The tutor's textbook tool, under the name R4's permission map knows ("search_textbook").
+
+    It calls textbook_kb.search_textbook at call time, so a test that swaps that function still works, and
+    the hook still sees the right tool name.
+    """
+    return textbook_kb.search_textbook(query, chapter=chapter, top_k=top_k)
+
+
+def _tutor_search(arguments: dict[str, Any], state: SocraticState) -> list[dict[str, Any]]:
+    """One textbook search for the tutor, through R4's tool hooks. A blocked search gives no passages."""
+    # Flowchart (each [box] matches a comment below):
+    #
+    #   [TS1] tool_hooks.run_tool("tutor", search_textbook, arguments, state)
+    #          |   the hook checks: may the tutor use it? quiz rule? budget left? paused? then runs it, and logs
+    #          |
+    #          |-- blocked ("BLOCKED: <reason>") -> [TS2] no passages (the hook has logged why)
+    #          v
+    #   [TS3] the passages, as the search returned them
+
+    # [TS1] Through the hook, as the agent "tutor".
+    result: Any = tool_hooks.run_tool("tutor", search_textbook, arguments, state)
+    # [TS2] A blocked call returns a string, not a list: the tutor then hints without textbook passages.
+    if tool_hooks.is_blocked(result):
+        return []
+    # [TS3] The search's own result.
+    return result
+
+
 def node_tutor(state: SocraticState) -> dict:
     query = state.get("query", "")
     hint_tries = state.get("hint_tries", 0) + 1
     chapter = _resolve_chapter(state)
     passages = state.get("retrieved_sections")
     if not passages:
-        passages = textbook_kb.search_textbook(query, chapter=chapter, top_k=4)
+        # Both searches go through R4's tool hooks (permission, quiz rule, budget, log), as the tutor's tool.
+        passages = _tutor_search({"query": query, "chapter": chapter, "top_k": 4}, state)
         if not passages and chapter:
             # Fall back to unfiltered search if filtered search returned no relevant passages
-            passages = textbook_kb.search_textbook(query, top_k=4)
+            passages = _tutor_search({"query": query, "top_k": 4}, state)
     passages = passages or []
 
     initial_citations = []
@@ -661,10 +703,16 @@ def node_grader(state: SocraticState) -> dict:
     question_concept = q.get("concept_id") or concept_id
 
     is_numeric = bool(re.search(r"\d", gold_answer))
-    res = grader.grade_answer(attempt, gold_answer, is_numeric=is_numeric)
+    # The graph's state goes along, so the grader's checks run through R4's tool hooks as the agent "grader".
+    res = grader.grade_answer(attempt, gold_answer, is_numeric=is_numeric, state=state)
     res["concept_id"] = question_concept
 
     feedback = res.get("feedback") or ("Correct! Well done." if res.get("is_correct") else "Not quite right. Let's review the concept.")
+    # A check the hook blocked (budget used up, tools paused, session facts missing) is not a wrong answer:
+    # say so, and record no grade (the "error" key makes the supervisor skip the replan).
+    if str(res.get("error", "")).startswith("tool_blocked"):
+        feedback = grader.CANNOT_CHECK_FEEDBACK
+        res["feedback"] = grader.CANNOT_CHECK_FEEDBACK
 
     return {
         "steps": ["grader"],
