@@ -74,4 +74,9 @@ def test_the_figure_fits_the_question_or_there_is_none():
     assert pick("Why does adding a resistor in parallel lower the total resistance?", "concept_parallel_combination", ["11.6.2"]) == "11.7"
     assert pick("How does a concave lens correct short-sightedness?", "concept_myopia", ["10.2"]) == "10.2"
     assert pick("Why is the sky blue?", "concept_scattering", ["10.6.2"]) is None  # the book has no figure for it
+    assert pick("What is the far point and near point of the human eye with normal vision?", "concept_accommodation", ["10.1.1"]) == "10.1"
+    assert pick("A student has difficulty reading the blackboard while sitting in the last row.", "concept_myopia", ["10.2"]) == "10.2"
+    assert pick("Why do stars twinkle?", "concept_atmospheric_refraction", ["10.5"]) == "10.9"
+    assert pick("Why do we prefer a convex mirror as a rear-view mirror in vehicles?", "concept_convex_ray_diagrams", ["9.2.2"]) == "9.8"
+    assert pick("Draw a labelled diagram to explain the formation of a rainbow.", "concept_rainbow_formation", ["10.4"]) == "10.8"
     assert pick("Can I have another hint?", "concept_reflection_laws", ["9.1"]) is None

@@ -272,7 +272,8 @@ function reply(ev, holder) {
   if (ev.error) chips.push(`<span class="chip bad">Something went wrong. Please try again.</span>`);
   if (chips.length) body.push(`<div class="chips">${chips.join("")}</div>`);
   const quizBtn = ev.concept && ev.concept.id && hasQuiz(ev.concept.id) ? `<button type="button" onclick="quizOn('${esc(ev.concept.id)}')">Take the quiz on this</button>` : "";
-  if (!ev.blocked && !ev.error && !ev.teacher_alerted) body.push(`<div class="quick">${maxed ? "" : `<button type="button" onclick="quick('Can I have another hint?')">Another hint</button>`}<button type="button" onclick="quick('I don\\'t understand. Can you explain it differently?')">Explain differently</button><button type="button" class="${maxed ? "strong" : ""}" onclick="writeAnswer()">I think I've got it</button>${quizBtn}</div>`);
+  // No stock buttons under every reply: the student just types. Only the quiz, when the topic has one.
+  if (!ev.blocked && !ev.error && !ev.teacher_alerted && quizBtn) body.push(`<div class="quick">${quizBtn}</div>`);
   // After study stress or frustration: calm next steps, never a dead end. (Severe distress: no study buttons.)
   if (ev.distress_level === "academic") body.push(`<div class="quick calm"><button type="button" onclick="quick('Can we try one very small step?')">One small step</button><button type="button" onclick="quick('Can you explain it with an everyday example?')">An everyday example</button><button type="button" onclick="takeBreak()">Take a short break</button></div>`);
   holder.className = "msg tutor" + (ev.blocked ? " stopped" : "") + (ev.distress_level ? " care" : "");

@@ -5,7 +5,7 @@
   "page": 2,
   "caption": "Schematic representation of spherical mirrors; the shaded side is non-reflecting.",
   "file": "fig_9_1.png",
-  "about": "concave convex mirror shape spherical reflecting surface curved"
+  "about": "concave convex spherical mirror shape reflecting surface curved inwards outwards bulging shaded side"
  },
  {
   "figure": "9.2",
@@ -13,7 +13,7 @@
   "page": 3,
   "caption": "(a) Concave mirror (b) Convex mirror",
   "file": "fig_9_2.png",
-  "about": "concave convex mirror focus principal axis parallel rays converge diverge sun paper burn focal"
+  "about": "concave convex mirror principal focus focal length centre of curvature pole principal axis parallel rays converge diverge sun paper burn radius"
  },
  {
   "figure": "9.4",
@@ -21,7 +21,7 @@
   "page": 6,
   "caption": "",
   "file": "fig_9_4.png",
-  "about": "ray through principal focus concave mirror reflected parallel"
+  "about": "ray passing through principal focus concave mirror after reflection parallel to principal axis"
  },
  {
   "figure": "9.5",
@@ -29,7 +29,7 @@
   "page": 6,
   "caption": "",
   "file": "fig_9_5.png",
-  "about": "ray through centre of curvature reflected back along same path"
+  "about": "ray passing through centre of curvature reflected back along the same path normal"
  },
  {
   "figure": "9.6",
@@ -37,7 +37,7 @@
   "page": 6,
   "caption": "",
   "file": "fig_9_6.png",
-  "about": "ray at the pole reflected obliquely equal angles"
+  "about": "ray incident obliquely at the pole reflected obliquely equal angles principal axis"
  },
  {
   "figure": "9.7",
@@ -45,7 +45,7 @@
   "page": 7,
   "caption": "Ray diagrams for the image formation by a concave mirror",
   "file": "fig_9_7.png",
-  "about": "object position image real inverted virtual erect upright enlarged diminished magnified concave mirror ray diagram upside down"
+  "about": "concave mirror object position image real inverted virtual erect upright enlarged diminished magnified same size beyond c between f and c at focus between pole and focus ray diagram upside down shaving mirror dentist torch headlight"
  },
  {
   "figure": "9.8",
@@ -53,7 +53,7 @@
   "page": 8,
   "caption": "Formation of image by a convex mirror",
   "file": "fig_9_8.png",
-  "about": "convex mirror image virtual erect upright diminished rear view"
+  "about": "convex mirror image always virtual erect upright diminished smaller rear view mirror vehicles wider field of view"
  },
  {
   "figure": "9.9",
@@ -61,7 +61,7 @@
   "page": 10,
   "caption": "The New Cartesian Sign Convention for spherical mirrors",
   "file": "fig_9_9.png",
-  "about": "sign convention distance positive negative object left height upwards mirror formula"
+  "about": "new cartesian sign convention distances positive negative object on the left heights upwards downwards mirror formula u v f"
  },
  {
   "figure": "9.10",
@@ -69,7 +69,7 @@
   "page": 14,
   "caption": "Refraction of light through a rectangular glass slab",
   "file": "fig_9_10.png",
-  "about": "glass slab refraction bend bends bent lateral displacement emergent ray"
+  "about": "glass slab refraction rectangular lateral displacement emergent ray parallel incident ray bends towards away from normal"
  },
  {
   "figure": "9.11",
@@ -77,7 +77,7 @@
   "page": 15,
   "caption": "",
   "file": "fig_9_11.png",
-  "about": "refraction air glass water normal angle incidence medium bends bent towards normal pencil"
+  "about": "refraction air glass water normal angle of incidence angle of refraction medium bends towards normal pencil bent water tank pond raised refractive index speed of light snell"
  },
  {
   "figure": "9.12",
@@ -85,7 +85,7 @@
   "page": 17,
   "caption": "(a) Converging action of a convex lens, (b) diverging action of a concave lens",
   "file": "fig_9_12.png",
-  "about": "convex lens converging concave lens diverging rays focus"
+  "about": "convex lens converging concave lens diverging rays focus optical centre power of a lens dioptre focal length"
  },
  {
   "figure": "9.13",
@@ -93,7 +93,7 @@
   "page": 20,
   "caption": "",
   "file": "fig_9_13.png",
-  "about": "lens ray parallel to principal axis passes through focus"
+  "about": "lens ray parallel to principal axis passes through focus after refraction"
  },
  {
   "figure": "9.14",
@@ -101,7 +101,7 @@
   "page": 21,
   "caption": "",
   "file": "fig_9_14.png",
-  "about": "lens ray through focus emerges parallel"
+  "about": "lens ray passing through principal focus emerges parallel to principal axis"
  },
  {
   "figure": "9.15",
@@ -109,7 +109,7 @@
   "page": 21,
   "caption": "",
   "file": "fig_9_15.png",
-  "about": "ray through optical centre passes undeviated lens"
+  "about": "ray through optical centre of lens passes without deviation undeviated"
  },
  {
   "figure": "9.16",
@@ -117,7 +117,7 @@
   "page": 22,
   "caption": "The position, size and the nature of the image formed by a convex lens for various positions of the object",
   "file": "fig_9_16.png",
-  "about": "convex lens image position size nature object positions real inverted"
+  "about": "convex lens image position size nature object at infinity beyond 2f between f and 2f at focus between f and optical centre real inverted virtual magnifying glass"
  },
  {
   "figure": "9.17",
@@ -125,7 +125,7 @@
   "page": 22,
   "caption": "Nature, position and relative size of the image formed by a concave lens",
   "file": "fig_9_17.png",
-  "about": "concave lens image virtual erect diminished"
+  "about": "concave lens image always virtual erect upright diminished between focus and optical centre"
  },
  {
   "figure": "10.1",
@@ -133,7 +133,7 @@
   "page": 1,
   "caption": "The human eye",
   "file": "fig_10_1.png",
-  "about": "human eye structure retina cornea lens iris pupil ciliary muscles"
+  "about": "human eye normal vision structure retina cornea crystalline eye lens iris pupil ciliary muscles optic nerve near point 25 cm far point infinity accommodation"
  },
  {
   "figure": "10.2",
@@ -141,7 +141,7 @@
   "page": 3,
   "caption": "(a), (b) The myopic eye, and (c) correction for myopia with a concave lens",
   "file": "fig_10_2.png",
-  "about": "myopia short-sightedness near-sightedness short sighted concave lens correction distant objects"
+  "about": "myopia short-sightedness near-sightedness short sighted cannot see distant far objects clearly blackboard last row far point nearer than infinity image in front of retina elongated eyeball concave lens correction"
  },
  {
   "figure": "10.3",
@@ -149,7 +149,7 @@
   "page": 3,
   "caption": "(a), (b) The hypermetropic eye, and (c) correction for hypermetropia",
   "file": "fig_10_3.png",
-  "about": "hypermetropia far-sightedness far sighted convex lens correction near point"
+  "about": "hypermetropia far-sightedness far sighted long sighted cannot see nearby objects clearly reading book near point farther than 25 cm image behind retina convex lens correction presbyopia old age reading glasses"
  },
  {
   "figure": "10.4",
@@ -157,7 +157,7 @@
   "page": 6,
   "caption": "Refraction of light through a triangular glass prism",
   "file": "fig_10_4.png",
-  "about": "prism refraction angle of deviation triangular"
+  "about": "glass prism refraction triangular angle of prism angle of deviation emergent ray"
  },
  {
   "figure": "10.5",
@@ -165,7 +165,7 @@
   "page": 7,
   "caption": "Dispersion of white light by the glass prism",
   "file": "fig_10_5.png",
-  "about": "dispersion white light prism spectrum colours violet red"
+  "about": "dispersion white light prism spectrum seven colours vibgyor violet red bend most least"
  },
  {
   "figure": "10.6",
@@ -173,7 +173,7 @@
   "page": 7,
   "caption": "Recombination of the spectrum of white light",
   "file": "fig_10_6.png",
-  "about": "recombination spectrum two prisms white light"
+  "about": "recombination spectrum two prisms inverted white light newton"
  },
  {
   "figure": "10.7",
@@ -181,7 +181,7 @@
   "page": 7,
   "caption": "Rainbow in the sky",
   "file": "fig_10_7.png",
-  "about": "rainbow sky photograph"
+  "about": "rainbow in the sky after rain opposite the sun"
  },
  {
   "figure": "10.8",
@@ -189,7 +189,7 @@
   "page": 7,
   "caption": "Rainbow formation",
   "file": "fig_10_8.png",
-  "about": "rainbow raindrop water droplet dispersion internal reflection"
+  "about": "rainbow formation raindrop water droplet dispersion internal reflection refraction sunlight"
  },
  {
   "figure": "10.10",
@@ -197,7 +197,7 @@
   "page": 8,
   "caption": "Atmospheric refraction effects at sunrise and sunset",
   "file": "fig_10_10.png",
-  "about": "sunrise sunset advance delay atmospheric refraction sun"
+  "about": "sunrise sunset advanced sunrise delayed sunset two minutes horizon atmospheric refraction"
  },
  {
   "figure": "10.9",
@@ -205,7 +205,7 @@
   "page": 8,
   "caption": "Apparent star position due to atmospheric refraction",
   "file": "fig_10_9.png",
-  "about": "star stars twinkle twinkling apparent position atmospheric refraction"
+  "about": "stars twinkle twinkling apparent star position atmospheric refraction planets do not twinkle"
  },
  {
   "figure": "11.1",
@@ -213,7 +213,7 @@
   "page": 2,
   "caption": "A schematic diagram of an electric circuit comprising – cell, electric bulb, ammeter and plug key",
   "file": "fig_11_1.png",
-  "about": "electric circuit cell bulb ammeter key switch current"
+  "about": "electric circuit cell bulb ammeter plug key switch current direction closed path"
  },
  {
   "figure": "11.2",
@@ -221,7 +221,7 @@
   "page": 5,
   "caption": "Electric circuit for studying Ohm’s law",
   "file": "fig_11_2.png",
-  "about": "ohm ohm's law circuit voltmeter ammeter nichrome wire potential difference current voltage resistance"
+  "about": "ohm's law ohm law circuit voltmeter ammeter nichrome wire potential difference current voltage resistance measure experiment"
  },
  {
   "figure": "11.3",
@@ -229,7 +229,7 @@
   "page": 6,
   "caption": "V–I graph for a nichrome wire. A straight line plot shows that as the current through a wire increases, the potential difference across the wire increases linearly – this is Ohm’s law.",
   "file": "fig_11_3.png",
-  "about": "graph straight line potential difference current ohm law"
+  "about": "v-i graph straight line potential difference against current ohm's law nichrome wire slope resistance"
  },
  {
   "figure": "11.4",
@@ -237,7 +237,7 @@
   "page": 7,
   "caption": "",
   "file": "fig_11_4.png",
-  "about": "resistance length area wire nichrome torch bulb"
+  "about": "factors resistance depends length area of cross-section thickness thick thin wire material nichrome resistivity torch bulb"
  },
  {
   "figure": "11.6",
@@ -245,7 +245,7 @@
   "page": 11,
   "caption": "Resistors in series",
   "file": "fig_11_6.png",
-  "about": "series resistors current same total resistance sum"
+  "about": "resistors in series same current total resistance sum equivalent resistance rs"
  },
  {
   "figure": "11.7",
@@ -253,7 +253,7 @@
   "page": 12,
   "caption": "Resistors in parallel",
   "file": "fig_11_7.png",
-  "about": "parallel resistors voltage same total resistance lower less smaller"
+  "about": "resistors in parallel same voltage potential difference total resistance lower less smaller equivalent resistance rp household"
  },
  {
   "figure": "11.8",
@@ -261,7 +261,7 @@
   "page": 13,
   "caption": "",
   "file": "fig_11_8.png",
-  "about": "series voltmeter potential difference across each resistor"
+  "about": "series voltmeter potential difference across each resistor sum of voltages"
  },
  {
   "figure": "11.9",
@@ -269,7 +269,7 @@
   "page": 14,
   "caption": "An electric lamp connected in series with a resistor of 4 Ω to a 6 V battery",
   "file": "fig_11_9.png",
-  "about": "lamp resistor series battery"
+  "about": "electric lamp resistor in series battery 4 ohm 6 v current"
  },
  {
   "figure": "11.11",
@@ -277,7 +277,7 @@
   "page": 16,
   "caption": "",
   "file": "fig_11_11.png",
-  "about": "parallel ammeter current each branch"
+  "about": "parallel ammeter current through each branch total current sum"
  },
  {
   "figure": "11.12",
@@ -285,7 +285,7 @@
   "page": 17,
   "caption": "An electric circuit showing the combination of series and parallel resistors",
   "file": "fig_11_12.png",
-  "about": "series parallel combination circuit"
+  "about": "series and parallel combination of resistors circuit network"
  },
  {
   "figure": "11.13",
@@ -293,6 +293,6 @@
   "page": 19,
   "caption": "A steady current in a purely resistive electric circuit",
   "file": "fig_11_13.png",
-  "about": "heating effect resistor heat heater wire hot purely resistive"
+  "about": "heating effect of electric current resistor heat produced heater wire electric iron toaster hot joule purely resistive"
  }
 ]

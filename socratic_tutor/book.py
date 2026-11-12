@@ -291,30 +291,55 @@ def section_title(section_id: str) -> str:
     return _join_split_words(str(row.get("section_title") or ""))
 
 
-def _figure_words(num: str) -> set[str]:
-    f = _figures().get(num) or {}
-    return _words(f.get("caption", "") + " " + f.get("about", ""))
+def _stem(w: str) -> str:
+    for suf in ("ing", "ed", "es", "s"):
+        if w.endswith(suf) and len(w) - len(suf) >= 4:
+            return w[: -len(suf)]
+    return w
+
+
+def _stems(text: str) -> set[str]:
+    return {_stem(w) for w in _words(text)}
+
+
+@lru_cache(maxsize=1)
+def _figure_index() -> tuple[dict[str, set[str]], dict[str, float]]:
+    """Each figure's words (caption + its "about" list in figures.json), and how rare each word is across
+    figures: a word only one figure has ("blackboard", "twinkle") counts for much more than "lens" or "ray"."""
+    import math
+
+    words = {n: _stems(f.get("caption", "") + " " + f.get("about", "")) for n, f in _figures().items()}
+    df: Counter = Counter(w for ws in words.values() for w in ws)
+    total = len(words) or 1
+    return words, {w: math.log((total + 1) / (c + 0.5)) for w, c in df.items()}
 
 
 def pick_figure(query: str, concept_id: str | None, section_ids: list[str]) -> dict[str, Any] | None:
-    """The figure that matches the question best, or none (an unrelated figure is worse than no figure).
+    """The figure that fits the question best, or none (an unrelated figure is worse than no figure).
 
-    Candidates: the topic's own figures and the figures the cited sections refer to. Each is scored by the
-    words it shares with the question (its caption plus a short "about" list in figures.json, e.g. 9.7:
-    "image real inverted virtual upright ... upside down"). The topic's own figure wins a tie.
+    Every figure in the book is a candidate. Its score is the rarity-weighted overlap between the question's
+    words and the figure's words (caption + "about" in figures.json), plus a little for being the topic's own
+    figure or a figure the cited section refers to. Below the bar, no figure is shown.
     """
-    q = _words(query)
-    own = [n for n in CONCEPT_FIGURES.get(concept_id or "", []) if n in _figures()]
-    cands = list(own)
-    for sid in section_ids[:2]:
-        cands += [n for n in figures_in_section(sid) if n not in cands]
-    if not cands:
+    words, idf = _figure_index()
+    if not words:
         return None
-    scored = sorted(cands, key=lambda n: (-len(q & _figure_words(n)), n not in own, cands.index(n)))
-    best = scored[0]
-    if len(q & _figure_words(best)) >= 2 or (best in own and len(q & _figure_words(best)) >= 1):
-        return figure(best)
-    return None
+    q = _stems(query)
+    own = set(CONCEPT_FIGURES.get(concept_id or "", []))
+    cited = {n for sid in section_ids[:2] for n in figures_in_section(sid)}
+
+    def overlap(n: str) -> float:
+        return sum(idf.get(w, 0.0) for w in q & words[n])
+
+    best = max(words, key=lambda n: (overlap(n), n in cited))
+    mine = max(own, key=overlap) if own else None
+    # The topic's own figure, when the question touches it at all and nothing else fits clearly better.
+    if mine and overlap(mine) > 0 and overlap(best) < overlap(mine) + 2.0:
+        return figure(mine)
+    # Otherwise the best match must be clear: a topic with no figure in the book (why the sky is blue)
+    # needs a much stronger match before a figure from elsewhere is shown.
+    bar = 2.2 if (own or best in cited) else 4.0
+    return figure(best) if overlap(best) >= bar else None
 
 
 def book_card(section_ids: list[str], query: str = "", concept_id: str | None = None) -> dict[str, Any] | None:
