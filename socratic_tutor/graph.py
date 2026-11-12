@@ -3,25 +3,24 @@
 from __future__ import annotations
 
 import re
-import uuid
-import json
-import hashlib
 from typing import Any
 from langgraph.graph import StateGraph, START, END
-from langgraph.types import interrupt, Command
+from langgraph.types import Command
 from langchain_core.messages import AnyMessage, AIMessage, HumanMessage
 
 from socratic_tutor import config
-from socratic_tutor import tool_hooks
+from socratic_tutor import approval_gate, solver_key, tool_hooks
 from socratic_tutor.state import SocraticState
 from socratic_tutor.policy import check_input_guardrails, check_answer_leak, check_reply, keep_retrieved_citations
 from socratic_tutor.concept_graph import ConceptGraph
 from socratic_tutor.learner_store import LearnerStore
 from socratic_tutor.reflexion import ReflexionPlaybook
-from socratic_tutor.tools import textbook_kb, math_tools, question_bank
+from socratic_tutor.tools import textbook_kb, question_bank, question_bank_server
 from socratic_tutor.agents import diagnostician, tutor, grader, question_setter
 
 REFUSAL = "I cannot fulfill this request as entered. Let's focus on our NCERT study goals."
+# How many questions the question setter drafts for one teacher request, unless the request says (PR-2, P2-2).
+QUESTION_SET_SIZE: int = 3
 # Used only if the guardrail ever stops a message without giving its own reply (it always gives one today).
 SUPPORTIVE_REPLY_FALLBACK = (
     "It is completely normal to feel stuck or frustrated when studying physics. "
@@ -355,7 +354,7 @@ def node_supervisor(state: SocraticState) -> dict:
         return {
             "steps": ["supervisor"],
             "turn_steps": turn_steps + ["supervisor"],
-            "plan": ["propose_question", "teacher_gate"],
+            "plan": ["draft_questions", "solve_keys", "propose_set"],
             "mastery_map": mastery,
             "current_concept_id": current_concept,
             "next_recommended_concept": next_concept,
@@ -724,150 +723,89 @@ def node_grader(state: SocraticState) -> dict:
     }
 
 
-def _compute_payload_hash(payload: dict) -> str:
-    canonical = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-
-
-def _calculate_or_verify_answer(prompt_text: str, gold_answer: str, concept: str) -> str:
-    """Ground and calculate numerical answer keys using deterministic math_tools before showing/proposing."""
-    # 1. Parallel combination
-    if "parallel" in prompt_text.lower() and any(w in prompt_text.lower() for w in ["ohm", "ω", "resistor"]):
-        vals = [float(x) for x in re.findall(r"(\d+(?:\.\d+)?)\s*(?:ohm|Ω|\b)", prompt_text, re.I)]
-        if len(vals) >= 2:
-            res = math_tools.solve_parallel_resistance(vals[:5])
-            if res.get("ok"):
-                return f"{res['value']:g} ohm"
-
-    # 2. Series combination
-    if "series" in prompt_text.lower() and any(w in prompt_text.lower() for w in ["ohm", "ω", "resistor"]):
-        vals = [float(x) for x in re.findall(r"(\d+(?:\.\d+)?)\s*(?:ohm|Ω|\b)", prompt_text, re.I)]
-        if len(vals) >= 2:
-            res = math_tools.solve_series_resistance(vals[:5])
-            if res.get("ok"):
-                return f"{res['value']:g} ohm"
-
-    # 3. Spherical mirror formula
-    if "mirror" in prompt_text.lower() and "cm" in prompt_text.lower():
-        u_m = re.search(r"(\d+(?:\.\d+)?)\s*cm\s+(?:in\s+front|from)", prompt_text, re.I) or re.search(r"object.*?(\d+(?:\.\d+)?)\s*cm", prompt_text, re.I)
-        f_m = re.search(r"focal\s+length.*?(\d+(?:\.\d+)?)\s*cm", prompt_text, re.I)
-        if u_m and f_m:
-            u_val = -abs(float(u_m.group(1)))
-            is_concave = "concave" in prompt_text.lower()
-            f_val = -abs(float(f_m.group(1))) if is_concave else abs(float(f_m.group(1)))
-            res = math_tools.solve_mirror_formula("cm", u=u_val, f=f_val)
-            if res.get("ok"):
-                return f"v = {res['value']:g} cm"
-
-    # 4. Spherical lens formula
-    if "lens" in prompt_text.lower() and "cm" in prompt_text.lower():
-        u_m = re.search(r"(\d+(?:\.\d+)?)\s*cm\s+(?:in\s+front|from)", prompt_text, re.I) or re.search(r"object.*?(\d+(?:\.\d+)?)\s*cm", prompt_text, re.I)
-        f_m = re.search(r"focal\s+length.*?(\d+(?:\.\d+)?)\s*cm", prompt_text, re.I)
-        if u_m and f_m:
-            u_val = -abs(float(u_m.group(1)))
-            is_convex = "convex" in prompt_text.lower()
-            f_val = abs(float(f_m.group(1))) if is_convex else -abs(float(f_m.group(1)))
-            res = math_tools.solve_lens_formula("cm", u=u_val, f=f_val)
-            if res.get("ok"):
-                return f"v = {res['value']:g} cm"
-
-    # 5. Lens power
-    if "power" in prompt_text.lower() and ("focal length" in prompt_text.lower() or " dioptre" in prompt_text.lower() or " d" in prompt_text.lower()):
-        f_m = re.search(r"focal\s+length.*?(\d+(?:\.\d+)?)\s*m\b", prompt_text, re.I)
-        if f_m:
-            res = math_tools.solve_lens_power(f_m=float(f_m.group(1)))
-            if res.get("ok"):
-                return f"P = {res['value']:g} D"
-
-    # 6. Fallback: clean and standardize numeric answer if readable by math_tools
-    if gold_answer:
-        tidy = math_tools.tidy_answer_text(gold_answer)
-        q = math_tools.read_quantity(tidy)
-        if q.get("ok"):
-            return tidy
-
-    return gold_answer
-
-
 def node_question_setter(state: SocraticState) -> dict:
-    concept = state.get("current_concept_id", "concept_reflection_laws")
-    res = question_setter.select_question(concept)
-    prompt_text = res.get("question_text", "State the laws of reflection.")
-    raw_gold_answer = res.get("gold_answer", "")
-    difficulty = res.get("difficulty", "medium")
+    """The question setter (R4 plumbing PR-2, decision I2): the model drafts the questions, the SOLVER computes
+    every answer key, and the drafts wait for the teacher as ONE set on the approval gate's own thread.
 
-    # Step 5: Solver calculates or grounds numeric answers before the question is proposed/shown
-    gold_answer = _calculate_or_verify_answer(prompt_text, raw_gold_answer, concept)
+    Nothing pauses in this graph: the set waits on "qbset:<set_id>" (approval_gate), so this run ends at once
+    (question_setter -> END). No answer key is ever put in this graph's state.
+    """
+    # Flowchart (each [box] matches a comment below):
+    #
+    #   [QS1] which concept (the teacher's pick), and how many questions?   no or unknown concept -> [QS4]
+    #   [QS2] one model call per question (easy, medium, hard); the solver keys each draft (solver_key)
+    #   [QS3] any draft left?                                             no -> [QS4], nothing is sent
+    #         yes -> approval_gate.propose_set(drafts): ONE set, waiting for the teacher
+    #   [QS4] the summary: ok, the set id, the question ids, every refusal with its difficulty. Never a key.
 
-    # Propose question to bank in pending_approval status
-    prop = question_bank.propose_question(
-        concept_id=concept,
-        difficulty=difficulty,
-        prompt=prompt_text,
-        gold_answer=gold_answer,
-    )
-    qid = prop["question_id"]
-    set_id = f"set_{uuid.uuid4().hex[:8]}"
+    # This turn's trajectory, plus what the summary will report (filled in below).
+    turn_steps: list[str] = state.get("turn_steps", []) + ["question_setter"]
+    # Every refused draft: {"difficulty", "error"}.
+    refused: list[dict[str, Any]] = []
+    # The set that went to the teacher ("" if none did), and its question ids.
+    set_id: str = ""
+    question_ids: list[str] = []
+    # One sentence for the teacher about what happened.
+    note: str = ""
+    # How many of the drafts are the agent's fixed fallback questions (the model gave none).
+    fallback_count: int = 0
 
-    payload_data = {
+    # [QS1] the concept the teacher asked for, and the set size (QUESTION_SET_SIZE unless the request says).
+    concept: Any = state.get("current_concept_id")
+    count: int = QUESTION_SET_SIZE
+    asked_size: Any = state.get("question_set_size")
+    if isinstance(asked_size, int) and not isinstance(asked_size, bool):
+        count = asked_size
+    if not isinstance(concept, str) or concept == "":
+        note = "No concept was given, so no questions were drafted."
+    elif concept not in question_bank_server.load_concept_ids():
+        note = "Unknown concept '" + concept + "', so no questions were drafted."
+    else:
+        # [QS2] one model call per draft; the solver computes each key, and refuses what it can't compute.
+        made: dict[str, Any] = solver_key.drafts_for_concept(concept, count, question_setter.select_question)
+        drafts: list[dict[str, Any]] = made["drafts"]
+        fallback_count = made["fallback_count"]
+        for item in made["refused"]:
+            refused.append({"difficulty": item["difficulty"], "error": item["error"]})
+        # [QS3] nothing left to send: the teacher gets nothing to approve.
+        if len(drafts) == 0:
+            note = "No draft could be keyed by the solver, so nothing was sent to the teacher."
+        else:
+            # The drafts go to the teacher as one set (the question-bank checks run inside propose_set).
+            proposed: dict[str, Any] = approval_gate.propose_set(drafts)
+            # A draft the bank refused (e.g. a duplicate) is reported with its difficulty.
+            for item in proposed.get("refused", []):
+                position: Any = item.get("draft")
+                difficulty: str = ""
+                if isinstance(position, int) and 0 <= position < len(drafts):
+                    difficulty = drafts[position]["difficulty"]
+                refused.append({"difficulty": difficulty, "error": str(item.get("error", ""))})
+            if proposed.get("ok") is True:
+                set_id = str(proposed["set_id"])
+                question_ids = list(proposed["question_ids"])
+                note = (str(len(question_ids)) + " question(s) are waiting for the teacher's approval in set "
+                        + set_id + ".")
+                # Say so when fixed fallback questions stood in for the model's own (e.g. the model is down).
+                if fallback_count > 0:
+                    note = (note + " " + str(fallback_count) + " of the drafts were fixed fallback questions, "
+                            "because the model gave no usable question.")
+            else:
+                note = str(proposed.get("error", "The set could not be sent to the teacher."))
+
+    # [QS4] what the caller (the teacher's request) learns. Ids and reasons only, never an answer key.
+    summary: dict[str, Any] = {
+        "ok": set_id != "",
         "set_id": set_id,
-        "question_id": qid,
-        "concept": concept,
-        "prompt": prompt_text,
-        "gold_answer": gold_answer,
-        "difficulty": difficulty,
+        "question_ids": question_ids,
+        "refused": refused,
+        "note": note,
     }
-    payload_data["payload_hash"] = _compute_payload_hash(payload_data)
-
     return {
         "steps": ["question_setter"],
-        "turn_steps": state.get("turn_steps", []) + ["question_setter"],
-        "teacher_approval_required": True,
-        "teacher_approval_payload": payload_data,
-    }
-
-
-def node_teacher_approval_gate(state: SocraticState) -> dict:
-    payload = state.get("teacher_approval_payload", {})
-    decision = interrupt({"payload": payload, "prompt": "Approve new question for shared bank?"})
-
-    is_dict = isinstance(decision, dict)
-    action = decision.get("action") if is_dict else None
-    decision_hash = decision.get("payload_hash") if is_dict else None
-
-    # Expected payload hash
-    raw_payload = {k: v for k, v in payload.items() if k != "payload_hash"}
-    expected_hash = payload.get("payload_hash") or _compute_payload_hash(raw_payload)
-
-    # Validate payload hash if provided
-    hash_valid = True
-    if decision_hash is not None:
-        hash_valid = (decision_hash == expected_hash)
-
-    approved = is_dict and (action == "approve") and hash_valid
-
-    qid = payload.get("question_id")
-    if approved:
-        if qid:
-            question_bank.publish_approved_question(qid)
-        else:
-            prop = question_bank.propose_question(
-                concept_id=payload.get("concept", "concept_reflection_laws"),
-                difficulty=payload.get("difficulty", "medium"),
-                prompt=payload.get("prompt", ""),
-                gold_answer=payload.get("gold_answer", ""),
-            )
-            qid = prop["question_id"]
-            question_bank.publish_approved_question(qid)
-        msg = "Question approved and published."
-    else:
-        msg = "Question proposal rejected."
-
-    return {
-        "steps": ["teacher_approval_gate"],
-        "turn_steps": state.get("turn_steps", []) + ["teacher_approval_gate"],
+        "turn_steps": turn_steps,
         "teacher_approval_required": False,
-        "response": msg,
+        "response": note,
+        "proposed_set": summary,
     }
 
 
@@ -923,7 +861,6 @@ def build_graph(checkpointer=None):
     workflow.add_node("output_guardrail", node_output_guardrail)
     workflow.add_node("grader", node_grader)
     workflow.add_node("question_setter", node_question_setter)
-    workflow.add_node("teacher_approval_gate", node_teacher_approval_gate)
 
     workflow.add_edge(START, "input_guardrail")
     workflow.add_conditional_edges(
@@ -945,8 +882,8 @@ def build_graph(checkpointer=None):
     workflow.add_edge("diagnostician", "supervisor")
     workflow.add_edge("tutor", "supervisor")
     workflow.add_edge("grader", "supervisor")
-    workflow.add_edge("question_setter", "teacher_approval_gate")
-    workflow.add_edge("teacher_approval_gate", END)
+    # PR-2: the question setter's set waits on the approval gate's own thread, so this run ends here.
+    workflow.add_edge("question_setter", END)
     workflow.add_conditional_edges(
         "output_guardrail",
         route_output,

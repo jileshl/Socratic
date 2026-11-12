@@ -1,0 +1,253 @@
+item_id,run_id,case_id,misconception,transcript
+20261109T165157Z_smoke_dev_r1::sim_student_19,20261109T165157Z_smoke_dev_r1,sim_student_19,MISCON_ELEC_06; MISCON_ELEC_07,"Student: In series, does each resistor get a share of the current? And in parallel do the branches split it equally?
+
+The question I'm working on: Resistors of 3, 5 and 4 ohm are in series with a 6 V battery. What current flows through the 5 ohm resistor?
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.6.1)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]"
+20261109T165157Z_smoke_dev_r1::sim_student_17,20261109T165157Z_smoke_dev_r1,sim_student_17,MISCON_ELEC_04,"Student: R = V/I. More voltage means more resistance. So at 6 V the resistor has less resistance. Right?
+
+The question I'm working on: A resistor carries 3 A at 12 V. What current flows through it at 6 V, at the same temperature?
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.7)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]"
+20261109T165157Z_smoke_dev_r1::sim_student_13,20261109T165157Z_smoke_dev_r1,sim_student_13,MISCON_EYE_07,"Student: How does a prism make colours out of plain white light? Where do the colours come from?
+
+The question I'm working on: When white light goes through a prism, where do all the colours come from?
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 10.4)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]"
+20261109T165157Z_smoke_dev_r1::sim_student_20,20261109T165157Z_smoke_dev_r1,sim_student_20,MISCON_ELEC_07,"Student: parallel means current splits equally into both branches na? 6 ohm and 3 ohm
+
+The question I'm working on: A 6 ohm and a 3 ohm resistor are in parallel across 6 V. What current flows through the 3 ohm resistor?
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.6.2)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]"
+20261109T165157Z_smoke_dev_r1::sim_student_09,20261109T165157Z_smoke_dev_r1,sim_student_09,MISCON_LIGHT_09; MISCON_LIGHT_10,"Student: Convex lens = magnifying glass, so the image is always bigger. Just give me v for this question.
+
+The question I'm working on: An object is 60 cm from a convex lens of focal length 20 cm. Find the image distance and say whether the image is enlarged.
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 9.3.7)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]"
+20261109T165157Z_smoke_dev_r1::sim_student_08,20261109T165157Z_smoke_dev_r1,sim_student_08,MISCON_LIGHT_07,"Student: I think light always bends towards the normal when it refracts? Is that the rule?
+
+The question I'm working on: A ray goes from glass into air at an angle of incidence of 30 degrees. Does it bend towards or away from the normal?
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 9.3.1)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]"
+20261109T165157Z_smoke_dev_r1::sim_student_21,20261109T165157Z_smoke_dev_r1,sim_student_21,MISCON_ELEC_09,"Student: If current doubles, heat doubles, right? I wrote that in my test and got it wrong, I don't know why.
+
+The question I'm working on: A 20 ohm heater carries 4 A for 10 s. How much heat is produced?
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.7)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]"
+20261109T165157Z_smoke_dev_r1::sim_student_05,20261109T165157Z_smoke_dev_r1,sim_student_05,MISCON_LIGHT_03,"Student: Why is the image in a concave mirror always upside down? Is it always like that?
+
+The question I'm working on: An object stands 6 cm in front of a concave mirror of focal length 10 cm. Where is the image and what is it like?
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 9.2.1)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]"
+20261109T165157Z_smoke_dev_r1::sim_student_16,20261109T165157Z_smoke_dev_r1,sim_student_16,MISCON_ELEC_03,"Student: Voltmeter goes in series like the ammeter, right? Just confirm.
+
+The question I'm working on: Where should I connect the voltmeter to measure the voltage across the lamp in my circuit?
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.6.1)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]"
+20261109T165157Z_smoke_dev_r1::sim_student_01,20261109T165157Z_smoke_dev_r1,sim_student_01,MISCON_LIGHT_01,"Student: Can you help me with this? I think angles measured from the mirror surface.
+
+The question I'm working on: A ray strikes a plane mirror making an angle of 30 degrees with the mirror surface. What is the angle of reflection?
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 9.1)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]"
+20261109T165157Z_smoke_dev_r1::sim_student_11,20261109T165157Z_smoke_dev_r1,sim_student_11,MISCON_EYE_02,"Student: Eye focuses near objects by moving the retina back. That's accommodation. Correct?
+
+The question I'm working on: How does my eye focus on a book right after I look at a far-away tree?
+Tutor: {""is_correct"": true, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 10.1.1)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]"
+20261109T165157Z_smoke_dev_r1::sim_student_07,20261109T165157Z_smoke_dev_r1,sim_student_07,MISCON_LIGHT_06,"Student: In the mirror formula I did m = v/u and got +2, so the image is erect? Also is there a match today lol
+
+The question I'm working on: For a concave mirror, u = -15 cm and v = -30 cm. Find the magnification and say whether the image is erect or inverted.
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 9.2.4)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]"
+20261109T165157Z_smoke_dev_r1::sim_student_18,20261109T165157Z_smoke_dev_r1,sim_student_18,MISCON_ELEC_05,"Student: Thicker wire has more metal, so it should block current more, right? That's what makes sense to me!
+
+The question I'm working on: Wire A has an area of 1 mm^2 and resistance 6 ohm. Wire B is the same metal and length but has an area of 3 mm^2. What is the resistance of B?
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]"
+20261109T165157Z_smoke_dev_r1::sim_student_10,20261109T165157Z_smoke_dev_r1,sim_student_10,MISCON_EYE_01,"Student: The eye chapter is fun! So the pupil is like the camera lens that focuses everything, right?
+
+The question I'm working on: Which part of my eye actually forms the image on the retina, and what does the pupil do?
+Tutor: {""is_correct"": true, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 10.1)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]"
+20261109T165157Z_smoke_dev_r1::sim_student_15,20261109T165157Z_smoke_dev_r1,sim_student_15,MISCON_EYE_11,"Student: For myopia correction I chose a convex lens because it focuses light. Far point 1.5 m. Is the lens type right?
+
+The question I'm working on: The far point of a myopic eye is 1.5 m. What lens power is needed, and what kind of lens?
+Tutor: {""is_correct"": true, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 10.2)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]"
+20261109T165157Z_smoke_dev_r1::sim_student_03,20261109T165157Z_smoke_dev_r1,sim_student_03,MISCON_ELEC_01,"Student: Can you help me with this? I think conventional current follows electron flow.
+
+The question I'm working on: Electrons move from the negative terminal to the positive terminal through the wire. Which way should I draw the current arrow?
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.1)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]"
+20261109T165157Z_smoke_dev_r1::sim_student_02,20261109T165157Z_smoke_dev_r1,sim_student_02,MISCON_LIGHT_02,"Student: Can you help me with this? I think focus and centre of curvature are the same point.
+
+The question I'm working on: A concave mirror has a radius of curvature of 30 cm. How far from the pole should I mark F?
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 9.2.4)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]"
+20261109T165157Z_smoke_dev_r1::sim_student_14,20261109T165157Z_smoke_dev_r1,sim_student_14,MISCON_EYE_10,"Student: sky is blue because air is blue right? or because of the sea
+
+The question I'm working on: Why is the sky blue on a clear day?
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 10.6.2)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]"
+20261109T165157Z_smoke_dev_r1::sim_student_06,20261109T165157Z_smoke_dev_r1,sim_student_06,MISCON_LIGHT_05; MISCON_LIGHT_06,"Student: I wrote f = +20 cm because the focus is real. Then I used m = v/u. Can you check my method?
+
+The question I'm working on: An object is 30 cm in front of a concave mirror of focal length 20 cm. Find the image distance.
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 9.2.4)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]"
+20261109T165157Z_smoke_dev_r1::sim_student_12,20261109T165157Z_smoke_dev_r1,sim_student_12,MISCON_EYE_03; MISCON_EYE_11,"Student: Near-sighted means you can't see near things, and we fix it with a convex lens? I always mix this up in tests.
+
+The question I'm working on: Riya reads her book easily but cannot read the blackboard from the back row. Which defect does she have?
+Tutor: {""is_correct"": true, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 10.2)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]
+Tutor: {""is_correct"": false, ""score"": 0.5, ""feedback"": ""stub""} (Refer to NCERT Section 11.5)
+Student: Hmm, I'm not sure. Can you give me another hint? [STUB]"

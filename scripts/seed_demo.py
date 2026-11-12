@@ -1,29 +1,34 @@
-"""Put a few clearly-labelled demo questions in the bank, waiting for teacher approval.
+"""Clearly-labelled demo data for the live demo and the backup recording.
 
-Until the question-setter agent proposes items through the graph, this lets the
-team demo the approval gate (approve, edit-invalidates-approval, reject) in the
-teacher view. Answer keys come from the tutor's own calculator, never typed in.
+    python -m scripts.seed_demo            questions waiting for teacher approval
+    python -m scripts.seed_demo --class    also the demo class: personas A/B + six demo students
+    python -m scripts.seed_demo --clear    remove every demo student (questions stay)
 
-    python -m scripts.seed_demo
+The teacher view's "Demo guide" tab does the same (only when OPS_DEMO=1).
+What is and is not added is described in socratic_tutor/web/demo_data.py.
 """
 
 from __future__ import annotations
 
-from socratic_tutor.tools import math_tools, question_bank
+import argparse
+
+from socratic_tutor.learner_store import LearnerStore
+from socratic_tutor.web import demo_data
+from socratic_tutor.web.ops_store import OpsStore
 
 
 def main() -> None:
-    mirror = math_tools.solve_mirror_formula("cm", u=-30.0, f=-20.0)
-    lens = math_tools.solve_lens_formula("cm", u=-60.0, f=20.0)
-    parallel = math_tools.solve_parallel_resistance([6.0, 3.0])
-    items = [
-        ("concept_mirror_formula", "medium", "[DEMO] An object is 30 cm in front of a concave mirror of focal length 20 cm. Find the image distance.", f"{mirror['value']:g} cm"),
-        ("concept_lens_formula", "medium", "[DEMO] An object is 60 cm from a convex lens of focal length 20 cm. Find the image distance.", f"{lens['value']:g} cm"),
-        ("concept_parallel_combination", "easy", "[DEMO] Find the equivalent resistance of 6 ohm and 3 ohm in parallel.", f"{parallel['value']:g} ohm"),
-    ]
-    for concept, difficulty, prompt, answer in items:
-        out = question_bank.propose_question(concept, difficulty, prompt, answer)
-        print(f"proposed {out['question_id']}: {prompt[7:60]}…  ({answer})")
+    parser = argparse.ArgumentParser(description="Clearly-labelled demo data")
+    parser.add_argument("--class", dest="demo_class", action="store_true", help="also add the demo class and personas A/B")
+    parser.add_argument("--clear", action="store_true", help="remove every demo student")
+    args = parser.parse_args()
+    if args.clear:
+        print(demo_data.clear_demo_class(LearnerStore(), OpsStore()))
+        return
+    if args.demo_class:
+        print(demo_data.seed_demo_class(LearnerStore(), OpsStore()))
+    for item in demo_data.propose_demo_questions():
+        print(f"proposed {item['question_id']}: {item['prompt'][7:60]}…  ({item['answer']})")
     print("Open the teacher view → Approvals to review them.")
 
 

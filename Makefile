@@ -7,27 +7,27 @@ help:
 	@grep -E '^[a-z-]+:.*?##' $(MAKEFILE_LIST) | sed 's/:.*##/\t/' | column -t -s "$$(printf '\t')"
 
 check:   ## preflight: python version, packages, API keys, index status
-	$(PY) scripts/check_env.py
+	$(PY) -m scripts.check_env
 
 setup:   ## install dependencies and build NCERT index
-	$(PY) scripts/check_env.py || true
+	$(PY) -m scripts.check_env || true
 	$(PY) -m pip install -r requirements.txt
-	$(PY) scripts/build_index.py --force
+	$(PY) -m scripts.build_index --force
 
-index:   ## rebuild the NCERT textbook hybrid index
-	$(PY) scripts/build_index.py --force
+index:   ## rebuild the NCERT textbook hybrid index (e.g. make index, make index SOURCE_DIR=data)
+	$(PY) -m scripts.build_index $(if $(SOURCE_DIR),--source-dir $(SOURCE_DIR),) --force
 
 run:     ## run one query: make run Q="Why is concave mirror image inverted?"
-	$(PY) scripts/run_one.py "$(Q)" $(if $(S),--student $(S),)
+	$(PY) -m scripts.run_one "$(Q)" $(if $(S),--student $(S),)
 
 dev:     ## run evaluation over the development student cases
-	$(PY) scripts/evaluate_dev.py --workers 4 --show 5
+	$(PY) -m scripts.evaluate_dev --workers 4 --show 5
 
 reflexion: ## run the L12 Reflexion loop to generate misconception teaching lessons
-	$(PY) scripts/run_reflexion.py --dev-only
+	$(PY) -m scripts.run_reflexion --dev-only
 
 retrieval: ## test retrieval recall@5 only (no LLM calls)
-	$(PY) scripts/evaluate_dev.py --retrieval-only
+	$(PY) -m scripts.evaluate_dev --retrieval-only
 
 app:     ## launch the Socratic Tutor web UI
 	$(PY) -m socratic_tutor.app
@@ -46,8 +46,8 @@ eval:    ## run one experiment: make eval E=e1_c2 SPLIT=dev REPEATS=1
 eval-list: ## list the evaluation experiments (evalkit/experiments.py)
 	$(PY) -m evalkit.runner --list
 
-report:  ## build the evaluation tables from evalkit/results/experiment_log.csv
-	$(PY) -m evalkit.report
+report:  ## build eval tables. Params: E=<exp> ALL=1 RETRIEVAL=1 SPLIT=dev REPEATS=1 LIMIT=3 STUB=1 OUT=<path>
+	$(PY) -m evalkit.report $(if $(E),--run $(E),) $(if $(ALL),--run-all,) $(if $(RETRIEVAL),--run-retrieval,) $(if $(SPLIT),--split $(SPLIT),) $(if $(REPEATS),--repeats $(REPEATS),) $(if $(LIMIT),--limit $(LIMIT),) $(if $(STUB),--stub,) $(if $(INCLUDE_STUB),--include-stub,) $(if $(OUT),--out $(OUT),)
 
 gate:    ## CI eval gate: fail if dev Recall@5 drops below CI_MIN_RECALL_AT_5 (config.py)
 	$(PY) -m scripts.check_threshold
@@ -69,5 +69,5 @@ docker-check: ## validate the compose file and build the image (CI runs this too
 up:      ## start everything with Docker (app, Prometheus, Grafana)
 	docker compose -f docker/docker-compose.yml up --build
 
-seed-demo: ## add three [DEMO] questions waiting for teacher approval
-	$(PY) -m scripts.seed_demo
+seed-demo: ## demo data: [DEMO] questions for approval; add CLASS=1 for personas A/B and a demo class, CLEAR=1 to remove it
+	$(PY) -m scripts.seed_demo $(if $(CLASS),--class,) $(if $(CLEAR),--clear,)

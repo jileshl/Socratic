@@ -8,51 +8,97 @@
 </head>
 <body>
 <header>
-  <div><h1>Teacher view</h1><div class="sub">Socratic Tutor · class overview, approvals, alerts</div></div>
-  <div class="row"><a class="btn" href="/">Student view</a><button id="logout" class="hidden" onclick="logout()">Sign out</button></div>
+  <div class="brand"><span class="prism" aria-hidden="true"></span><div><h1>Teacher view</h1><div class="sub">Socratic Tutor, NCERT Class 10 Science</div></div></div>
+  <div class="row">
+    <span class="presenter-badge presenter-only">Presenter mode</span>
+    <label class="row muted" style="margin:0;gap:6px" title="Refresh every 15 seconds"><input type="checkbox" id="live" checked onchange="liveToggle()"> Live updates</label>
+    <a class="btn presenter-only" href="/?demo=1" target="_blank">Student view</a><button id="logout" class="hidden" onclick="logout()">Sign out</button>
+  </div>
 </header>
 <main>
-  <div id="login" class="panel">
-    <b>Sign in</b>
-    <p class="muted">The teacher role comes from this sign-in only. Typing "I'm the teacher" in the student chat never unlocks anything.</p>
-    <form class="row" onsubmit="login(event)"><input id="pin" type="password" placeholder="Teacher PIN" autocomplete="current-password"><button class="primary">Sign in</button><span id="loginErr" class="error"></span></form>
+  <div id="login" class="panel" style="max-width:480px">
+    <h2>Sign in</h2>
+    <p class="muted">Only this sign-in gives the teacher role. Typing "I'm the teacher" in the student chat never unlocks anything.</p>
+    <form class="row" onsubmit="login(event)"><input id="pin" type="password" placeholder="Teacher PIN" autocomplete="current-password" aria-label="Teacher PIN"><button class="primary">Sign in</button></form>
+    <p id="loginErr" class="error" role="alert"></p>
   </div>
 
   <div id="app" class="hidden">
+    <div id="demoBanner" class="panel banner hidden"></div>
+    <div class="attention" id="attention"></div>
     <div class="tabs">
       <button data-tab="dash" class="on" onclick="tab('dash')">Class overview</button>
-      <button data-tab="appr" onclick="tab('appr')">Approvals <span id="apprCount"></span></button>
-      <button data-tab="alerts" onclick="tab('alerts')">Alerts <span id="alertCount"></span></button>
-      <button data-tab="labels" onclick="tab('labels')">Label transcripts</button>
+      <button data-tab="appr" onclick="tab('appr')">Approvals <span id="apprCount" class="count"></span></button>
+      <button data-tab="alerts" onclick="tab('alerts')">Alerts <span id="alertCount" class="count"></span></button>
+      <button data-tab="labels" onclick="tab('labels')">Score conversations</button>
+      <button data-tab="guide" class="presenter-only" onclick="tab('guide')">Demo guide</button>
     </div>
 
     <section id="t-dash">
-      <div class="cards" id="cards"></div>
-      <div class="panel" style="margin-top:14px"><b>Misconceptions seen across the class</b><table id="miscTable"></table></div>
-      <div class="panel"><b>Average mastery by concept</b><table id="masteryTable"></table></div>
+      <div class="stats" id="stats"></div>
+      <div class="grid2">
+        <div class="panel"><h2>Misconceptions across the class</h2><p class="muted">How many students the tutor saw with each misconception, by chapter.</p><div id="miscTable"></div></div>
+        <div class="panel"><h2>Mastery by topic</h2><p class="muted">Class average. Green 70% and above, amber 40 to 69%, red below 40%.</p><div id="masteryTable"></div></div>
+      </div>
+      <div class="panel"><h2>Monitoring</h2><p class="muted">Live charts and the answer-leak alert.</p>
+        <div class="row"><a class="btn" id="grafanaLink" target="_blank" rel="noopener">Open the Grafana dashboard</a><a class="btn" id="promLink" target="_blank" rel="noopener">Open Prometheus alerts</a></div></div>
       <p class="muted" id="generated"></p>
     </section>
 
     <section id="t-appr" class="hidden">
-      <p class="muted">New questions reach students only after you approve the exact version shown. If anything changes after you open an item (including your own edit), the earlier approval no longer counts and you must approve the new version.</p>
+      <p class="muted" style="max-width:75ch">Questions reach students only after you approve the exact version shown. Each version has its own fingerprint. If anything changes after you open it, including your own edit, an earlier approval no longer counts and the new version needs approving.</p>
+      <div id="apprOff" class="panel banner hidden" role="alert"></div>
+      <div class="panel">
+        <h2>Propose a new question set</h2>
+        <p class="muted" style="max-width:75ch">The question setter writes the questions; the calculator computes every answer key. Nothing reaches students until you approve the set.</p>
+        <div class="row">
+          <label class="muted" for="proposeConcept">Concept</label><select id="proposeConcept"></select>
+          <label class="muted" for="proposeCount">Questions</label><select id="proposeCount"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select>
+          <button class="primary" id="proposeBtn" onclick="proposeSet()">Propose a set</button>
+          <span class="muted" id="proposeOut" role="status"></span>
+        </div>
+      </div>
       <div id="apprList"></div>
-      <div class="panel"><b>Recent decisions</b><table id="apprLog"></table></div>
+      <div class="panel"><h2>Recent decisions</h2><table id="apprLog"></table></div>
     </section>
 
     <section id="t-alerts" class="hidden"><div id="alertList"></div></section>
 
     <section id="t-labels" class="hidden">
       <div class="panel">
-        <p class="muted">Score each tutoring transcript from 1 (very poor) to 5 (excellent) on the three dimensions of the teacher rubric, without seeing the AI judge's scores. 20 or more labelled transcripts are needed to check the judge (weighted Cohen's kappa).</p>
-        <div class="row"><input id="labeller" placeholder="Your initials" maxlength="40"><button onclick="loadLabels()">Load transcripts</button><span id="labelStatus" class="muted"></span></div>
+        <p class="muted" style="max-width:75ch">Score each tutoring conversation from 1 (very poor) to 5 (excellent) on the three parts of the teacher rubric, without seeing the AI judge's scores. 20 or more scored conversations are needed to check how well the judge agrees with people.</p>
+        <div class="row"><input id="labeller" placeholder="Your initials" maxlength="40" aria-label="Your initials"><button onclick="loadLabels()">Load conversations</button><span id="labelStatus" class="muted"></span></div>
       </div>
       <div id="labelItem"></div>
+    </section>
+
+    <section id="t-guide" class="hidden">
+      <div class="panel" id="demoControls"></div>
+      <div id="guideList"></div>
     </section>
   </div>
 </main>
 <script>
-const CRITERIA = { conceptual_accuracy: "Conceptual accuracy: is every physics explanation strictly accurate per NCERT/CBSE?", identified_misconception: "Identified misconception: did the feedback isolate the student's root misunderstanding?", socratic_guidance: "Socratic guidance: did it guide the student's reasoning without leaking the direct answer?" };
+const PRESENTER = new URLSearchParams(location.search).get("demo") === "1";
+if (PRESENTER) document.body.classList.add("presenter");
+const CRITERIA = { conceptual_accuracy: "Conceptual accuracy: is every physics explanation accurate per NCERT/CBSE?", identified_misconception: "Identified misconception: did the feedback find the student's root misunderstanding?", socratic_guidance: "Socratic guidance: did it guide the student's reasoning without giving away the answer?" };
+const CHAPTER = { "Light - Reflection and Refraction": "light", "Human Eye and the Colourful World": "eye", "Electricity": "elec" };
+const CHAPTER_ORDER = ["Light - Reflection and Refraction", "Human Eye and the Colourful World", "Electricity"];
+const GUIDE = [
+  { title: "Approve a question", tag: "Demo 3", go: "appr", steps: ["Open Approvals.", "Read the question and its answer key (worked out by the calculator, not typed in).", "Click \"Approve this version\". The question now appears in the student's Quiz list."] },
+  { title: "An edit cancels an earlier approval", tag: "L14", go: "appr", second: true, steps: ["Click \"Open Approvals in a second tab\".", "In this tab, change the answer key and click \"Save edit\".", "In the second tab, which still shows the old version, click \"Approve this version\". It is refused because that version is out of date, and the refusal is counted.", "Approve the new version here."] },
+  { title: "Reject a question", go: "appr", steps: ["Open Approvals and click \"Reject\" on a [DEMO] question. Students never see it."] },
+  { title: "See the class's misconceptions and mastery", tag: "Demo 3", go: "dash", steps: ["Open Class overview: misconceptions by chapter, mastery by topic, cost per session."] },
+  { title: "Get an alert when a student is struggling", go: "alerts", steps: ["In the student view (presenter mode), run \"A student in distress\".", "Open Alerts here: the alert is already waiting. Mark it as handled.", "Stuck alerts come after 3 sessions on one topic or 10 minutes without progress."] },
+  { title: "Two students, same question", tag: "Signature A", student: true, steps: ["Open the student view in presenter mode and run \"Student A, then student B\".", "Compare the two replies and each student's progress."] },
+  { title: "Answer-leak alert", tag: "L16", leak: true, steps: ["Click \"Send 5 test leaks\". They are labelled as tests.", "Open Prometheus alerts or the Grafana banner: AnswerLeakSpike goes pending, then firing after about a minute."] },
+  { title: "Stop and resume a conversation", tag: "L8", steps: ["During a conversation, in Terminal: docker compose -f docker/docker-compose.yml restart app", "Reload the student view and carry on: the conversation continues from where it stopped."] },
+  { title: "Score conversations for the AI judge", tag: "L13", go: "labels", steps: ["After an evaluation run, export conversations: python -m evalkit.calibrate export --run <run folder>", "Score them under Score conversations. 20 or more give the judge-agreement figure."] },
+];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const nice = id => { const t = String(id || "").replace("concept_", "").replaceAll("_", " "); return t.charAt(0).toUpperCase() + t.slice(1); };
+let liveTimer = null, opsDemo = false;
+
 async function api(path, opts = {}) {
   const r = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
   if (r.status === 401) { show(false); throw new Error("login"); }
@@ -63,94 +109,271 @@ function show(on) { document.getElementById("login").classList.toggle("hidden", 
 async function login(e) {
   e.preventDefault();
   const r = await fetch("/api/teacher/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin: document.getElementById("pin").value }) });
-  if (r.ok) { show(true); refresh(); } else document.getElementById("loginErr").textContent = "Wrong PIN";
+  if (r.ok) { document.getElementById("loginErr").textContent = ""; show(true); refresh(); liveToggle(); } else document.getElementById("loginErr").textContent = "That PIN is not right. Check TEACHER_PIN in the .env file.";
 }
 async function logout() { await fetch("/api/teacher/logout", { method: "POST" }); show(false); }
 function tab(name) {
   document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === name));
-  ["dash", "appr", "alerts", "labels"].forEach(t => document.getElementById("t-" + t).classList.toggle("hidden", t !== name));
+  ["dash", "appr", "alerts", "labels", "guide"].forEach(t => document.getElementById("t-" + t).classList.toggle("hidden", t !== name));
+  try { history.replaceState(null, "", "#" + name); } catch (e) {}
+}
+function liveToggle() {
+  clearInterval(liveTimer);
+  // Live refresh pauses on Approvals so an open edit is never redrawn under the teacher.
+  if (document.getElementById("live").checked) liveTimer = setInterval(() => { if (!document.getElementById("t-appr").classList.contains("hidden")) return; refresh().catch(() => {}); }, 15000);
+}
+function links() {
+  const host = location.hostname || "localhost";
+  document.getElementById("grafanaLink").href = `${location.protocol}//${host}:3000`;
+  document.getElementById("promLink").href = `${location.protocol}//${host}:9090/alerts`;
+}
+function byChapter(rows) {
+  const g = {}; rows.forEach(r => (g[r.chapter || "Other"] = g[r.chapter || "Other"] || []).push(r));
+  return Object.entries(g).sort((a, b) => (CHAPTER_ORDER.indexOf(a[0]) + 99) % 99 - (CHAPTER_ORDER.indexOf(b[0]) + 99) % 99);
 }
 async function refresh() {
   const { body: d } = await api("/api/teacher/dashboard");
-  const cost = d.sessions ? "$" + d.avg_cost_per_session_usd.toFixed(4) : "—";
-  document.getElementById("cards").innerHTML = [
-    [d.sessions, "sessions"], [d.answer_leaks, "answer leaks flagged"], [d.waiting_approvals, "waiting approvals"],
-    [d.open_alerts.length, "open alerts"], [cost, "average cost per session"], [d.blocked_turns, "messages stopped by safety check"],
-  ].map(([n, l]) => `<div class="card"><div class="n">${esc(n)}</div><div class="l">${esc(l)}</div></div>`).join("");
+  opsDemo = !!d.ops_demo;
+  const distress = d.open_alerts.filter(a => a.kind === "distress").length;
+  document.getElementById("attention").innerHTML = [
+    { n: d.open_alerts.length, l: d.open_alerts.length === 1 ? "student needs you" : "students need you", s: d.open_alerts.length ? `${distress} in distress, ${d.open_alerts.length - distress} stuck` : "No open alerts", k: d.open_alerts.length ? "bad" : "calm", go: "alerts" },
+    { n: d.waiting_approvals, l: d.waiting_approvals === 1 ? "question to review" : "questions to review", s: d.waiting_approvals ? "Students see them only after you approve" : "Nothing waiting", k: d.waiting_approvals ? "warn" : "calm", go: "appr" },
+    { n: d.answer_leaks, l: "answers given away", s: d.answer_leaks ? "Practice replies that revealed an answer" : "No answers given away", k: d.answer_leaks ? "bad" : "calm", go: "dash" },
+  ].map(a => `<button class="att ${a.k}" onclick="tab('${a.go}')"><span class="n">${esc(a.n)}</span><span class="l">${esc(a.l)}</span><span class="s">${esc(a.s)}</span></button>`).join("");
+  document.getElementById("stats").innerHTML = [
+    [d.sessions, "tutoring sessions"], [d.sessions ? "$" + d.avg_cost_per_session_usd.toFixed(4) : "none yet", "average cost per session"], [d.blocked_turns, "messages stopped by the safety check"],
+  ].map(([n, l]) => `<div class="stat"><div class="n">${esc(n)}</div><div class="l">${esc(l)}</div></div>`).join("");
+
   const max = Math.max(1, ...d.misconceptions_by_concept.map(m => m.students));
-  document.getElementById("miscTable").innerHTML = d.misconceptions_by_concept.length
-    ? "<tr><th>Misconception</th><th>Topic</th><th>Students</th><th></th></tr>" + d.misconceptions_by_concept.map(m => `<tr><td>${esc(m.name)}<div class="hash">${esc(m.misconception_id)}</div></td><td>${esc((m.concept_id || "").replace("concept_", "").replaceAll("_", " "))}</td><td>${m.students}</td><td style="width:30%"><div class="bar" style="width:${100 * m.students / max}%"></div></td></tr>`).join("")
-    : "<tr><td class='muted'>No misconceptions recorded yet.</td></tr>";
-  document.getElementById("masteryTable").innerHTML = d.class_mastery.length
-    ? "<tr><th>Concept</th><th>Average mastery</th><th>Students</th></tr>" + d.class_mastery.map(m => `<tr><td>${esc(m.concept_id.replace("concept_", "").replaceAll("_", " "))}</td><td>${Math.round(m.avg_mastery * 100)}%</td><td>${m.students}</td></tr>`).join("")
-    : "<tr><td class='muted'>No mastery records yet.</td></tr>";
-  document.getElementById("generated").textContent = "Updated " + new Date(d.generated_at).toLocaleString();
-  document.getElementById("apprCount").textContent = d.waiting_approvals ? `(${d.waiting_approvals})` : "";
-  document.getElementById("alertCount").textContent = d.open_alerts.length ? `(${d.open_alerts.length})` : "";
+  document.getElementById("miscTable").innerHTML = d.misconceptions_by_concept.length ? byChapter(d.misconceptions_by_concept).map(([ch, rows]) =>
+    `<div class="chapter c-${CHAPTER[ch] || "other"}">${esc(ch)}</div>` + rows.map(m => `<div class="mbar c-${CHAPTER[ch] || "other"}"><span>${esc(m.name)}<div class="hash">${esc(nice(m.concept_id))}</div></span><span><div class="bar" style="width:${100 * m.students / max}%"></div></span><span class="n">${m.students}</span></div>`).join("")).join("")
+    : "<p class='muted'>Nothing yet. Misconceptions appear here as students use the tutor.</p>";
+  document.getElementById("masteryTable").innerHTML = d.class_mastery.length ? byChapter(d.class_mastery).map(([ch, rows]) =>
+    `<div class="chapter c-${CHAPTER[ch] || "other"}">${esc(ch)}</div>` + rows.map(m => `<div class="mrow"><span>${esc(m.title || nice(m.concept_id))}<div class="hash">${m.students} student${m.students === 1 ? "" : "s"}</div></span><span class="meter"><span style="width:${Math.round(m.avg_mastery * 100)}%" class="${m.avg_mastery >= .7 ? "hi" : m.avg_mastery >= .4 ? "mid" : "lo"}"></span></span><span class="pct">${Math.round(m.avg_mastery * 100)}%</span></div>`).join("")).join("")
+    : "<p class='muted'>Nothing yet. Mastery appears after students answer questions.</p>";
+  const banner = document.getElementById("demoBanner");
+  banner.classList.toggle("hidden", !d.demo_students);
+  banner.innerHTML = d.demo_students ? `<b>Demo data is loaded.</b> <span class="muted">${d.demo_students} demo students (IDs start with stu_demo_; their alerts are marked [DEMO]) are included in the overview and alerts. They have no sessions, costs or leaks. Remove them in the Demo guide.</span>` : "";
+  document.getElementById("generated").textContent = "Updated " + new Date(d.generated_at).toLocaleTimeString();
+  document.getElementById("apprCount").textContent = d.waiting_approvals || "";
+  document.getElementById("alertCount").textContent = d.open_alerts.length || "";
   renderAlerts(d.open_alerts);
+  renderGuide();
   loadApprovals();
 }
+// R4 plumbing PR-2: the Approvals tab shows the waiting QUESTION SETS, one panel per set.
+// The sets as last shown, by set id: an edit sends only what the teacher changed, and every decision names
+// the hash of the version on screen (the server signs it; the gate refuses any other version).
+let shownSets = {};
 async function loadApprovals() {
   const { body } = await api("/api/teacher/approvals");
-  document.getElementById("apprList").innerHTML = body.items.length ? body.items.map(item => {
-    const p = item.payload;
-    return `<div class="panel" id="item-${esc(item.item_id)}">
-      <div class="row" style="justify-content:space-between"><b>${esc(p.concept_id || "question")}</b><span class="hash">hash ${esc(item.payload_hash.slice(0, 12))}…</span></div>
-      <label class="muted">Question</label><textarea rows="2" data-k="prompt">${esc(p.prompt ?? JSON.stringify(p))}</textarea>
-      <label class="muted">Answer key</label><textarea rows="1" data-k="gold_answer">${esc(p.gold_answer ?? "")}</textarea>
-      <div class="row" style="margin-top:8px">
-        <button class="primary" onclick="decide('${esc(item.item_id)}','approve','${item.payload_hash}')">Approve this version</button>
-        <button onclick="decide('${esc(item.item_id)}','edit','${item.payload_hash}')">Save edit</button>
-        <button class="danger" onclick="decide('${esc(item.item_id)}','reject','${item.payload_hash}')">Reject</button>
-        <span class="muted" data-out></span>
-      </div></div>`;
-  }).join("") : "<div class='panel muted'>Nothing waiting for approval.</div>";
-  document.getElementById("apprLog").innerHTML = "<tr><th>When</th><th>Item</th><th>Action</th><th>Outcome</th></tr>" + body.recent_decisions.map(r => `<tr><td>${esc(r.at)}</td><td class="hash">${esc(r.item_id)}</td><td>${esc(r.action)}</td><td class="${r.outcome === "ok" ? "okay" : "error"}">${esc(r.outcome)}</td></tr>`).join("");
+  // [H1] no signing key on the server: nothing can be decided (fail closed), proposing still works.
+  const off = document.getElementById("apprOff");
+  if (body.approvals_enabled === false) {
+    off.textContent = "Approvals are off: the server has no APPROVAL_SIGNING_KEY. Set it in .env and restart the server.";
+    off.classList.remove("hidden");
+  } else {
+    off.classList.add("hidden");
+  }
+  // [H2] the concepts for the propose form (filled once, so the teacher's choice isn't reset).
+  const select = document.getElementById("proposeConcept");
+  if (select.options.length === 0) {
+    for (const conceptId of body.concept_ids || []) {
+      const option = document.createElement("option");
+      option.value = conceptId;
+      option.textContent = nice(conceptId);
+      select.appendChild(option);
+    }
+  }
+  // [H3] one panel per waiting set. Every value goes through esc(): the question text comes from a model.
+  shownSets = {};
+  let html = "";
+  for (const item of body.items) {
+    shownSets[item.payload.set_id] = item;
+    html += setPanel(item);
+  }
+  // The list couldn't be read: say so, instead of "Nothing to review" (the server counted the error).
+  if (body.list_error) {
+    html = `<div class="panel banner">${esc(body.list_error)}</div>` + html;
+  } else if (html === "") {
+    html = "<div class='panel muted'>Nothing to review. Propose a set above, or the Demo guide can add [DEMO] questions.</div>";
+  }
+  document.getElementById("apprList").innerHTML = html;
+  document.getElementById("apprLog").innerHTML = "<tr><th>When</th><th>Question set</th><th>Decision</th><th>Result</th></tr>" + (body.recent_decisions.length ? body.recent_decisions.map(r => `<tr><td>${esc(new Date(r.at).toLocaleTimeString())}</td><td class="hash">${esc(r.item_id)}</td><td>${esc(r.action)}</td><td class="${r.outcome === "ok" ? "okay" : "error"}">${r.outcome === "ok" ? "Done" : esc(r.outcome)}</td></tr>`).join("") : "<tr><td class='muted' colspan='4'>No decisions yet.</td></tr>");
 }
-async function decide(itemId, action, hash) {
-  const box = document.getElementById("item-" + itemId);
-  const changes = {}; box.querySelectorAll("textarea").forEach(t => changes[t.dataset.k] = t.value);
-  const { status, body } = await api("/api/teacher/approvals/" + encodeURIComponent(itemId), { method: "POST", body: JSON.stringify({ action, payload_hash: hash, changes: action === "edit" ? changes : null }) });
+function setPanel(item) {
+  const p = item.payload;
+  const setId = esc(p.set_id);
+  // Version 1 is exactly what the question setter and the calculator made; a later version may hold edits.
+  let keyLabel = "Answer key, worked out by the calculator. Edit it only to correct it.";
+  if (p.version > 1) {
+    keyLabel = "Answer key. This version may hold edits: check that it matches the question.";
+  }
+  let demo = false;
+  let questions = "";
+  for (let index = 0; index < p.questions.length; index++) {
+    const q = p.questions[index];
+    if (String(q.prompt || "").startsWith("[DEMO]")) {
+      demo = true;
+    }
+    const fieldId = setId + "-" + index;
+    questions += `<div style="margin-top:12px" data-qid="${esc(q.id)}">
+      <div class="row"><b>${esc(nice(q.concept_id))}</b> <span class="chip">${esc(q.difficulty)}</span> <span class="hash">${esc(q.id)}</span></div>
+      <label class="muted" for="q-${fieldId}">Question</label><textarea id="q-${fieldId}" rows="2" data-k="prompt">${esc(q.prompt)}</textarea>
+      <label class="muted" for="a-${fieldId}">${esc(keyLabel)}</label><textarea id="a-${fieldId}" rows="1" data-k="gold_answer">${esc(q.gold_answer)}</textarea>
+    </div>`;
+  }
+  let demoChip = "";
+  if (demo) {
+    demoChip = "<span class='chip warn'>demo</span>";
+  }
+  return `<div class="panel appr" id="set-${setId}">
+    <div class="row" style="justify-content:space-between"><h3>Question set <span class="chip">${esc(p.questions.length)} question(s)</span> <span class="chip">version ${esc(p.version)}</span> ${demoChip}</h3><span class="hash">Version ${esc(item.payload_hash.slice(0, 10))}</span></div>
+    <div class="track"><span class="done">Proposed by the tutor</span><i></i><span class="on">Your review</span><i></i><span>Published to students</span></div>
+    <div class="muted">${esc(item.note)}</div>
+    ${questions}
+    <div class="row" style="margin-top:10px">
+      <button class="primary" onclick="decide('${setId}','approve')">Approve this version</button>
+      <button onclick="decide('${setId}','edit')">Save edits</button>
+      <button class="danger" onclick="decide('${setId}','reject')">Reject set</button>
+      <span class="muted" data-out role="status"></span>
+    </div></div>`;
+}
+async function decide(setId, action) {
+  const shown = shownSets[setId];
+  const box = document.getElementById("set-" + setId);
   const out = box.querySelector("[data-out]");
-  if (status === 409) { out.className = "error"; out.textContent = body.detail; return; }
-  if (status >= 400) { out.className = "error"; out.textContent = body.detail || "Failed"; return; }
-  out.className = "okay";
-  out.textContent = action === "edit" ? "Edited. The earlier approval no longer applies; approve the new version." : action === "approve" ? "Approved and published." : "Rejected.";
+  // [H4] what the teacher changed on screen: {question id: {field: new value}}.
+  const changes = {};
+  for (const q of shown.payload.questions) {
+    const fields = {};
+    for (const area of box.querySelectorAll(`[data-qid="${CSS.escape(q.id)}"] textarea`)) {
+      if (area.value !== q[area.dataset.k]) {
+        fields[area.dataset.k] = area.value;
+      }
+    }
+    if (Object.keys(fields).length > 0) {
+      changes[q.id] = fields;
+    }
+  }
+  const hasEdits = Object.keys(changes).length > 0;
+  // An edit sends only the changed fields; with nothing changed there is nothing to save.
+  if (action === "edit" && !hasEdits) {
+    out.className = "error";
+    out.textContent = "Nothing changed.";
+    return;
+  }
+  // Approve and reject apply to the version shown when the page loaded: with unsaved edits on screen, the
+  // teacher would approve text they no longer see. Save (or reload) first.
+  if (action !== "edit" && hasEdits) {
+    out.className = "error";
+    out.textContent = "You have unsaved edits. Click \"Save edits\" first (or reload the page to drop them).";
+    return;
+  }
+  let sentChanges = null;
   if (action === "edit") {
-    box.querySelectorAll("button")[0].setAttribute("onclick", `decide('${itemId}','approve','${body.payload_hash}')`);
-    box.querySelectorAll("button")[1].setAttribute("onclick", `decide('${itemId}','edit','${body.payload_hash}')`);
-    box.querySelectorAll("button")[2].setAttribute("onclick", `decide('${itemId}','reject','${body.payload_hash}')`);
-    box.querySelector(".hash").textContent = "hash " + body.payload_hash.slice(0, 12) + "… (new version)";
-  } else setTimeout(refresh, 800);
+    sentChanges = changes;
+  }
+  const request = { action: action, payload_hash: shown.payload_hash, changes: sentChanges };
+  const { status, body } = await api("/api/teacher/approvals/" + encodeURIComponent("qbset:" + setId), { method: "POST", body: JSON.stringify(request) });
+  // 409: refused (an older version, or the bank changed); 503: approvals are off. Nothing was changed.
+  if (status === 409) {
+    out.className = "error";
+    out.textContent = "Refused: " + (body.detail || "this version changed after you opened it.") + " Review the current version.";
+    box.classList.add("stale");
+    return;
+  }
+  if (status >= 400) {
+    out.className = "error";
+    out.textContent = body.detail || "That didn't work. Reload the page and try again.";
+    return;
+  }
+  out.className = "okay";
+  if (action === "edit") {
+    out.textContent = "Edit saved as a new version. The earlier approval no longer counts: approve this version.";
+  } else if (action === "approve") {
+    out.textContent = "Approved. Students can now be quizzed on these questions.";
+    const track = box.querySelectorAll(".track span");
+    track[1].className = "done";
+    track[2].className = "done";
+  } else {
+    out.textContent = "Rejected. Students will never see these questions.";
+  }
+  // Reload: an edited set comes back as its new version (a new hash) to approve.
+  setTimeout(refresh, 1200);
+}
+async function proposeSet() {
+  const out = document.getElementById("proposeOut");
+  const button = document.getElementById("proposeBtn");
+  const request = { concept_id: document.getElementById("proposeConcept").value, count: Number(document.getElementById("proposeCount").value) };
+  button.disabled = true;
+  out.className = "muted";
+  out.textContent = "Asking the question setter…";
+  const { status, body } = await api("/api/teacher/question_sets", { method: "POST", body: JSON.stringify(request) });
+  button.disabled = false;
+  if (status >= 400) {
+    out.className = "error";
+    out.textContent = typeof body.detail === "string" ? body.detail : "That didn't work. Reload the page and try again.";
+    return;
+  }
+  // The setter's note, and why any draft was refused (textContent: model text is never parsed as HTML).
+  let text = body.note;
+  for (const refusal of body.refused || []) {
+    text += " | refused (" + (refusal.difficulty || "draft") + "): " + refusal.error;
+  }
+  out.className = body.ok ? "okay" : "error";
+  out.textContent = text;
+  refresh();
 }
 function renderAlerts(alerts) {
-  document.getElementById("alertList").innerHTML = alerts.length ? alerts.map(a => `<div class="panel ${a.kind === "distress" ? "banner" : ""}"><b>${a.kind === "distress" ? "Please check in with this student" : "Student is stuck"}</b><p>${esc(a.detail)}</p><div class="muted">Student ${esc(a.student_id)} · ${esc(a.at)}</div><button style="margin-top:6px" onclick="ack(${a.id})">Mark as handled</button></div>`).join("") : "<div class='panel muted'>No open alerts.</div>";
+  document.getElementById("alertList").innerHTML = alerts.length ? alerts.map(a => `<div class="panel alert ${esc(a.kind)}"><div class="row" style="justify-content:space-between"><h3>${a.kind === "distress" ? "Please check in with this student" : "A student is stuck"}</h3><span class="chip ${a.kind === "distress" ? "bad" : "warn"}">${a.kind === "distress" ? "Distress" : "Stuck"}</span></div><p>${esc(a.detail)}</p><div class="hash">Student ${esc(a.student_id)}, ${esc(new Date(a.at).toLocaleString())}</div><button style="margin-top:10px" onclick="ack(${a.id})">Mark as handled</button></div>`).join("") : "<div class='panel muted'>No open alerts. Distress alerts appear here straight away; stuck alerts after 3 sessions on one topic or 10 minutes without progress.</div>";
 }
 async function ack(id) { await api(`/api/teacher/alerts/${id}/ack`, { method: "POST" }); refresh(); }
+
+function renderGuide() {
+  document.getElementById("demoControls").innerHTML = opsDemo
+    ? `<h2>Demo data</h2><p class="muted" style="max-width:75ch">Adds [DEMO] questions to review (answer keys from the calculator), demo students A and B for the two-student scenario, and a small demo class with two [DEMO] alerts. No sessions, costs or leaks are invented.</p>
+       <div class="row"><button class="primary" onclick="demoData('seed')">Add demo data</button><button onclick="demoData('clear')">Remove demo students</button><button onclick="fireLeak()">Send 5 test leaks</button></div><p class="muted" id="demoOut" role="status"></p>`
+    : `<h2>Demo data is switched off</h2><p class="muted">Add <code>OPS_DEMO=1</code> to the .env file and restart to add demo data and test the leak alert from here. From a terminal instead: <code>python -m scripts.seed_demo --class</code></p>`;
+  document.getElementById("guideList").innerHTML = `<p class="muted">A suggested order for the demo. Each step uses the real tutor.</p>` + GUIDE.map((g, i) => `<div class="sc"><div class="top"><span class="sc-title">${i + 1}. ${esc(g.title)}</span>${g.tag ? `<span class="tag-demo">${esc(g.tag)}</span>` : ""}</div>
+    <ol class="steps">${g.steps.map(s => `<li>${esc(s)}</li>`).join("")}</ol>
+    <div class="row">${g.go ? `<button onclick="tab('${g.go}')">Go to ${esc({ appr: "Approvals", dash: "Class overview", alerts: "Alerts", labels: "Score conversations" }[g.go])}</button>` : ""}${g.second ? `<button onclick="window.open('/teacher?demo=1#appr','_blank')">Open Approvals in a second tab</button>` : ""}${g.student ? `<a class="btn" href="/?demo=1" target="_blank">Open the student view (presenter mode)</a>` : ""}${g.leak && opsDemo ? `<button onclick="fireLeak()">Send 5 test leaks</button>` : ""}</div></div>`).join("");
+}
+async function demoData(action) {
+  const { status, body } = await api("/api/ops/demo-data", { method: "POST", body: JSON.stringify({ action }) });
+  document.getElementById("demoOut").textContent = status === 200 ? (action === "seed" ? `Added ${body.students} demo students, ${body.alerts} alerts and ${body.questions_proposed} questions to review.` : `Removed ${body.students_removed} demo students.`) : (body.detail || "That didn't work.");
+  refresh();
+}
+async function fireLeak() {
+  const { status, body } = await api("/api/ops/emit-test-leak?count=5", { method: "POST" });
+  const el = document.getElementById("demoOut"); if (el) el.textContent = status === 200 ? "Sent 5 test leaks. The alert fires in about a minute: check Prometheus alerts or the Grafana banner." : (body.detail || "That didn't work.");
+}
+
 let labelQueue = [];
 async function loadLabels() {
   const who = document.getElementById("labeller").value.trim();
   if (!who) { document.getElementById("labelStatus").textContent = "Enter your initials first."; return; }
   const { body } = await api("/api/teacher/labels?labeller=" + encodeURIComponent(who));
   labelQueue = body.items || [];
-  document.getElementById("labelStatus").textContent = body.note || `${body.done} labelled, ${labelQueue.length} to go`;
+  document.getElementById("labelStatus").textContent = body.note || `${body.done} scored, ${labelQueue.length} to go`;
   nextLabel();
 }
 function nextLabel() {
   const item = labelQueue[0];
-  document.getElementById("labelItem").innerHTML = item ? `<div class="panel"><div class="hash">${esc(item.item_id)}</div><p class="muted">Student's hidden misconception: ${esc(item.misconception)}</p><pre class="transcript">${esc(item.transcript)}</pre>
-    ${Object.entries(CRITERIA).map(([k, q]) => `<div class="row" style="justify-content:space-between;margin:6px 0"><span>${esc(q)}</span><span class="seg">${[1,2,3,4,5].map(v => `<button type="button" data-c="${k}" data-v="${v}" onclick="pick(this)">${v}</button>`).join("")}</span></div>`).join("")}
-    <button class="primary" onclick="saveLabel()">Save and next</button></div>` : "<div class='panel muted'>Nothing left to label.</div>";
+  document.getElementById("labelItem").innerHTML = item ? `<div class="panel"><div class="hash">${esc(item.item_id)}</div><p class="muted">The simulated student's hidden misconception: ${esc(item.misconception)}</p><pre class="transcript">${esc(item.transcript)}</pre>
+    ${Object.entries(CRITERIA).map(([k, q]) => `<div class="row" style="justify-content:space-between;margin:8px 0"><span style="max-width:60ch">${esc(q)}</span><span class="seg score">${[1,2,3,4,5].map(v => `<button type="button" data-c="${k}" data-v="${v}" onclick="pick(this)">${v}</button>`).join("")}</span></div>`).join("")}
+    <button class="primary" onclick="saveLabel()">Save and show the next one</button></div>` : "<div class='panel muted'>Nothing left to score.</div>";
 }
 function pick(btn) { btn.parentElement.querySelectorAll("button").forEach(b => b.classList.toggle("on", b === btn)); }
 async function saveLabel() {
   const item = labelQueue[0]; const chosen = {};
   document.querySelectorAll("#labelItem button.on").forEach(b => chosen[b.dataset.c] = Number(b.dataset.v));
-  if (Object.keys(chosen).length < 3) { alert("Score all three dimensions."); return; }
+  if (Object.keys(chosen).length < 3) { document.getElementById("labelStatus").textContent = "Score all three parts first."; return; }
   await api("/api/teacher/labels", { method: "POST", body: JSON.stringify({ item_id: item.item_id, labeller: document.getElementById("labeller").value.trim(), ...chosen }) });
   labelQueue.shift(); nextLabel();
 }
-api("/api/teacher/dashboard").then(() => { show(true); refresh(); }).catch(() => {});
+links();
+api("/api/teacher/dashboard").then(() => { show(true); refresh(); liveToggle(); const h = location.hash.slice(1); if (["dash", "appr", "alerts", "labels"].includes(h) || (PRESENTER && h === "guide")) tab(h); }).catch(() => {});
 </script>
 </body>
 </html>

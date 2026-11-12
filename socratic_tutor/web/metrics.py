@@ -38,3 +38,12 @@ MASTERY_DELTA = Histogram(
 )
 CLASS_MISCONCEPTIONS = Gauge("socratic_class_misconception_students", "Students in whom a misconception has been seen", ["misconception_id"], registry=REGISTRY)
 ERRORS = Counter("socratic_errors_total", "Unhandled errors while answering", ["where"], registry=REGISTRY)
+
+# Start the labelled counters the alerts read at 0. Prometheus's increase() needs an earlier
+# sample: a counter that first appears already at 5 shows no increase, so the first burst of
+# leaks would never fire AnswerLeakSpike.
+for _source in ("live", "synthetic"):
+    ANSWER_LEAKS.labels(_source)
+for _reason in ("injection", "distress"):
+    GUARDRAIL_BLOCKS.labels(_reason)
+ERRORS.labels("chat")

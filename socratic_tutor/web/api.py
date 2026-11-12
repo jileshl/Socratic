@@ -12,8 +12,9 @@ Endpoints:
     POST /api/teacher/login          Teacher PIN authentication
     POST /api/teacher/logout         Clear teacher session
     GET  /api/teacher/dashboard      Teacher overview, alerts, misconceptions
-    GET  /api/teacher/approvals      List pending approval items
-    POST /api/teacher/approvals/{id} Approve, edit, or reject item
+    POST /api/teacher/question_sets  Ask the question setter for a new set (it waits for approval)
+    GET  /api/teacher/approvals      List the question sets waiting for approval
+    POST /api/teacher/approvals/{id} Approve, edit, or reject a set ("qbset:<set_id>"), signed on the server
     POST /api/teacher/alerts/{id}/ack Acknowledge an alert
     GET  /api/teacher/labels         Calibration transcript labelling queue
     POST /api/teacher/labels         Save calibration label
@@ -36,22 +37,35 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.sqlite import SqliteSaver
-from langgraph.types import Command
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel, Field
 
-from socratic_tutor import config, trace
+from socratic_tutor import approval_gate, config, trace
 from socratic_tutor.concept_graph import ConceptGraph
 from socratic_tutor.graph import build_graph
 from socratic_tutor.learner_store import LearnerStore
-from socratic_tutor.tools import question_bank, textbook_kb
-from socratic_tutor.web import approvals, metrics
+from socratic_tutor.tools import question_bank, question_bank_server, textbook_kb
+from socratic_tutor.web import approvals, demo_data, metrics
 from socratic_tutor.web.ops_store import OpsStore
 
 api_router = APIRouter()
 router = api_router  # standard alias
 
 REFUSAL = "I cannot fulfill this request as entered. Let's focus on our NCERT study goals."
+
+# --- Question sets and approvals (R4 plumbing PR-2) ---
+# Who is recorded as the approver. The teacher login is one shared PIN, which proves the role, not the person,
+# so every decision is signed as "teacher" (decision P2-7).
+TEACHER_APPROVER: str = "teacher"
+# A teacher's request runs the graph on its own new thread, never a student's: "qsetter:<12 hex>".
+QUESTION_REQUEST_THREAD_PREFIX: str = "qsetter:"
+# The fixed text of a teacher's request. It still passes the input check like any message.
+QUESTION_REQUEST_TEXT: str = "Write practice questions for this concept."
+# What the teacher view says when the server has no signing key (decision P2-8: fail closed).
+APPROVALS_OFF_DETAIL: str = (
+    "Approvals are off: the server has no APPROVAL_SIGNING_KEY. Set it in .env and restart. "
+    "Make one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+)
 
 # Who makes each decision in the graph. Shown in the student view next to each box.
 NODE_DECIDER = {
@@ -354,10 +368,9 @@ def _run_turn(session: dict[str, Any], message: str, current_question_id: str | 
     if minutes >= config.STUCK_MINUTES_ON_PROBLEM and gained <= 0 and not ops.has_open_alert(student_id, "stuck"):
         ops.add_alert(student_id, session_id, "stuck", f"{int(minutes)} minutes in this session without progress (teacher rule: 10+ minutes).")
         alert_filed = True
-    if interrupted:
-        payload = getattr(interrupted[0], "value", interrupted[0]) if isinstance(interrupted, (list, tuple)) else interrupted
-        payload_json = json.dumps(payload, sort_keys=True, default=str)
-        ops.save_interrupt(session_id, student_id, payload_json, approvals.payload_hash(json.loads(payload_json)))
+    # PR-2: a student's turn never pauses for the teacher any more (question sets wait on their own "qbset:"
+    # thread), so nothing is saved here. The old save hashed the whole interrupt value, while the graph's gate
+    # compared the inner payload's hash, so every approval of such an item was refused.
     for name, value in _class_misconceptions().items():
         metrics.CLASS_MISCONCEPTIONS.labels(name).set(value)
     trace.record("turn", session_id=session_id, student_id=student_id, mode=mode, student=message, tutor=reply, latency_s=round(latency, 3), outcome=outcome, **usage)
@@ -383,11 +396,86 @@ def _run_turn(session: dict[str, Any], message: str, current_question_id: str | 
             "graded": graded,
             "pending_approval": bool(interrupted),
             "next_concept": values.get("next_recommended_concept"),
+            # What the tutor saw this turn, for the student view's "what happened" panel.
+            "misconception": _misconception_brief(misconception_id),
+            "concept": {"id": concept_id, "title": _concept_titles().get(concept_id, concept_id), "chapter": _concept_chapters().get(concept_id, "")} if concept_id else None,
+            "hint_step": values.get("hint_step") if mode == "practice" else None,
+            "max_hints": config.MAX_HINT_STEPS,
+            "plan": list(values.get("plan") or []),
+            "mastery_delta": delta,
+            "grade": _grade_brief(values.get("grade_result")) if mode == "quiz" else None,
+            "answer_leak_flagged": leak,
             "latency_s": round(latency, 2),
             "cost_usd": usage["cost_usd"],
             "error": bool(error),
         }
     )
+
+
+def _concept_titles() -> dict[str, str]:
+    global _CONCEPT_TITLES
+    if _CONCEPT_TITLES is None:
+        graph_data = json.loads((config.DATA_DIR / "concept_graph.json").read_text(encoding="utf-8"))
+        _CONCEPT_TITLES = {c["id"]: c.get("title", c["id"]) for c in graph_data.get("concepts", [])}
+    return _CONCEPT_TITLES
+
+
+_CONCEPT_TITLES: dict[str, str] | None = None
+_CONCEPT_CHAPTERS: dict[str, str] | None = None
+
+
+def _concept_chapters() -> dict[str, str]:
+    global _CONCEPT_CHAPTERS
+    if _CONCEPT_CHAPTERS is None:
+        graph_data = json.loads((config.DATA_DIR / "concept_graph.json").read_text(encoding="utf-8"))
+        _CONCEPT_CHAPTERS = {c["id"]: c.get("chapter", "") for c in graph_data.get("concepts", [])}
+    return _CONCEPT_CHAPTERS
+
+
+def _misconception_brief(misconception_id: str | None) -> dict[str, str] | None:
+    if not misconception_id:
+        return None
+    info = _misconception_names().get(misconception_id, {})
+    return {"id": misconception_id, "name": info.get("name", misconception_id), "chapter": info.get("chapter")}
+
+
+def _grade_brief(grade: Any) -> dict[str, Any] | None:
+    """Only the verdict and the student-safe feedback; never the answer key."""
+    if not isinstance(grade, dict):
+        return None
+    return {"is_correct": bool(grade.get("is_correct")), "feedback": grade.get("feedback"), "checked_by": "math-tools (code)"}
+
+
+@api_router.get("/api/quiz/questions")
+def quiz_questions() -> dict[str, Any]:
+    """Approved questions a student can be quizzed on. Answer keys never leave the server."""
+    rows = approvals._qb_rows("approved")
+    titles = _concept_titles()
+    items = [
+        {"question_id": r["id"], "concept_id": r["concept_id"], "concept": titles.get(r["concept_id"], r["concept_id"]),
+         "chapter": _concept_chapters().get(r["concept_id"], ""), "difficulty": r["difficulty"], "prompt": r["prompt"]}
+        for r in rows
+    ]
+    return {"items": items}
+
+
+@api_router.get("/api/student/{student_id}/progress")
+def student_progress(student_id: str) -> dict[str, Any]:
+    """The student's own learner record (pseudonymous ID): mastery and misconceptions, nothing else."""
+    if not student_id.startswith("stu_"):
+        raise HTTPException(404)
+    profile = learners.get_profile(student_id)
+    titles = _concept_titles()
+    chapters = _concept_chapters()
+    mastery = [{"concept_id": c, "title": titles.get(c, c), "chapter": chapters.get(c, ""), "mastery": round(float(v), 2)} for c, v in sorted(profile["mastery_map"].items())]
+    seen = []
+    for item in profile.get("misconceptions", []):
+        key = item.get("id") if isinstance(item, dict) else str(item)
+        brief = _misconception_brief(key)
+        if brief:
+            brief["resolved"] = bool(item.get("resolved")) if isinstance(item, dict) else False
+            seen.append(brief)
+    return {"student_id": student_id, "mastery": mastery, "misconceptions": seen}
 
 
 @api_router.get("/api/session/{session_id}/state")
@@ -500,7 +588,8 @@ def _class_mastery() -> list[dict[str, Any]]:
         for (mastery_json,) in conn.execute("SELECT mastery_json FROM learners WHERE student_id NOT LIKE 'RT-%' AND student_id NOT LIKE 'CLEAN-%'"):
             for concept, score in json.loads(mastery_json or "{}").items():
                 totals.setdefault(concept, []).append(float(score))
-    return [{"concept_id": c, "avg_mastery": round(sum(v) / len(v), 2), "students": len(v)} for c, v in sorted(totals.items())]
+    titles, chapters = _concept_titles(), _concept_chapters()
+    return [{"concept_id": c, "title": titles.get(c, c), "chapter": chapters.get(c, ""), "avg_mastery": round(sum(v) / len(v), 2), "students": len(v)} for c, v in sorted(totals.items())]
 
 
 def _misconception_names() -> dict[str, dict[str, str]]:
@@ -508,11 +597,43 @@ def _misconception_names() -> dict[str, dict[str, str]]:
     return {m["id"]: {"name": m["name"], "concept_id": m["concept_id"], "chapter": m["chapter"]} for m in data}
 
 
+def _waiting_items() -> tuple[list[dict[str, Any]], str | None]:
+    """[L1]-[L2] The question sets waiting for the teacher (PR-2: sets only, decision P2-6), and why the list
+    couldn't be read, if it couldn't (so the view never shows "Nothing waiting" when the list is broken).
+
+    The old per-question "qb:" rows and the "graph:" student-thread pauses are gone: a set's rows could otherwise
+    be approved one by one, unsigned, around the gate. web/approvals.py no longer decides anything; only its
+    _qb_rows still lists the approved questions for /api/quiz/questions.
+    """
+    # Flowchart (each [box] matches a comment below):
+    #
+    #   [L1] every waiting set from the one shared approval graph       a failure -> ([], why), counted
+    #   [L2] one item per set: "qbset:<set_id>", its payload, its hash and its note
+    #   [R]  (the items, None)
+
+    # [L1] every waiting set, from the one shared approval graph. A failure is counted and reported.
+    try:
+        sets: list[dict[str, Any]] = approval_gate.waiting_sets(approval_gate.get_approval_graph())
+    except Exception as error:
+        metrics.ERRORS.labels("approvals_list").inc()
+        return [], "The waiting question sets could not be read (" + type(error).__name__ + ")."
+    # [L2] one item per set; its id is the set's thread id, "qbset:<set_id>".
+    items: list[dict[str, Any]] = []
+    for waiting in sets:
+        items.append({
+            "item_id": approval_gate.THREAD_PREFIX + waiting["set_id"],
+            "source": "question_set",
+            "payload": waiting["payload"],
+            "payload_hash": waiting["payload_hash"],
+            "note": waiting["note"],
+        })
+    # [R] the items, and no problem.
+    return items, None
+
+
 def _pending_items() -> list[dict[str, Any]]:
-    items = approvals.pending_question_items()
-    for row in ops.pending_interrupts():
-        payload = json.loads(row["payload_json"])
-        items.append({"item_id": f"graph:{row['thread_id']}", "source": "graph_interrupt", "payload": payload, "payload_hash": row["payload_hash"], "created_at": row["created_at"]})
+    """The waiting question sets (for the counts on the dashboard and in /metrics)."""
+    items, _problem = _waiting_items()
     return items
 
 
@@ -529,13 +650,90 @@ def dashboard() -> dict[str, Any]:
         "class_mastery": _class_mastery(),
         "waiting_approvals": len(_pending_items()),
         "open_alerts": ops.open_alerts(),
+        "demo_students": _demo_student_count(),
+        "ops_demo": config.OPS_DEMO == "1",
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
 
 
 @api_router.get("/api/teacher/approvals", dependencies=[Depends(require_teacher)])
 def list_approvals() -> dict[str, Any]:
-    return {"items": _pending_items(), "recent_decisions": ops.approval_log()}
+    # PR-2: the waiting sets, and why the list couldn't be read (None when it could).
+    items, list_error = _waiting_items()
+    return {
+        "items": items,
+        "list_error": list_error,
+        "recent_decisions": ops.approval_log(),
+        # PR-2: the concepts the teacher can ask the question setter for, and whether decisions can be signed.
+        "concept_ids": question_bank_server.load_concept_ids(),
+        "approvals_enabled": approval_gate.signing_key() is not None,
+    }
+
+
+class QuestionSetIn(BaseModel):
+    # The concept the teacher picked (checked against the concept graph by the route).
+    concept_id: str = Field(min_length=1, max_length=60)
+    # How many questions to draft: 1 to 5, three by default (decision P2-2).
+    count: int = Field(default=3, ge=1, le=5)
+
+
+@api_router.post("/api/teacher/question_sets", dependencies=[Depends(require_teacher)])
+def propose_question_set(body: QuestionSetIn) -> JSONResponse:
+    """[P1]-[P5] The teacher asks for a new question set (R4 plumbing PR-2, A1; decision P2-1).
+
+    The tutor graph runs on a NEW thread: its supervisor routes the request to the question setter, whose set
+    waits for the teacher on its own "qbset:" thread. No student's chat ever waits.
+    """
+    # Flowchart (each [box] matches a comment below):
+    #
+    #   [P1] a known concept?                                      no -> 400 (no model call)
+    #   [P2] a new thread "qsetter:<12 hex>" (no student, not "qbset:")
+    #   [P3] the graph: input check -> supervisor -> question_setter -> END
+    #   [P4] stopped by the input check?                           yes -> 200, ok False, why
+    #   [P5] the setter's summary -> 200 {ok, set_id, question_count, refused, note}; a crash -> 500
+
+    # [P1] only a concept from the concept graph; an unknown one costs no model call.
+    if body.concept_id not in question_bank_server.load_concept_ids():
+        raise HTTPException(400, "Unknown concept: " + body.concept_id)
+    # [P2] the request's own thread.
+    thread_id: str = QUESTION_REQUEST_THREAD_PREFIX + uuid.uuid4().hex[:12]
+    run_config: dict[str, Any] = {
+        "configurable": {"thread_id": thread_id},
+        "recursion_limit": config.GRAPH_RECURSION_LIMIT,
+    }
+    # The request as graph input: no student, practice mode (quiz mode would route to the grader).
+    state_in: dict[str, Any] = {
+        "session_id": thread_id,
+        "student_id": "",
+        "mode": "practice",
+        "teacher_approval_required": True,
+        "current_concept_id": body.concept_id,
+        "question_set_size": body.count,
+        "query": QUESTION_REQUEST_TEXT,
+        "messages": [],
+        "steps": [],
+    }
+    # [P3] run the graph.
+    try:
+        values: dict[str, Any] = graph().invoke(state_in, config=run_config)
+    except Exception as error:
+        metrics.ERRORS.labels("propose_set").inc()
+        return JSONResponse(status_code=500, content={"error": "propose_failed", "detail": type(error).__name__})
+    # [P4] the input check stopped the request (e.g. the content guard is down: fail closed).
+    if values.get("input_blocked_by"):
+        note: str = "The request was stopped by the input check (" + str(values.get("input_blocked_by")) + ")."
+        return JSONResponse({"ok": False, "set_id": "", "question_count": 0, "refused": [], "note": note})
+    # [P5] what the question setter did: ids and reasons only, never an answer key.
+    proposed: Any = values.get("proposed_set")
+    if not isinstance(proposed, dict):
+        return JSONResponse(status_code=500, content={"error": "propose_failed", "detail": "The question setter did not run."})
+    return JSONResponse({
+        "ok": bool(proposed.get("ok")),
+        "set_id": str(proposed.get("set_id", "")),
+        "question_count": len(proposed.get("question_ids", [])),
+        "refused": proposed.get("refused", []),
+        "note": str(proposed.get("note", "")),
+    })
 
 
 class DecisionIn(BaseModel):
@@ -544,54 +742,80 @@ class DecisionIn(BaseModel):
     changes: dict[str, Any] | None = None
 
 
+def _refused_response(item_id: str, body: DecisionIn, note: str, current_hash: str) -> JSONResponse:
+    """A decision the gate didn't apply: log it, and tell the teacher why (409). Nothing was changed."""
+    ops.log_approval(item_id, body.action, body.payload_hash, "refused: " + note[:60])
+    return JSONResponse(status_code=409, content={"error": "refused", "detail": note, "current_hash": current_hash})
+
+
 @api_router.post("/api/teacher/approvals/{item_id}", dependencies=[Depends(require_teacher)])
 def decide(item_id: str, body: DecisionIn) -> JSONResponse:
-    source, _, key = item_id.partition(":")
-    try:
-        if source == "qb":
-            if body.action == "approve":
-                result = approvals.approve_question(key, body.payload_hash)
-            elif body.action == "reject":
-                result = approvals.reject_question(key, body.payload_hash)
-            else:
-                result = approvals.edit_question(key, body.payload_hash, body.changes or {})
-        elif source == "graph":
-            result = _decide_interrupt(key, body)
-        else:
-            raise HTTPException(404, "Unknown item")
-    except approvals.StaleApproval as stale:
-        metrics.STALE_APPROVALS.inc()
-        ops.log_approval(item_id, body.action, body.payload_hash, "refused: stale")
-        return JSONResponse(
-            status_code=409,
-            content={"error": "stale_approval", "detail": "This item changed after you opened it, so your approval no longer applies. Review the new version.", "current_hash": str(stale)},
-        )
-    except KeyError:
+    """[T1]-[T6] The teacher's decision on a waiting set, signed HERE on the server (S3-10) and carried out by
+    approval_gate.decide. The browser never sees the signing key; the gate checks the signature and the hash."""
+    # Flowchart (each [box] matches a comment below):
+    #
+    #   [T1] "qbset:<set_id>"?                                           no -> 404
+    #   [T2] the server has a signing key?                               no -> 503, nothing changes
+    #   [T3] the set is waiting?                                         no -> 404
+    #        the hash sent != the waiting version's hash -> counted as stale (the gate decides)
+    #   [T4] sign the decision: set, action, the hash ON SCREEN, "teacher", the edits
+    #   [T5] approval_gate.decide
+    #   [T6] published / rejected -> 200; edited (a new version) -> 200;
+    #        still waiting, or refused -> 409 with the reason; nothing waits any more -> 404
+
+    # [T1] only question sets can be decided here.
+    if not item_id.startswith(approval_gate.THREAD_PREFIX):
+        raise HTTPException(404, "Unknown item")
+    set_id: str = item_id[len(approval_gate.THREAD_PREFIX):]
+    # [T2] without the key no decision can be signed, and the gate refuses unsigned ones: say why (fail closed).
+    if approval_gate.signing_key() is None:
+        ops.log_approval(item_id, body.action, body.payload_hash, "refused: no signing key")
+        return JSONResponse(status_code=503, content={"error": "approvals_off", "detail": APPROVALS_OFF_DETAIL})
+    gate_graph: Any = approval_gate.get_approval_graph()
+    # [T3] the version waiting now.
+    waiting: dict[str, Any] | None = approval_gate.pending_set(gate_graph, set_id)
+    if waiting is None:
         raise HTTPException(404, "Item not found or no longer pending")
-    except ValueError as exc:
-        raise HTTPException(400, str(exc))
-    ops.log_approval(item_id, body.action, body.payload_hash, "ok")
-    return JSONResponse({"item_id": item_id, "action": body.action, **result})
-
-
-def _decide_interrupt(thread_id: str, body: DecisionIn) -> dict[str, Any]:
-    row = next((r for r in ops.pending_interrupts() if r["thread_id"] == thread_id), None)
-    if row is None:
-        raise KeyError(thread_id)
-    if row["payload_hash"] != body.payload_hash:
-        raise approvals.StaleApproval(row["payload_hash"])
+    waiting_hash: str = waiting["payload_hash"]
+    if body.payload_hash != waiting_hash:
+        # Only counted here; the gate itself refuses a decision for an older version.
+        metrics.STALE_APPROVALS.inc()
+    # [T4] sign what the teacher saw: the hash on screen, and the edits for an edit only.
+    changes: dict[str, Any] | None = None
     if body.action == "edit":
-        payload = json.loads(row["payload_json"])
-        payload.update(body.changes or {})
-        new_hash = approvals.payload_hash(payload)
-        ops.save_interrupt(thread_id, row["student_id"], json.dumps(payload, sort_keys=True), new_hash)
-        return {"payload": payload, "payload_hash": new_hash, "note": "Edited: approve this new version to publish it."}
-    created = datetime.fromisoformat(row["created_at"])
-    metrics.APPROVAL_LATENCY.observe((datetime.now(timezone.utc) - created).total_seconds())
-    resume_value = {"action": body.action, "payload_hash": body.payload_hash, "payload": json.loads(row["payload_json"])}
-    out = graph().invoke(Command(resume=resume_value), config={"configurable": {"thread_id": thread_id}})
-    ops.clear_interrupt(thread_id)
-    return {"resumed": True, "steps": out.get("steps", [])}
+        changes = body.changes
+    try:
+        decision: dict[str, Any] = approval_gate.sign_decision(set_id, body.action, body.payload_hash, TEACHER_APPROVER, changes)
+    except ValueError:
+        # The key vanished between [T2] and here.
+        return JSONResponse(status_code=503, content={"error": "approvals_off", "detail": APPROVALS_OFF_DETAIL})
+    # [T5] the gate checks the decision and carries it out.
+    outcome: dict[str, Any] = approval_gate.decide(gate_graph, set_id, decision)
+    status: str = outcome["status"]
+    note: str = outcome["note"]
+    # [T6] what happened.
+    if status == "published" or status == "rejected":
+        ops.log_approval(item_id, body.action, body.payload_hash, "ok")
+        return JSONResponse({"item_id": item_id, "action": body.action, "status": status, "note": note,
+                             "published": status == "published"})
+    if status == "not_waiting":
+        raise HTTPException(404, "Item not found or no longer pending")
+    # An edit applied: the set waits again as a NEW version (a new hash), which needs its own approval.
+    # The gate reports the version that was waiting WHEN it applied this decision (read under the set's lock):
+    # only a changed hash means this edit was applied. (A hash read here, before the lock, could already be
+    # stale: another tab's edit in between would make a refused edit look applied.)
+    hash_before: str = outcome["previous_payload_hash"]
+    edited: bool = (body.action == "edit" and status == "waiting" and hash_before != ""
+                    and outcome["payload_hash"] != hash_before)
+    if edited:
+        ops.log_approval(item_id, body.action, body.payload_hash, "ok")
+        return JSONResponse({"item_id": item_id, "action": body.action, "status": "edited", "note": note,
+                             "payload_hash": outcome["payload_hash"]})
+    # Anything else was refused (stale, unsigned, changed in the bank, or the set can't be completed).
+    current_hash: str = outcome["payload_hash"]
+    if current_hash == "":
+        current_hash = waiting_hash
+    return _refused_response(item_id, body, note, current_hash)
 
 
 @api_router.post("/api/teacher/alerts/{alert_id}/ack", dependencies=[Depends(require_teacher)])
@@ -644,6 +868,27 @@ def save_label(body: LabelIn) -> dict[str, Any]:
 
 
 # ---- alert demo (only with OPS_DEMO=1): adds clearly-labelled synthetic leaks
+
+
+def _demo_student_count() -> int:
+    with sqlite3.connect(learners.db_path) as conn:
+        return conn.execute("SELECT COUNT(*) FROM learners WHERE student_id LIKE 'stu_demo_%'").fetchone()[0]
+
+
+class DemoDataIn(BaseModel):
+    action: str = Field(pattern="^(seed|clear)$")
+
+
+@api_router.post("/api/ops/demo-data", dependencies=[Depends(require_teacher)])
+def demo_data_switch(body: DemoDataIn) -> dict[str, Any]:
+    """Add or remove the clearly-labelled demo class (web/demo_data.py). Only with OPS_DEMO=1."""
+    if config.OPS_DEMO != "1":
+        raise HTTPException(403, "Set OPS_DEMO=1 to enable demo data")
+    if body.action == "clear":
+        return {"ok": True, **demo_data.clear_demo_class(learners, ops)}
+    result = demo_data.seed_demo_class(learners, ops)
+    questions = demo_data.propose_demo_questions()
+    return {"ok": True, **result, "questions_proposed": len(questions)}
 
 
 @api_router.post("/api/ops/emit-test-leak", dependencies=[Depends(require_teacher)])

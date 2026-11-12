@@ -22,7 +22,7 @@ services:
       - path: ../.env
         required: false
     ports:
-      - "8000:8000"
+      - "${APP_PORT:-8000}:8000"   # set APP_PORT to use another port on your computer
     volumes:
       - app-index:/app/.index      # NCERT index, vector store, learner store, checkpoints, ops records
       - app-cache:/app/.cache      # scrubbed traces
