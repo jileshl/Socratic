@@ -349,7 +349,8 @@ def test_a_signed_rejection_rejects_the_whole_set(gate: Any) -> None:
     ids = propose_two()
     submitted = submit(gate, ids)
     result = approval_gate.decide(gate, "set_a", sign("set_a", "reject", submitted["payload_hash"]))
-    assert result == {"status": "rejected", "note": "Rejected by teacher_1.", "payload_hash": submitted["payload_hash"]}
+    assert result == {"status": "rejected", "note": "Rejected by teacher_1.", "payload_hash": submitted["payload_hash"],
+                      "previous_payload_hash": submitted["payload_hash"]}
     for question_id in ids:
         assert status_of(question_id) == "rejected"
 
@@ -931,6 +932,20 @@ def test_waiting_sets_shows_the_current_version_after_an_edit(gate: Any) -> None
     assert listed[0]["payload_hash"] == edited["payload_hash"]
     assert listed[0]["payload_hash"] != submitted["payload_hash"]
     assert listed[0]["payload"]["version"] == 2
+
+
+def test_waiting_sets_with_another_kind_of_saver(bank: None) -> None:
+    """Any saver other than SqliteSaver (here an in-memory one) is listed in one pass over its saved runs."""
+    from langgraph.checkpoint.memory import InMemorySaver
+
+    memory_gate = approval_gate.build_approval_graph(InMemorySaver())
+    ids = propose_two()
+    submit(memory_gate, [ids[0]], set_id="set_m1")
+    submit(memory_gate, [ids[1]], set_id="set_m2")
+    listed_ids: list[str] = []
+    for item in waiting_sets_within(memory_gate):
+        listed_ids.append(item["set_id"])
+    assert sorted(listed_ids) == ["set_m1", "set_m2"]
 
 
 def test_waiting_sets_without_a_checkpointer_is_empty() -> None:

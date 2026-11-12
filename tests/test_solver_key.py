@@ -24,13 +24,22 @@ MIRROR_CALCULATION: dict[str, Any] = {
 
 
 @pytest.fixture(autouse=True)
-def no_model_calls(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Any model call in these tests is a bug: make it fail loudly."""
+def no_model_calls(monkeypatch: pytest.MonkeyPatch) -> Any:
+    """Any model call in these tests is a bug. llm.chat_json swallows every exception, so a raising get_llm
+    alone would stay silent: chat_json is replaced by a recorder too, which must be empty at the end."""
+    calls: list[str] = []
 
     def refuse(*args: Any, **kwargs: Any) -> Any:
         raise AssertionError("a model call in a test")
 
+    def record(prompt: str, system_prompt: str = "", **kwargs: Any) -> dict[str, Any]:
+        calls.append(prompt)
+        return {"error": "a model call in a test"}
+
     monkeypatch.setattr(llm, "get_llm", refuse)
+    monkeypatch.setattr(llm, "chat_json", record)
+    yield
+    assert calls == [], "a test reached llm.chat_json"
 
 
 def test_mirror_draft_gets_the_solvers_key() -> None:
@@ -314,3 +323,104 @@ def test_the_formula_list_names_every_catalogue_formula() -> None:
         assert name in text
     for name in solver_key.ONE_WAY_RESULTS:
         assert name + ": find is " + solver_key.ONE_WAY_RESULTS[name] in text
+
+
+# ---------------------------------------------------------------------------
+# Review fixes (PR-2 review): units, huge numbers, give-aways, fallback questions
+# ---------------------------------------------------------------------------
+
+
+def test_given_values_must_have_the_unit_written_in_the_question() -> None:
+    # The check used to compare sizes only, so a number given in the wrong unit passed and gave a wrong key.
+    wrong_unit: list[tuple[str, dict[str, Any]]] = [
+        # "500 mA" is 0.5 A, not 500 A (the key would have been 10000 V).
+        ("A current of 500 mA flows through a 20 ohm resistor. Find the potential difference.",
+         {"formula": "ohms_law", "values": {"i": 500, "r": 20}, "find": "v"}),
+        # 50 cm given as f = 0.5 "cm" (200 D) or as f = 50 "m" (0.02 D).
+        ("A convex lens has a focal length of 50 cm. Find its power.",
+         {"formula": "lens_power", "values": {"f": 0.5}, "length_unit": "cm", "find": "p"}),
+        ("A convex lens has a focal length of 50 cm. Find its power.",
+         {"formula": "lens_power", "values": {"f": 50}, "length_unit": "m", "find": "p"}),
+        # "5 minutes" is 300 s, not 5 s.
+        ("A current of 2 A flows through a 3 ohm resistor for 5 minutes. Find the heat produced.",
+         {"formula": "joule_heating", "values": {"i": 2, "r": 3, "t": 5}, "find": "h"}),
+        # "2 kW" is 2000 W, not 2 W.
+        ("A 2 kW heater runs for 3600 s. Find the energy used.",
+         {"formula": "energy_power_time", "values": {"p": 2, "t": 3600}, "find": "energy"}),
+        # Numbers of the right size but swapped between inputs: "12 V" is not a current, "4 A" not a voltage.
+        ("A current of 4 A flows through a wire connected across 12 V. Find its resistance.",
+         {"formula": "ohms_law", "values": {"i": 12, "v": 4}, "find": "r"}),
+    ]
+    for question, calculation in wrong_unit:
+        result: dict[str, Any] = solver_key.solve_answer_key(question, calculation)
+        assert result["ok"] is False, (question, result)
+        assert "not in the question text" in result["error"]
+    # The same questions with the values in the right units get the right keys.
+    right: list[tuple[str, dict[str, Any], str]] = [
+        ("A current of 500 mA flows through a 20 ohm resistor. Find the potential difference.",
+         {"formula": "ohms_law", "values": {"i": 0.5, "r": 20}, "find": "v"}, "10 V"),
+        ("A convex lens has a focal length of 50 cm. Find its power.",
+         {"formula": "lens_power", "values": {"f": 50}, "length_unit": "cm", "find": "p"}, "2 D"),
+        ("A current of 2 A flows through a 3 ohm resistor for 5 minutes. Find the heat produced.",
+         {"formula": "joule_heating", "values": {"i": 2, "r": 3, "t": 300}, "find": "h"}, "3600 J"),
+        ("A 2 kW heater runs for 3600 s. Find the energy used.",
+         {"formula": "energy_power_time", "values": {"p": 2000, "t": 3600}, "find": "energy"}, "7.2e+06 J"),
+    ]
+    for question, calculation, key in right:
+        result = solver_key.solve_answer_key(question, calculation)
+        assert result["ok"] is True, (question, result)
+        assert result["gold_answer"] == key
+
+
+def test_mixed_length_units_in_the_question_are_read_correctly() -> None:
+    # "0.3 m" and "20 cm" in one question, with length_unit "cm": u = -30 cm and f = -20 cm are both written.
+    question: str = "An object is placed 0.3 m in front of a concave mirror of focal length 20 cm. Find the image distance."
+    result: dict[str, Any] = solver_key.solve_answer_key(question, MIRROR_CALCULATION)
+    assert result["ok"] is True
+    assert result["gold_answer"] == "-60 cm"
+
+
+def test_a_huge_number_is_refused_and_never_raises() -> None:
+    # A JSON integer too big for a float made math.isfinite raise OverflowError, which escaped the module.
+    calculation: dict[str, Any] = {"formula": "ohms_law", "values": {"v": 10 ** 400, "r": 4}, "find": "i"}
+    result: dict[str, Any] = solver_key.solve_answer_key("A huge voltage across 4 ohm. Find the current.", calculation)
+    assert result["ok"] is False
+
+    # Inside a set, that one reply fails alone; the other drafts are still made.
+    def fake_model(concept_id: str, difficulty: str) -> dict[str, Any]:
+        if difficulty == "easy":
+            return {"question_text": "A huge voltage across 4 ohm. Find the current.", "calculation": calculation}
+        return {"question_text": MIRROR_QUESTION, "calculation": MIRROR_CALCULATION}
+
+    made: dict[str, Any] = solver_key.drafts_for_concept("concept_ohms_law", 2, fake_model)
+    assert len(made["drafts"]) == 1
+    assert made["refused"][0]["difficulty"] == "easy"
+
+
+def test_a_question_that_gives_the_answer_away_is_refused() -> None:
+    # The model was told not to put the answer in the text; code checks it: "-60 cm" is already written.
+    question: str = (
+        "An object is placed 30 cm in front of a concave mirror of focal length 20 cm. "
+        "Find the image distance (it forms 60 cm in front of the mirror)."
+    )
+    result: dict[str, Any] = solver_key.solve_answer_key(question, MIRROR_CALCULATION)
+    assert result["ok"] is False
+    assert "gives away the answer" in result["error"]
+    # An answer equal to a given value is fine: an object at the centre of curvature (u = 2f) has v = u.
+    at_centre: str = "An object is placed 40 cm in front of a concave mirror of focal length 20 cm. Find the image distance."
+    keyed: dict[str, Any] = solver_key.solve_answer_key(
+        at_centre, {"formula": "mirror_formula", "values": {"u": -40, "f": -20}, "length_unit": "cm", "find": "v"},
+    )
+    assert keyed["ok"] is True
+    assert keyed["gold_answer"] == "-40 cm"
+
+
+def test_fallback_questions_are_counted() -> None:
+    # A reply marked source "fallback" (the agent's fixed question, when the model gave none) is counted, so the
+    # teacher can be told.
+    def fallback_model(concept_id: str, difficulty: str) -> dict[str, Any]:
+        return {"question_text": MIRROR_QUESTION, "calculation": MIRROR_CALCULATION, "source": "fallback"}
+
+    made: dict[str, Any] = solver_key.drafts_for_concept("concept_mirror_formula", 1, fallback_model)
+    assert len(made["drafts"]) == 1
+    assert made["fallback_count"] == 1

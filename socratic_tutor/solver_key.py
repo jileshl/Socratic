@@ -30,7 +30,7 @@ import math
 from typing import Any, Callable
 
 from socratic_tutor import policy
-from socratic_tutor.tools import math_tools_server
+from socratic_tutor.tools import math_tools, math_tools_server
 from socratic_tutor.tools.question_bank_server import answer_key_problem
 
 
@@ -67,6 +67,21 @@ FORMULA_ALIASES: dict[str, str] = {
 NOT_VALUE_KEYS: list[str] = ["formula", "find", "length_unit", "values"]
 # Two numbers count as the same when they agree to 1 part in a million (float noise, e.g. 0.5 mm = 0.0005 m).
 SAME_NUMBER_TOLERANCE: float = 1e-6
+# The optics inputs that are distances, given in the calculation's length_unit (for the formulas that take one).
+DISTANCE_INPUTS: list[str] = ["u", "v", "f", "radius_of_curvature", "h_object", "h_image"]
+# The SI unit (as math_tools.read_quantity writes it) of each optics input that isn't a distance; "none" = no unit.
+OPTICS_INPUT_UNITS: dict[str, str] = {
+    "p": "D", "powers": "D", "v1": "m/s", "v2": "m/s",
+    "m": "none", "n": "none", "n21": "none", "n1": "none", "n2": "none",
+}
+# In these formulas "v" is the speed of light in the medium (m/s), not an image distance.
+SPEED_INPUT_FORMULAS: list[str] = ["absolute_refractive_index"]
+# The SI unit of each electricity input (every electricity value is given in SI units). Inputs whose unit the
+# reader doesn't know ("ohm m", "Rs per kW h") are left out, so only their size is compared.
+ELECTRICITY_INPUT_UNITS: dict[str, str] = {
+    "q": "C", "i": "A", "t": "s", "v": "V", "w": "J", "r": "ohm", "length": "m", "area": "m^2",
+    "diameter": "m", "radius": "m", "resistors": "ohm", "h": "J", "p": "W", "energy": "J", "cost": "Rs",
+}
 # The optics inputs whose sign follows from "concave" (negative) or "convex" (positive), per formula (P2-13).
 SIGN_CHECKED_INPUTS: dict[str, list[str]] = {
     "mirror_formula": ["f"],
@@ -114,13 +129,19 @@ def is_plain_number(value: Any) -> bool:
         return False
     if not isinstance(value, (int, float)):
         return False
-    # NaN and infinity can't be a given value of a school question.
-    return math.isfinite(value)
+    # NaN and infinity can't be a given value of a school question. A JSON integer too big for a float
+    # (e.g. 10**400) makes isfinite raise OverflowError: that isn't a plain number either.
+    try:
+        return math.isfinite(value)
+    except (OverflowError, ValueError):
+        return False
 
 
 def catalogue_name(raw_formula: str) -> str:
     """The catalogue name for a formula the model wrote: lowercase, no surrounding spaces, aliases mapped."""
+    # Lowercase, without surrounding spaces ("Mirror " -> "mirror").
     name: str = raw_formula.strip().lower()
+    # A short name maps to its catalogue name; any other name is returned as it is (and checked at [K2]).
     if name in FORMULA_ALIASES:
         return FORMULA_ALIASES[name]
     return name
@@ -142,6 +163,7 @@ def read_value(name: str, value: Any) -> tuple[Any, str | None]:
                 return None, "The value of " + name + " must be numbers only."
             numbers.append(item)
         return numbers, None
+    # Anything else (text, a bool, an empty list, an object) can't be given to the solver.
     return None, "The value of " + name + " must be a number (or a list of numbers)."
 
 
@@ -181,9 +203,11 @@ def read_calculation(calculation: Any) -> tuple[dict[str, Any] | None, str | Non
             if key not in NOT_VALUE_KEYS:
                 return None, "Unexpected key '" + str(key) + "' next to values in the calculation."
     else:
+        # The flat shape: every key that isn't formula / find / length_unit is a given value.
         for key in calculation:
             if key not in NOT_VALUE_KEYS:
                 raw_values[key] = calculation[key]
+    # A calculation must give at least one value.
     if len(raw_values) == 0:
         return None, "The calculation gives no values."
 
@@ -220,49 +244,138 @@ def read_calculation(calculation: Any) -> tuple[dict[str, Any] | None, str | Non
 # ---------------------------------------------------------------------------
 
 
-def numbers_to_find(values: dict[str, Any]) -> list[tuple[str, float]]:
-    """[V2] Every given number with its input name; each item of a list counts on its own."""
-    numbers: list[tuple[str, float]] = []
+def needs_length_unit(formula: str) -> bool:
+    """True for the optics formulas whose distances are given in a length_unit (mirror, lens, heights, power)."""
+    if formula not in math_tools_server.OPTICS_FORMULAS:
+        return False
+    return bool(math_tools_server.OPTICS_FORMULAS[formula].get("needs_length_unit", False))
+
+
+def expected_unit(formula: str, name: str) -> str | None:
+    """The SI unit a given input's number has ("m", "A", "D", "none" for no unit), as read_quantity writes it;
+    None when the reader doesn't know that unit (then only the size is compared)."""
+    # Electricity: every value is given in SI units.
+    if formula in math_tools_server.ELECTRICITY_FORMULAS:
+        if name in ELECTRICITY_INPUT_UNITS:
+            return ELECTRICITY_INPUT_UNITS[name]
+        return None
+    # Optics: "v" is a speed in the refractive-index formulas, and a distance where a length_unit is given.
+    if formula in SPEED_INPUT_FORMULAS and name == "v":
+        return "m/s"
+    if name in DISTANCE_INPUTS and needs_length_unit(formula):
+        return "m"
+    if name in OPTICS_INPUT_UNITS:
+        return OPTICS_INPUT_UNITS[name]
+    return None
+
+
+def length_factor(length_unit: Any) -> float | None:
+    """How many metres one length_unit is (cm -> 0.01, m -> 1), or None if it isn't a known length unit."""
+    if not isinstance(length_unit, str):
+        return None
+    converted: dict[str, Any] = math_tools.convert_to_si(1.0, length_unit)
+    if converted.get("ok") is not True or converted.get("unit") != "m":
+        return None
+    return float(converted["value"])
+
+
+def given_numbers(
+    formula: str, values: dict[str, Any], length_unit: str | None,
+) -> tuple[list[tuple[str, float, float, str | None]], str | None]:
+    """[V2] Every given number as (input name, the number as given, its SI value, its SI unit), or a problem.
+
+    An optics distance is converted with length_unit (u = -30 in "cm" is -0.3 m); every other value is already
+    in SI units. Each item of a list (resistors, powers) counts on its own.
+    """
+    numbers: list[tuple[str, float, float, str | None]] = []
+    # The metres in one length_unit, worked out once (only distances need it).
+    factor: float | None = None
     for name in values:
-        value: Any = values[name]
-        if isinstance(value, list):
-            for item in value:
-                numbers.append((name, float(item)))
+        unit: str | None = expected_unit(formula, name)
+        scale: float = 1.0
+        if unit == "m" and needs_length_unit(formula):
+            if factor is None:
+                factor = length_factor(length_unit)
+            if factor is None:
+                return [], "The calculation needs length_unit, the unit of the distances (for example \"cm\")."
+            scale = factor
+        # A list value gives one number per item.
+        items: list[Any] = []
+        if isinstance(values[name], list):
+            items = values[name]
         else:
-            numbers.append((name, float(value)))
-    return numbers
+            items = [values[name]]
+        for item in items:
+            numbers.append((name, float(item), float(item) * scale, unit))
+    return numbers, None
 
 
-def number_is_written(number: float, quantities: list[dict[str, Any]]) -> bool:
-    """[V3] True if some number in the text has the same size, ignoring the sign: as written, or in SI units."""
+def number_is_written(si_value: float, si_unit: str | None, quantities: list[dict[str, Any]]) -> bool:
+    """[V3] True if some number in the text has this SI size (ignoring the sign) and, when the text gives it a
+    unit, this SI unit: "500 mA" is 0.5 A, so it matches i = 0.5 and never i = 500."""
     for quantity in quantities:
-        # The number as the text writes it ("30" in "30 cm") and its SI value (0.3 m).
-        for key in ("read_number", "value"):
-            seen: Any = quantity.get(key)
-            if is_plain_number(seen):
-                if math.isclose(abs(float(seen)), abs(number), rel_tol=SAME_NUMBER_TOLERANCE, abs_tol=1e-12):
-                    return True
+        seen: Any = quantity.get("value")
+        if not is_plain_number(seen):
+            continue
+        # The size, in SI units on both sides.
+        if not math.isclose(abs(float(seen)), abs(si_value), rel_tol=SAME_NUMBER_TOLERANCE, abs_tol=1e-12):
+            continue
+        # A bare number in the text counts; a number with a unit must be the same kind of quantity.
+        seen_unit: Any = quantity.get("unit")
+        if seen_unit == "none" or si_unit is None or seen_unit == si_unit:
+            return True
     return False
 
 
-def given_values_problem(question_text: str, values: dict[str, Any]) -> str | None:
-    """[V1]-[V4] Every given number must be written in the question text (P2-5); None if they all are.
+def given_values_problem(
+    question_text: str, formula: str, values: dict[str, Any], length_unit: str | None,
+) -> tuple[str | None, list[float]]:
+    """[V1]-[V4] Every given number must be written in the question text, with the same unit (P2-5).
 
-    Otherwise the solver would compute a right key for numbers the student never sees.
+    Returns (None, the given numbers' SI sizes) when they all are, else (the problem, []). Otherwise the solver
+    would compute a right key for numbers the student never sees, or for the wrong unit (500 mA read as 500 A).
     """
     # Flowchart:
     #
-    #   [V1] the numbers in the text (policy.find_quantities: each with its written number and its SI value)
-    #   [V2] the given numbers (each item of a list on its own)
-    #   [V3] each given number: some text number of the same size (ignoring the sign), as written or in SI?
-    #   [V4] the first one that isn't -> "u = -25 is not in the question"; all found -> None
+    #   [V1] the numbers in the text (policy.find_quantities: each with its SI value and SI unit)
+    #   [V2] the given numbers in SI (distances converted with length_unit; lists item by item)
+    #   [V3] each given number: a text number of the same SI size (ignoring the sign) and the same kind?
+    #   [V4] the first one that isn't -> "u = -25 is not in the question"; all found -> (None, the SI sizes)
 
     # [V1] the numbers in the question.
     quantities: list[dict[str, Any]] = policy.find_quantities(question_text)
-    # [V2] + [V3] + [V4] look for each given number.
-    for name, number in numbers_to_find(values):
-        if not number_is_written(number, quantities):
-            return "The given value " + name + " = " + format(number, "g") + " is not in the question text."
+    # [V2] the given numbers, in SI units.
+    numbers, problem = given_numbers(formula, values, length_unit)
+    if problem is not None:
+        return problem, []
+    # [V3] + [V4] look for each given number.
+    sizes: list[float] = []
+    for name, as_given, si_value, si_unit in numbers:
+        if not number_is_written(si_value, si_unit, quantities):
+            return ("The given value " + name + " = " + format(as_given, "g") + " is not in the question text "
+                    "(with that unit)."), []
+        sizes.append(abs(si_value))
+    return None, sizes
+
+
+def answer_in_text_problem(question_text: str, key: str, given_sizes: list[float]) -> str | None:
+    """[K7] The question text must not already give the answer ("Find v (it is 60 cm)"); None if it doesn't.
+
+    A key equal to a given value is fine (an object at the centre of curvature has v = u), so it isn't checked.
+    """
+    # A text key (the image's nature) can't be compared as a number.
+    key_quantity: dict[str, Any] = math_tools.read_quantity(key)
+    if key_quantity.get("ok") is not True:
+        return None
+    key_size: float = abs(float(key_quantity["value"]))
+    # The answer may equal a given number: then its number in the text is the given one, not a give-away.
+    for size in given_sizes:
+        if math.isclose(size, key_size, rel_tol=SAME_NUMBER_TOLERANCE, abs_tol=1e-12):
+            return None
+    # Any number in the text of the same kind and size as the answer gives it away.
+    for quantity in policy.find_quantities(question_text):
+        if policy.same_kind_and_size(key_quantity, quantity):
+            return "The question text already gives away the answer, so this question can't be set."
     return None
 
 
@@ -339,6 +452,9 @@ def format_answer_key(result: dict[str, Any]) -> str:
     # [F1] a text result (the image's nature) is the key itself.
     if isinstance(value, str):
         return value.strip()
+    # Not a number either: no key (answer_key_problem refuses the empty text, so nothing raises here).
+    if not is_plain_number(value):
+        return ""
     # [F2] a number with no unit (magnification, refractive index) is the bare number.
     number: str = format_number(float(value))
     if not isinstance(unit, str) or unit.strip() == "" or unit == "no unit":
@@ -348,7 +464,7 @@ def format_answer_key(result: dict[str, Any]) -> str:
 
 
 def solve_answer_key(question_text: str, calculation: Any) -> dict[str, Any]:
-    """[K1]-[K6] The answer key for one question, computed by the solver from the model's calculation.
+    """[K1]-[K7] The answer key for one question, computed by the solver from the model's calculation.
 
     Returns {"ok": True, "gold_answer", "formula", "solved_for"} or {"ok": False, "error"}. Never raises.
     """
@@ -356,11 +472,12 @@ def solve_answer_key(question_text: str, calculation: Any) -> dict[str, Any]:
     #
     #   [K1] READ   read_calculation: formula, values, find, length_unit         problem -> [E]
     #   [K2] WHICH  the formula is in the optics or the electricity catalogue?   no -> [E]
-    #   [K3] TEXT   every given number is written in the question?               no -> [E]
+    #   [K3] TEXT   every given number is written in the question, same unit?    no -> [E]
     #        SIGN   "concave"/"convex" agree with the sign of f / R / P?          no -> [E]
     #   [K4] SOLVE  solve_optics / solve_electricity (their own checks inside)   ok False -> [E], its message
     #   [K5] ASKED  find == the quantity the solver solved for (ignoring case)?  no -> [E]
     #   [K6] KEY    "value unit"; the grader can read it (answer_key_problem)?   no -> [E]
+    #   [K7] SECRET the question text doesn't already give the answer?          no -> [E]
     #   [R]  {"ok": True, "gold_answer", "formula", "solved_for"}
     #   [E]  {"ok": False, "error": what was wrong}
 
@@ -379,8 +496,8 @@ def solve_answer_key(question_text: str, calculation: Any) -> dict[str, Any]:
     if not known:
         return {"ok": False, "error": "Unknown formula '" + formula + "'. Use a name from the formula list."}
 
-    # [K3] every given number must be in the question text (P2-5).
-    text_problem: str | None = given_values_problem(question_text, calc["values"])
+    # [K3] every given number must be in the question text, with the same unit (P2-5).
+    text_problem, given_sizes = given_values_problem(question_text, formula, calc["values"], calc["length_unit"])
     if text_problem is not None:
         return {"ok": False, "error": text_problem}
     # [K3] the sign of f, the radius or the power must agree with "concave"/"convex" (P2-13).
@@ -406,6 +523,11 @@ def solve_answer_key(question_text: str, calculation: Any) -> dict[str, Any]:
         return {"ok": False, "error": ("The solver's answer is in '" + str(result.get("unit", "")) + "', which "
                                        "the grader can't read, so this question can't be set.")}
 
+    # [K7] the question must not give the answer away (the prompt asks the model not to; code checks it).
+    give_away: str | None = answer_in_text_problem(question_text, key, given_sizes)
+    if give_away is not None:
+        return {"ok": False, "error": give_away}
+
     # [R] the solver's key.
     return {"ok": True, "gold_answer": key, "formula": formula, "solved_for": solved_for}
 
@@ -418,7 +540,9 @@ def solve_answer_key(question_text: str, calculation: Any) -> dict[str, Any]:
 def draft_from_model_reply(chosen_concept: str, chosen_difficulty: str, model_reply: Any) -> dict[str, Any]:
     """[D1]-[D5] One model reply -> one draft for approval_gate.propose_set, with the solver's key.
 
-    Returns {"ok": True, "draft": {concept_id, difficulty, prompt, gold_answer}, "formula"} or {"ok": False, "error"}.
+    Returns {"ok": True, "draft": {concept_id, difficulty, prompt, gold_answer}, "formula", "fallback"} or
+    {"ok": False, "error"}. "fallback" is True when the reply is one of the agent's fixed fallback questions
+    (question_setter.select_question marks them with source "fallback"), so the teacher can be told.
     The concept and difficulty come from the REQUEST; the model's own key, concept and difficulty are never read.
     """
     # Flowchart:
@@ -457,13 +581,17 @@ def draft_from_model_reply(chosen_concept: str, chosen_difficulty: str, model_re
         "prompt": question_text.strip(),
         "gold_answer": solved["gold_answer"],
     }
-    return {"ok": True, "draft": draft, "formula": solved["formula"]}
+    # Whether this was a fixed fallback question rather than the model's own.
+    is_fallback: bool = model_reply.get("source") == "fallback"
+    return {"ok": True, "draft": draft, "formula": solved["formula"], "fallback": is_fallback}
 
 
 def difficulty_plan(count: int) -> list[str]:
     """[N1] The difficulty of each draft: easy, medium, hard, then round again. [] if count isn't 1-MAX_DRAFTS."""
+    # Only a whole number from 1 to MAX_DRAFTS (a bool is an int in Python, so it is refused first).
     if isinstance(count, bool) or not isinstance(count, int) or count < 1 or count > MAX_DRAFTS:
         return []
+    # Position 0 -> easy, 1 -> medium, 2 -> hard, 3 -> easy again, ...
     plan: list[str] = []
     for position in range(count):
         plan.append(DIFFICULTY_ORDER[position % len(DIFFICULTY_ORDER)])
@@ -479,31 +607,37 @@ def drafts_for_concept(
 
     ask_model(concept_id, difficulty) is passed in by the graph node (question_setter.select_question), so this
     module never imports the agent module (no import cycle), and tests can pass a fake.
-    Returns {"drafts": [draft, ...], "refused": [{"draft": n, "difficulty", "error"}, ...]}.
+    Returns {"drafts": [draft, ...], "refused": [{"draft": n, "difficulty", "error"}, ...], "fallback_count": n}
+    (fallback_count: how many drafts are the agent's fixed fallback questions, not the model's own).
     """
     # Flowchart:
     #
     #   [N1] the difficulties: easy, medium, hard, then round again        count not 1-5 -> no drafts
-    #   [N2] for each one: ONE model call -> draft_from_model_reply
+    #   [N2] for each one: ONE model call -> draft_from_model_reply (any crash = that draft refused)
     #        ok -> drafts; not ok -> refused, with its difficulty and why
-    #   [R]  {"drafts", "refused"}
+    #   [R]  {"drafts", "refused", "fallback_count"}
 
+    # The keyed drafts, the refusals, and how many drafts are fixed fallback questions.
     drafts: list[dict[str, Any]] = []
     refused: list[dict[str, Any]] = []
+    fallback_count: int = 0
     # [N1] which difficulties to ask for.
     plan: list[str] = difficulty_plan(count)
     if len(plan) == 0:
         refused.append({"draft": 0, "difficulty": "", "error": "Ask for 1 to " + str(MAX_DRAFTS) + " questions."})
-        return {"drafts": drafts, "refused": refused}
+        return {"drafts": drafts, "refused": refused, "fallback_count": fallback_count}
     # [N2] one model call per draft; one bad reply fails alone.
     for position, chosen_difficulty in enumerate(plan):
         try:
             model_reply: Any = ask_model(chosen_concept, chosen_difficulty)
-        except Exception as error:  # a model or network failure is a refused draft, not a crash
-            model_reply = {"error": type(error).__name__}
-        made: dict[str, Any] = draft_from_model_reply(chosen_concept, chosen_difficulty, model_reply)
+            made: dict[str, Any] = draft_from_model_reply(chosen_concept, chosen_difficulty, model_reply)
+        except Exception as error:  # a model, network or unexpected-input failure is a refused draft, not a crash
+            made = {"ok": False, "error": "The draft could not be made (" + type(error).__name__ + ")."}
         if made.get("ok") is True:
             drafts.append(made["draft"])
+            if made.get("fallback") is True:
+                fallback_count = fallback_count + 1
         else:
             refused.append({"draft": position, "difficulty": chosen_difficulty, "error": str(made.get("error", ""))})
-    return {"drafts": drafts, "refused": refused}
+    # [R] what was made.
+    return {"drafts": drafts, "refused": refused, "fallback_count": fallback_count}
