@@ -13,6 +13,8 @@ intent is one of:
 - "role_claim"   "I am a faculty / professor / parent", "I forgot my login": the teacher page is the way in
 - "rude"         insults or swearing aimed at the tutor ("you are stupid", "get lost")
 - "opt_out"      "I don't need it", "go away", "not now", "bye"
+- "fed_up"       frustration that isn't aimed at anyone: "nonsense", "boring", "useless", "waste of time"
+- "gibberish"    a keyboard mash such as "kjsadfkmnasdkfnhlas": nothing to answer
 - "small_talk"   greetings and chatter with nothing to learn from ("hi", "lol", "my friend is acting smart")
 
 Distress is NOT decided here: the safety check runs first, so "I'm so stupid, I want to give up" is already
@@ -65,7 +67,29 @@ SMALL_TALK = re.compile(
     r"^\s*((ok+|okay|k|cool|nice|great|alright|got it|thanks?|thank you|thx|ty|lol+|haha+|hehe+|fine|yes|no|nope|yeah|yep|nah|hmm+|sure)[\s,.!]*)+$",
     re.IGNORECASE,
 )
+FED_UP = re.compile(
+    r"\b(nonsense|rubbish|boring|bored|pointless|waste of (my )?time|this sucks|so hard|too hard|too difficult|whatever|meh|ugh+"
+    r"|hate (this|physics|science|studying))\b"
+    r"|^\s*((this is|it'?s|so|all) )?(useless|stupid|dumb)\s*[.!]*\s*$",
+    re.IGNORECASE,
+)
 CONFUSED = re.compile(r"^\s*(huh+|what+|wha+t?|eh+|umm*|\?+|i don'?t get it)\s*[?!.]*\s*$", re.IGNORECASE)
+
+
+def _looks_like_gibberish(t: str) -> bool:
+    """A keyboard mash: most words are long and unpronounceable (5+ consonants in a row, or almost no vowels)."""
+    words = re.findall(r"[A-Za-z]+", t)
+    if not words or re.search(r"\d", t):
+        return False
+
+    def odd(w: str) -> bool:
+        w = w.lower()
+        if len(w) < 5:
+            return False
+        vowels = sum(ch in "aeiouy" for ch in w)
+        return bool(re.search(r"[^aeiouy]{5,}", w)) or vowels / len(w) < 0.15 or bool(re.search(r"(.)\1{3,}", w))
+
+    return sum(odd(w) for w in words) * 2 >= len(words)
 
 
 def classify(text: str) -> tuple[str, str | None]:
@@ -83,6 +107,10 @@ def classify(text: str) -> tuple[str, str | None]:
         return "confused", "confused"
     # Numbers or an equation ("v = -60 cm", "2/3") are an attempt at an answer, so they count as physics too.
     physics = bool(PHYSICS_WORDS.search(t) or re.search(r"\d|=", t))
+    if not physics and _looks_like_gibberish(t):
+        return "gibberish", "gibberish"
+    if FED_UP.search(t) and not physics:
+        return "fed_up", "fed_up"
     if OPT_OUT.search(t) and not physics:
         return "opt_out", "opt_out"
     if GREETING.match(t):
@@ -109,6 +137,11 @@ REPLIES: dict[str, str] = {
         "I'm here to help you learn, and I'd like us to keep it kind. If you're fed up, that's okay: take a short break, "
         "or tell me which part is annoying you and we'll try it a different way."
     ),
+    "fed_up": (
+        "That's okay, this can feel hard. We can try a much easier example, take a short break, or pick another "
+        "topic. Which would you like?"
+    ),
+    "gibberish": "I didn't catch that. Could you type it again, or ask your question in a few words?",
     "opt_out": (
         "No problem. Your progress is saved. Whenever you're ready, ask me a question, take a quiz, or press "
         "\"Learn from the start\" on any topic."
@@ -131,4 +164,5 @@ def reply_for(intent: str, rule: str | None) -> str:
     return REPLIES.get(intent, REPLIES["small_talk"])
 
 # What the tutor is asked when the student just says "huh?": the same topic, explained another way.
-CONFUSED_REWRITE = "I don't understand. Can you explain it differently, with an everyday example and a smaller step?"
+CONFUSED_REWRITE = ("I don't understand your last question. Explain the same step differently, in two short sentences, "
+                    "with one everyday example, then ask me one easy question.")
