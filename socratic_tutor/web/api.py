@@ -36,6 +36,7 @@ from __future__ import annotations
 import csv
 import hmac
 import json
+import re
 import sqlite3
 import time
 import uuid
@@ -449,8 +450,14 @@ def _book_for(values: dict[str, Any], message: str, concept_id: str | None) -> d
     # A follow-up ("another hint") says little on its own, so the student's last questions help pick the figure.
     asked = [str(getattr(m, "content", "")) for m in (values.get("messages") or []) if getattr(m, "type", "") == "human"]
     query = " ".join([message] + asked[-3:-1])
+    # Which page to open: the section the reply itself names ("[NCERT Sec 11.4]") first, then the topic's own
+    # sections, then the rest of the search results.
+    cited = list(values.get("citations") or [])
+    named = re.findall(r"\b((?:9|10|11)\.\d+(?:\.\d+)?)\b", str(values.get("response") or ""))
+    own = book.CONCEPT_SECTIONS.get(concept_id or "", [])
+    order = list(dict.fromkeys([s for s in named if s in cited or s in own] + [s for s in own if s in cited] + cited))
     try:
-        return book.book_card(list(values.get("citations") or []), query, concept_id)
+        return book.book_card(order, query, concept_id)
     except Exception:  # the book card is extra help; a reply never fails because of it
         return None
 
