@@ -157,6 +157,8 @@ class ChatIn(BaseModel):
     session_id: str
     message: str = Field(min_length=1, max_length=4000)
     current_question_id: str | None = None
+    chapter: str | None = None
+    concept_id: str | None = None
 
 
 def _sse(event: dict[str, Any]) -> str:
@@ -173,7 +175,7 @@ def chat(body: ChatIn) -> StreamingResponse:
     if session is None:
         raise HTTPException(404, "Unknown session; start one with POST /api/session")
     return StreamingResponse(
-        _run_turn(session, body.message, body.current_question_id),
+        _run_turn(session, body.message, body.current_question_id, body.chapter, body.concept_id),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
@@ -233,12 +235,13 @@ def next_quiz_question(session_id: str, previous_id: str | None = None) -> dict[
 
     The page sends the returned question_id with the student's answer (POST /api/chat), so the grader checks
     it against that question's approved key. previous_id is the question just asked, so the next call moves on.
+    Questions already solved correctly by this student are skipped.
     """
     # Flowchart (each [box] matches a comment below):
     #
     #   [Q1] a known session?                                     no  -> 404
-    #   [Q2] approved questions for the student's concept
-    #   [Q3] none for that concept? -> approved questions of any concept
+    #   [Q2] approved questions for the student's concept (unsolved)
+    #   [Q3] none for that concept? -> approved questions of any concept (unsolved)
     #   [Q4] none at all?                                         yes -> "no questions yet" (question_id None)
     #   [Q5] the question after previous_id (wrapping round), without its answer key
 
@@ -246,27 +249,33 @@ def next_quiz_question(session_id: str, previous_id: str | None = None) -> dict[
     session: dict[str, Any] | None = ops.session(session_id)
     if session is None:
         raise HTTPException(404, "Unknown session; start one with POST /api/session")
+    student_id: str | None = session.get("student_id")
+    solved_ids: set[str] = learners.get_solved_question_ids(student_id) if student_id else set()
+
     # [Q2] The concept the student is on, and the approved questions for it (keys are never selected).
     concept_id: str | None = _session_concept(session)
     questions: list[dict[str, Any]] = []
     if concept_id is not None:
-        questions = question_bank.list_approved_for_students(concept_id)
-    # [Q3] No approved question for this concept yet. First choice: approved questions of a concept the student
+        all_concept_qs = question_bank.list_approved_for_students(concept_id)
+        questions = [q for q in all_concept_qs if q["id"] not in solved_ids]
+    # [Q3] No approved question for this concept yet (or all solved). First choice: approved questions of a concept the student
     # is ready for (all its prerequisites mastered), so a beginner isn't quizzed on an advanced topic. Last
     # resort: any approved question, so a quiz can still run (e.g. in the demo, with only seeded questions).
     if len(questions) == 0:
         every_approved: list[dict[str, Any]] = question_bank.list_approved_for_students(None)
+        every_unsolved: list[dict[str, Any]] = [q for q in every_approved if q["id"] not in solved_ids]
         graph_of_concepts: ConceptGraph = ConceptGraph()
-        mastery: dict[str, float] = _mastery(session["student_id"])
-        for question in every_approved:
+        mastery: dict[str, float] = _mastery(session["student_id"]) if student_id else {}
+        for question in every_unsolved:
             # can_advance: every prerequisite of this question's concept is at the passing mastery.
             if graph_of_concepts.can_advance(question["concept_id"], mastery):
                 questions.append(question)
         if len(questions) == 0:
-            questions = every_approved
-    # [Q4] The teacher hasn't approved any question yet.
+            questions = every_unsolved
+    # [Q4] The teacher hasn't approved any question yet, or all approved questions are already solved.
     if len(questions) == 0:
-        return {"question_id": None, "note": "There are no approved quiz questions yet. Please ask your teacher."}
+        msg = "You have solved all approved quiz questions! Great job." if solved_ids else "There are no approved quiz questions yet. Please ask your teacher."
+        return {"question_id": None, "note": msg}
     # [Q5] Start with the first question; if the page says which one it just asked, take the one after it.
     chosen: dict[str, Any] = questions[0]
     for position in range(len(questions)):
@@ -283,7 +292,13 @@ def next_quiz_question(session_id: str, previous_id: str | None = None) -> dict[
     }
 
 
-def _run_turn(session: dict[str, Any], message: str, current_question_id: str | None = None) -> Iterator[str]:
+def _run_turn(
+    session: dict[str, Any],
+    message: str,
+    current_question_id: str | None = None,
+    chapter: str | None = None,
+    concept_id: str | None = None,
+) -> Iterator[str]:
     session_id, student_id, mode = session["session_id"], session["student_id"], session["mode"]
     meter = trace.CostMeter()
     cfg = {
@@ -308,6 +323,13 @@ def _run_turn(session: dict[str, Any], message: str, current_question_id: str | 
         "teacher_alert_triggered": False,
         "answer_leak_flag": False,
     }
+    if chapter:
+        state_in["chapter"] = chapter
+    # A topic the student picked (Practise it) holds for this turn. Otherwise the tutor keeps the topic it was
+    # on, and may move to the topic of a new question (see node_supervisor).
+    state_in["concept_pinned"] = bool(concept_id)
+    if concept_id:
+        state_in["current_concept_id"] = concept_id
     if session["turns"] == 0:
         state_in["mastery_map"] = before
     yield _sse({"type": "start", "session_id": session_id, "mode": mode})
@@ -473,19 +495,29 @@ def _grade_brief(grade: Any) -> dict[str, Any] | None:
     """Only the verdict and the student-safe feedback; never the answer key."""
     if not isinstance(grade, dict):
         return None
-    return {"is_correct": bool(grade.get("is_correct")), "feedback": grade.get("feedback"), "checked_by": "math-tools (code)"}
+    return {
+        "is_correct": bool(grade.get("is_correct")),
+        "feedback": grade.get("feedback"),
+        "already_solved": bool(grade.get("already_solved")),
+        "checked_by": "math-tools (code)",
+    }
 
 
 @api_router.get("/api/quiz/questions")
-def quiz_questions() -> dict[str, Any]:
-    """Approved questions a student can be quizzed on. Answer keys never leave the server."""
+def quiz_questions(student_id: str | None = None) -> dict[str, Any]:
+    """Approved questions a student can be quizzed on. Answer keys never leave the server.
+    If student_id is provided, questions already solved by the student with score >= 1.0 are omitted.
+    """
     rows = approvals._qb_rows("approved")
     titles = _concept_titles()
+    solved_ids: set[str] = set()
+    if student_id:
+        solved_ids = learners.get_solved_question_ids(student_id)
     items = [
         {"question_id": r["id"], "concept_id": r["concept_id"], "concept": titles.get(r["concept_id"], r["concept_id"]),
          "chapter": _concept_chapters().get(r["concept_id"], ""), "difficulty": r["difficulty"], "prompt": r["prompt"]}
         for r in rows
-        if not str(r["prompt"]).startswith("[TEST]")  # left behind by older test runs; never shown to students
+        if not str(r["prompt"]).startswith("[TEST]") and r["id"] not in solved_ids
     ]
     return {"items": items}
 
@@ -522,13 +554,17 @@ def _open_misconceptions(profile: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
-def _quiz_concepts() -> set[str]:
-    return {r["concept_id"] for r in approvals._qb_rows("approved")}
+def _quiz_concepts(student_id: str | None = None) -> set[str]:
+    rows = approvals._qb_rows("approved")
+    if student_id:
+        solved_ids = learners.get_solved_question_ids(student_id)
+        return {r["concept_id"] for r in rows if r["id"] not in solved_ids}
+    return {r["concept_id"] for r in rows}
 
 
 def _plan_for(student_id: str) -> dict[str, Any]:
     profile = learners.get_profile(student_id)
-    return study_plan.view(dict(profile["mastery_map"]), _open_misconceptions(profile), ops.plan(student_id), _quiz_concepts())
+    return study_plan.view(dict(profile["mastery_map"]), _open_misconceptions(profile), ops.plan(student_id), _quiz_concepts(student_id))
 
 
 def _fallback_name(student_id: str) -> str:

@@ -22,10 +22,15 @@ def get_llm(model: str = config.SPECIALIST_MODEL, temperature: float = 0.2) -> C
     )
 
 
-def chat_json(prompt: str, system_prompt: str, model: str = config.SPECIALIST_MODEL) -> dict[str, Any]:
+def chat_json(
+    prompt: str,
+    system_prompt: str,
+    model: str = config.SPECIALIST_MODEL,
+    temperature: float = 0.0,
+) -> dict[str, Any]:
     """Execute a completion expecting structured JSON output."""
     try:
-        llm = get_llm(model=model, temperature=0.0)
+        llm = get_llm(model=model, temperature=temperature)
         messages = [
             SystemMessage(content=system_prompt + "\nOutput MUST be valid JSON and nothing else."),
             HumanMessage(content=prompt)

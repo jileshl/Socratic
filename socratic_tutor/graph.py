@@ -96,6 +96,20 @@ def _resolve_chapter(state: SocraticState) -> str | None:
 
 # --- Node Definitions ---
 
+# The student asking for more help on the same topic. Only this (or a repeated mix-up, or being stuck) moves
+# the hint ladder up; "okay, thanks" or the student's own explanation does not.
+_MORE_HELP = re.compile(
+    r"\b(hints?|help|stuck|confus\w*|lost|no idea|not sure|give up|i['’]?m done"
+    r"|(?:do|did|can)\s*(?:n['’]?t|not)\s+(?:get|understand|follow|see|know)|cannot\s+(?:get|understand|follow|see)"
+    r"|tell me|give me|show me|the answer|formula|explain (?:it |this |that )?(?:again|differently))\b",
+    re.IGNORECASE,
+)
+
+
+def asks_for_more_help(query: str) -> bool:
+    return bool(_MORE_HELP.search(query or ""))
+
+
 def node_input_guardrail(state: SocraticState) -> dict:
     query = state.get("query", "")
     guard_res = check_input_guardrails(query)
@@ -125,6 +139,8 @@ def node_input_guardrail(state: SocraticState) -> dict:
         "distress_detected": False,
         "teacher_alert_triggered": False,
     }
+    if state.get("chapter"):
+        reset_state["chapter"] = state["chapter"]
 
     # Flowchart of the blocked case (each [box] matches a comment below):
     #
@@ -210,7 +226,41 @@ def node_supervisor(state: SocraticState) -> dict:
 
     cg = ConceptGraph()
     next_concept = cg.next_recommended(mastery)
-    current_concept = state.get("current_concept_id") or next_concept
+    explicit_concept = state.get("current_concept_id")
+    current_concept = explicit_concept
+    # The topic is pinned when the student picked it for this turn (web: "Practise it"), or when a caller
+    # passes current_concept_id without saying (tests, evaluation). A topic only carried over from the last
+    # turn is not pinned: a new chapter or a new question may move the tutor to its own topic.
+    pinned = bool(state.get("concept_pinned", bool(explicit_concept)))
+
+    req_chapter = state.get("chapter")
+    req_ch_num = None
+    if req_chapter:
+        req_ch_num = str(req_chapter).strip()
+        if req_ch_num in CHAPTER_TITLE_TO_NUM:
+            req_ch_num = CHAPTER_TITLE_TO_NUM[req_ch_num]
+        else:
+            m = re.search(r"\b(9|10|11)\b", req_ch_num)
+            if m:
+                req_ch_num = m.group(1)
+        current_ch_num = CHAPTER_TITLE_TO_NUM.get(cg.concepts.get(current_concept or "", {}).get("chapter", ""))
+        if current_concept and not pinned and current_ch_num and current_ch_num != req_ch_num:
+            current_concept = None  # the student moved to another chapter
+
+    if not current_concept and req_ch_num:
+        for cid, cdata in cg.concepts.items():
+            c_ch_num = CHAPTER_TITLE_TO_NUM.get(cdata.get("chapter", ""))
+            if c_ch_num == req_ch_num and mastery.get(cid, 0.0) < config.PASSING_MASTERY_THRESHOLD:
+                current_concept = cid
+                break
+        if not current_concept:
+            for cid, cdata in cg.concepts.items():
+                if CHAPTER_TITLE_TO_NUM.get(cdata.get("chapter", "")) == req_ch_num:
+                    current_concept = cid
+                    break
+
+    if not current_concept:
+        current_concept = next_concept
 
     # Teacher Rule 3: Flag stuck student after 3 consecutive failures
     failure_streaks = profile.get("failure_streaks", {})
@@ -235,10 +285,13 @@ def node_supervisor(state: SocraticState) -> dict:
     if last_qid and qid and last_qid != qid:
         hint_step = 1
 
-    # Hint progression: adjust once per turn at start of practice turn if continuing on same concept/question or stuck
+    # Hint progression, at most once per turn: a bigger hint only when the student asks for more help on the
+    # same topic ("another hint", "still confused", "just tell me the answer"), or is stuck. A reply such as
+    # "okay, thanks" or the student's own explanation keeps the hint level (a repeated mix-up raises it below).
     if mode == "practice" and not plan:
         is_continuing_practice = bool(last_concept and last_concept == current_concept)
-        if (stuck or is_continuing_practice) and not hint_raised and hint_step < config.MAX_HINT_STEPS:
+        wants_more_help = is_continuing_practice and asks_for_more_help(state.get("query", ""))
+        if (stuck or wants_more_help) and not hint_raised and hint_step < config.MAX_HINT_STEPS:
             hint_step = min(hint_step + 1, config.MAX_HINT_STEPS)
             hint_raised = True
 
@@ -256,6 +309,7 @@ def node_supervisor(state: SocraticState) -> dict:
                 "teacher_alert_triggered": teacher_alert,
                 "hint_step": hint_step,
                 "hint_raised_this_turn": hint_raised,
+                "chapter": state.get("chapter"),
             }
         else:
             # N3: If grader encountered an error (e.g. unapproved question), do not run replan
@@ -277,14 +331,15 @@ def node_supervisor(state: SocraticState) -> dict:
                     "hint_raised_this_turn": hint_raised,
                     "last_concept_id": current_concept,
                     "last_question_id": qid,
+                    "chapter": state.get("chapter"),
                 }
 
             # Grader finished! Supervisor saves quiz result and replans
             score = float(grade_res.get("score", 0.0))
             # N1: quiz results filed under the question's own concept, not the student's current concept
             quiz_concept = grade_res.get("concept_id")
+            qid = state.get("current_question_id")
             if not quiz_concept:
-                qid = state.get("current_question_id")
                 if qid:
                     q = question_bank.get_approved_question(qid)
                     if q and q.get("concept_id"):
@@ -292,14 +347,17 @@ def node_supervisor(state: SocraticState) -> dict:
             quiz_concept = quiz_concept or current_concept
 
             concept_failures = 0
+            quiz_res: dict[str, Any] = {}
             if student_id and quiz_concept:
-                quiz_res = store.record_quiz_result(student_id, quiz_concept, score)
+                quiz_res = store.record_quiz_result(student_id, quiz_concept, score, question_id=qid)
                 if quiz_res.get("teacher_alert_triggered"):
                     teacher_alert = True
                 updated_profile = store.get_profile(student_id)
                 mastery = dict(updated_profile.get("mastery_map", {}))
                 failure_streaks = updated_profile.get("failure_streaks", {})
                 concept_failures = failure_streaks.get(quiz_concept or "", 0)
+            if isinstance(grade_res, dict):
+                grade_res["already_solved"] = quiz_res.get("already_solved", False)
 
             # N2: 'mastered' is decided by updated mastery, not by a single answer
             concept_mastery = mastery.get(quiz_concept)
@@ -348,6 +406,7 @@ def node_supervisor(state: SocraticState) -> dict:
                 "hint_raised_this_turn": hint_raised,
                 "last_concept_id": current_concept,
                 "last_question_id": qid,
+                "chapter": state.get("chapter"),
             }
 
     # Question Setter Mode:
@@ -364,6 +423,7 @@ def node_supervisor(state: SocraticState) -> dict:
             "hint_raised_this_turn": hint_raised,
             "last_concept_id": current_concept,
             "last_question_id": qid,
+            "chapter": state.get("chapter"),
         }
 
     # Practice Mode:
@@ -382,6 +442,7 @@ def node_supervisor(state: SocraticState) -> dict:
             "last_concept_id": current_concept,
             "last_question_id": qid,
             "last_misconception_id": state.get("last_misconception_id"),
+            "chapter": state.get("chapter"),
         }
 
     # 2. Has diagnostician produced a result?
@@ -389,6 +450,23 @@ def node_supervisor(state: SocraticState) -> dict:
         diag = state.get("identified_misconception")
         miscon_id = diag.get("id") if (diag and isinstance(diag, dict)) else None
         last_miscon = state.get("last_misconception_id")
+
+        if not pinned and diag and isinstance(diag, dict) and miscon_id:
+            try:
+                catalog = getattr(diagnostician, "_load_catalog", lambda: [])()
+                for m in catalog:
+                    if m.get("id") == miscon_id and m.get("concept_id"):
+                        diag_concept = m["concept_id"]
+                        if diag_concept in cg.concepts:
+                            diag_ch = diag.get("chapter")
+                            curr_ch = cg.concepts.get(current_concept, {}).get("chapter")
+                            if current_concept == "concept_reflection_laws" or (diag_ch and diag_ch != curr_ch):
+                                if diag_concept != current_concept:
+                                    hint_step, hint_raised = 1, False  # a new topic starts at the smallest hint
+                                current_concept = diag_concept
+                        break
+            except Exception:
+                pass
 
         # Raise hint ladder when the same concept and misconception returned (last hint didn't help)
         # N4: Ensure hint can only be raised at most once per turn
@@ -421,6 +499,7 @@ def node_supervisor(state: SocraticState) -> dict:
             "last_concept_id": current_concept,
             "last_question_id": qid,
             "last_misconception_id": miscon_id or last_miscon,
+            "chapter": state.get("chapter"),
         }
 
     # First pass in practice mode:
@@ -436,6 +515,7 @@ def node_supervisor(state: SocraticState) -> dict:
         "hint_raised_this_turn": hint_raised,
         "last_concept_id": current_concept,
         "last_question_id": qid,
+        "chapter": state.get("chapter"),
     }
 
 

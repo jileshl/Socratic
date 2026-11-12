@@ -167,6 +167,9 @@ const SCENARIOS = [
 const store = { get(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }, set(k,v){ try { localStorage.setItem(k,v); } catch(e){} }, del(k){ try { localStorage.removeItem(k); } catch(e){} } };
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 let persona = "", sessions = {}, busy = false, quiz = [], lastTurn = null, quizFocus = null;
+// Topic sent with the next message: the chapter keeps the tutor in the right chapter; a concept is sent once,
+// when the student picks a topic (Practise it), so a new question typed later can move to its own topic.
+let activeChapter = null, activeConcept = null;
 
 // ---------- navigation ----------
 function go(view) {
@@ -196,13 +199,14 @@ async function session(mode) {
 }
 function setPersona(p, quiet) {
   persona = p; document.getElementById("persona").value = p;
+  activeChapter = null; activeConcept = null;
   // On a shared device, one student's conversation is never left on screen for the next.
   if (!PRESENTER) { if (p) store.set("picked", p); else store.del("picked"); logEl().innerHTML = ""; document.getElementById("welcome").classList.remove("hidden"); }
   consentStrip();
   if (!quiet && PRESENTER) note(p ? `Now learning as ${label(p)}${PERSONAS[p] ? ", who " + PERSONAS[p].note : ""}.` : `Now learning as ${label("")}.`);
   refreshNextUp(); refreshGame();
   const open = document.querySelector(".topnav button.on").dataset.view;
-  if (open === "plan") loadPlan(); if (open === "progress") loadProgress(); if (open === "cards") loadCards();
+  if (open === "plan") loadPlan(); if (open === "progress") loadProgress(); if (open === "cards") loadCards(); if (open === "quiz") loadQuiz();
 }
 // Names come from the teacher's class list. They are shown here only; chats use the random ID.
 async function loadRoster() {
@@ -262,7 +266,18 @@ function reply(ev, holder) {
 }
 async function stream(mode, text, questionId) {
   const s = await session(mode);
-  const r = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: s.session_id, message: text, current_question_id: questionId || null }) });
+  const pinned = activeConcept; activeConcept = null;
+  const r = await fetch("/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      session_id: s.session_id,
+      message: text,
+      current_question_id: questionId || null,
+      chapter: activeChapter || null,
+      concept_id: pinned || null,
+    })
+  });
   const reader = r.body.getReader(); const dec = new TextDecoder(); let buf = ""; const steps = []; let final = null;
   while (true) {
     const { done, value } = await reader.read(); if (done) break;
@@ -272,7 +287,13 @@ async function stream(mode, text, questionId) {
       if (!line.trim()) continue;
       const ev = JSON.parse(line);
       if (ev.type === "step") { steps.push(ev); stream.onstep && stream.onstep(steps); }
-      if (ev.type === "reply") { ev.steps = steps; ev.asked = text; final = ev; }
+      if (ev.type === "reply") {
+        ev.steps = steps; ev.asked = text; final = ev;
+        if (ev.concept && ev.concept.chapter) {
+          const ch = ev.concept.chapter;
+          activeChapter = ch.includes("Light") ? "9" : ch.includes("Eye") ? "10" : ch.includes("Electricity") ? "11" : activeChapter;
+        }
+      }
     }
   }
   lastTurn = final; renderHood();
@@ -303,11 +324,18 @@ function writeAnswer() { const i = document.getElementById("msg"); if (!i.value.
 let quizIds = null;
 function hasQuiz(conceptId) { return (quizIds || new Set()).has(conceptId); }
 fetch("/api/quiz/questions").then(r => r.json()).then(d => quizIds = new Set((d.items || []).map(q => q.concept_id))).catch(() => {});
-function startWith(i, j) { if (!busy) { go("learn"); guarded(() => ask(CHAPTERS[i].ask[j])); } }
+function startWith(i, j) {
+  activeChapter = i === 0 ? "9" : i === 1 ? "10" : "11";
+  activeConcept = null;
+  if (!busy) { go("learn"); guarded(() => ask(CHAPTERS[i].ask[j])); }
+}
 
 // ---------- quiz ----------
 async function loadQuiz(focus) {
-  try { quiz = (await (await fetch("/api/quiz/questions")).json()).items || []; } catch (e) { quiz = []; }
+  quizFocus = focus;
+  const id = studentId();
+  const url = "/api/quiz/questions" + (id ? `?student_id=${encodeURIComponent(id)}` : "");
+  try { quiz = (await (await fetch(url)).json()).items || []; } catch (e) { quiz = []; }
   const shown = focus ? quiz.filter(q => q.concept_id === focus) : quiz;
   const head = focus && shown.length ? `<div class="row" style="justify-content:space-between;margin-bottom:10px"><b>Questions on ${esc(shown[0].concept)}</b><button class="ghost" onclick="loadQuiz()">Show all questions</button></div>` : "";
   document.getElementById("quizList").innerHTML = head + (shown.length ? shown.map(q => {
@@ -317,7 +345,7 @@ async function loadQuiz(focus) {
       <div class="q">${esc(q.prompt.replace(/^\[DEMO\]\s*/, ""))}</div>
       <form onsubmit="checkAnswer(event,'${esc(q.question_id)}')"><input placeholder="Your answer, with its unit" aria-label="Your answer"><button class="primary">Check answer</button></form>
       <div data-result role="status"></div></div>`;
-  }).join("") : `<div class="panel empty"><h3>No quiz questions yet</h3><p>Your teacher approves every question before it appears here. Try the Learn tab in the meantime.</p></div>`);
+  }).join("") : `<div class="panel empty"><h3>No quiz questions available</h3><p>${id ? "You have solved all available quiz questions, or your teacher has not approved new ones yet." : "Your teacher approves every question before it appears here."} Try the Learn tab in the meantime.</p></div>`);
 }
 async function checkAnswer(e, qid) {
   e.preventDefault(); if (busy) return;
@@ -327,9 +355,18 @@ async function checkAnswer(e, qid) {
     stream.onstep = steps => renderRay(steps);
     const ev = await stream("quiz", answer, qid); stream.onstep = null;
     refreshNextUp();
-    if (ev.grade) out.innerHTML = `<div class="result ${ev.grade.is_correct ? "ok" : "bad"}">${ev.grade.is_correct ? `Correct. Well done.${studentId() ? ` <span class="plus">+10 points</span>` : ""}` : "Not yet. Check your sign convention and units, then try again, or ask for a hint in Learn."}</div>`;
-    if (ev.grade && ev.grade.is_correct) { celebrate(card); refreshGame(true); }
-    else out.innerHTML = `<div class="result bad">${esc(ev.text || "This answer couldn't be checked.")}</div>`;
+    if (ev.grade) out.innerHTML = `<div class="result ${ev.grade.is_correct ? "ok" : "bad"}">${ev.grade.is_correct ? `Correct. Well done.${studentId() ? (ev.grade.already_solved ? " (Already solved)" : ` <span class="plus">+10 points</span>`) : ""}` : "Not yet. Check your sign convention and units, then try again, or ask for a hint in Learn."}</div>`;
+    if (ev.grade && ev.grade.is_correct) {
+      celebrate(card);
+      refreshGame(true);
+      setTimeout(() => {
+        card.style.transition = "opacity 0.4s ease, transform 0.4s ease";
+        card.style.opacity = "0";
+        card.style.transform = "scale(0.95)";
+        setTimeout(() => loadQuiz(quizFocus), 450);
+      }, 1500);
+    }
+    else if (!ev.grade) out.innerHTML = `<div class="result bad">${esc(ev.text || "This answer couldn't be checked.")}</div>`;
   });
 }
 
@@ -370,7 +407,17 @@ async function refreshNextUp() {
     <button class="primary" onclick="practise('${esc(n.concept_id)}')">Practise it</button><button onclick="go('plan')">See my plan</button></div>` : "";
 }
 function conceptTitle(id) { const all = [...((planCache || {}).suggested || []), ...(((planCache || {}).assigned || {}).items || []), ...cards.map(c => ({ concept_id: c.concept_id, title: c.concept }))]; return (all.find(i => i.concept_id === id) || {}).title || id; }
-function practise(id) { if (busy) return; go("learn"); guarded(() => ask(`Can you help me practise ${conceptTitle(id)}? Ask me a question to start.`)); }
+function practise(id) {
+  if (busy) return;
+  activeConcept = id;
+  const all = [...((planCache || {}).suggested || []), ...(((planCache || {}).assigned || {}).items || [])];
+  const item = all.find(i => i.concept_id === id);
+  if (item && item.chapter) {
+    activeChapter = item.chapter.includes("Light") ? "9" : item.chapter.includes("Eye") ? "10" : item.chapter.includes("Electricity") ? "11" : null;
+  }
+  go("learn");
+  guarded(() => ask(`Can you help me practise ${conceptTitle(id)}? Ask me a question to start.`));
+}
 function quizOn(id) { quizFocus = id; go("quiz"); }
 
 // ---------- points, levels and badges (worked out on the server from real records) ----------
