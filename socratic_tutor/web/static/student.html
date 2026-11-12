@@ -449,18 +449,23 @@ function renderChapterCards() {
 }
 
 // ---------- quiz ----------
+const figHtml = (f, cls = "") => f ? `<figure class="qfig ${cls}"><img src="${esc(f.url)}" alt="Figure ${esc(f.figure)} from the NCERT book: ${esc(f.caption || "")}" loading="lazy"><figcaption><b>Figure ${esc(f.figure)}</b> ${esc(f.caption || "")} <span class="muted">· NCERT</span></figcaption></figure>` : "";
 async function loadQuiz(focus) {
   try { quiz = (await (await fetch("/api/quiz/questions")).json()).items || []; } catch (e) { quiz = []; }
-  const shown = focus ? quiz.filter(q => q.concept_id === focus) : quiz;
-  const head = focus && shown.length ? `<div class="row" style="justify-content:space-between;margin-bottom:10px"><b>Questions on ${esc(shown[0].concept)}</b><button class="ghost" onclick="loadQuiz()">Show all questions</button></div>` : "";
+  let shown = focus ? quiz.filter(q => q.concept_id === focus) : quiz;
+  const ft = focus ? ((concepts.find(c => c.concept_id === focus) || {}).title || "this topic") : "";
+  let head = focus && shown.length ? `<div class="row" style="justify-content:space-between;margin-bottom:10px"><b>Quiz on ${esc(ft)}</b><button class="ghost" onclick="loadQuiz()">Show all questions</button></div>` : "";
+  if (focus && !shown.length) { head = `<div class="panel banner">There's no approved quiz on ${esc(ft)} yet: your teacher approves every question first. Here are the other questions.</div>`; shown = quiz; }
   document.getElementById("quizList").innerHTML = head + (shown.length ? shown.map(q => {
     const c = CHAPTER_KEY[q.chapter] || "light";
     return `<div class="qcard" style="--c:var(--${c})" id="q-${esc(q.question_id)}">
       <div class="meta"><span class="ch ${c}">${esc(q.concept)}</span><span>${esc(q.difficulty)}</span></div>
       <div class="q">${esc(q.prompt.replace(/^\[DEMO\]\s*/, ""))}</div>
+      ${figHtml(q.figure)}
       <form onsubmit="checkAnswer(event,'${esc(q.question_id)}')"><input placeholder="Your answer, with its unit" aria-label="Your answer"><button class="primary">Check answer</button></form>
       <div data-result role="status"></div></div>`;
   }).join("") : `<div class="panel empty"><h3>No quiz questions yet</h3><p>Your teacher approves every question before it appears here. Try the Learn tab in the meantime.</p></div>`);
+  if (focus) { window.scrollTo(0, 0); const first = document.querySelector("#quizList .qcard input"); if (first) first.focus({ preventScroll: true }); }
 }
 async function checkAnswer(e, qid) {
   e.preventDefault(); if (busy) return;
@@ -473,16 +478,49 @@ async function checkAnswer(e, qid) {
     if (ev.grade) out.innerHTML = `<div class="result ${ev.grade.is_correct ? "ok" : "bad"}">${ev.grade.is_correct ? `Correct. Well done.${studentId() ? ` <span class="plus">+10 points</span>` : ""}` : "Not yet. Check your sign convention and units, then try again, or ask for a hint in Learn."}</div>`;
     const q = (quiz || []).find(x => x.question_id === qid) || {};
     if (ev.grade && ev.grade.is_correct) {
-      celebrate(card); await refreshGame(true);
+      celebrate(card);
+      const before = gameCache && gameCache.level; await refreshGame(true); const after = gameCache && gameCache.level;
+      out.insertAdjacentHTML("beforeend", await encouragement(q, before, after));
       if (q.concept_id && !journey()) setJourney(q.concept_id, 3);
-      const j = journey();
-      if (j && j.cid === q.concept_id) { j.step = 4; renderJourney(); out.insertAdjacentHTML("beforeend", nextTopicsBox(q.concept_id)); }
+      const j = journey(); if (j && j.cid === q.concept_id) { j.step = 4; renderJourney(); }
+      if (q.concept_id) out.insertAdjacentHTML("beforeend", nextTopicsBox(q.concept_id));
     }
     else {
-      out.innerHTML = `<div class="result bad">${esc(ev.text || "This answer couldn't be checked.")}</div>`;
-      if (q.concept_id) out.insertAdjacentHTML("beforeend", `<div class="quick" style="margin-top:8px"><button type="button" onclick="learnTopic('${esc(q.concept_id)}')">Read the book page again</button><button type="button" onclick="practise('${esc(q.concept_id)}')">Ask the tutor for help</button></div>`);
+      out.innerHTML = `<div class="result bad">${esc(ev.text || "This answer couldn't be checked.")} That's how learning works: let's fix the idea behind it.</div>`;
+      if (q.concept_id) { out.insertAdjacentHTML("beforeend", await revisionCards(q.concept_id)); showFlashFlow(q.concept_id); }
     }
   });
+}
+
+// After a right answer: what changed, in the student's own numbers, and a level-up when it happens.
+async function encouragement(q, before, after) {
+  if (!studentId()) return `<div class="cheer">Great work! Pick your name at the top to keep your progress and climb the levels.</div>`;
+  let m = null; try { m = await (await fetch("/api/lesson/" + encodeURIComponent(q.concept_id) + "?student_id=" + encodeURIComponent(studentId()))).json(); } catch (e) {}
+  const pct = m ? Math.round((m.mastery || 0) * 100) : null;
+  const up = before && after && after.number > before.number;
+  const lines = [];
+  if (up) lines.push(`<div class="levelup"><span class="lv-big">${after.number}</span><div><b>Level up! You've moved to Level ${after.number}: ${esc(after.name)}</b><span>Real learning, counted from your quiz results.</span></div></div>`);
+  if (pct != null) lines.push(`<div class="cheer">${pct >= 70 ? `<b>${esc(q.concept)}: mastered (${pct}%).</b> You've got this topic.` : `<b>${esc(q.concept)}: ${pct}%</b>, passing is 70%. One more right answer and it's yours.`}
+    ${after && after.next_at ? `<span class="muted">${gameCache.points} points, ${after.next_at - gameCache.points} to Level ${after.number + 1}: ${esc(after.next_name)}.</span>` : ""}</div>`);
+  return lines.join("");
+}
+// After a wrong answer: flashcards on this topic (and the topics it builds on), right here, to fix the idea.
+let revisionDeck = [];
+async function revisionCards(cid) {
+  try { revisionDeck = (await (await fetch("/api/flashcards" + (studentId() ? "?student_id=" + encodeURIComponent(studentId()) : ""))).json()).items || []; } catch (e) { revisionDeck = []; }
+  const c = concepts.find(x => x.concept_id === cid) || {};
+  const near = [cid, ...(c.prerequisites || [])];
+  const pick = revisionDeck.filter(x => near.includes(x.concept_id)).sort((a, b) => (b.concept_id === cid) - (a.concept_id === cid) || (b.mine - a.mine)).slice(0, 2);
+  if (!pick.length) return `<div class="quick" style="margin-top:8px"><button type="button" onclick="learnTopic('${esc(cid)}')">Read the book page again</button></div>`;
+  return `<div class="revise"><b>Quick revision: flashcards on ${esc(c.title || "this topic")}</b><span class="muted">Think of the answer, then turn the card over.</span>
+    ${pick.map(x => `<div class="mini" id="mini-${esc(x.card_id)}"><div class="mq">${esc(x.front)}</div>
+      <button type="button" onclick="this.parentElement.classList.add('open')">Turn the card over</button>
+      <div class="mback"><div class="trap">${esc(x.trap)}</div><p>${esc(x.why)}</p><p><b>Try this:</b> ${esc(x.fix)}</p>${figHtml(x.figure, "small")}</div></div>`).join("")}
+    <div class="quick"><button type="button" class="strong" onclick="learnTopic('${esc(cid)}')">Read the book page again</button><button type="button" onclick="deckConcept='${esc(cid)}';go('cards')">More flashcards on this topic</button></div></div>`;
+}
+function showFlashFlow(cid) {
+  if (!PRESENTER || !lastTurn) return;
+  lastTurn.flash = (concepts.find(x => x.concept_id === cid) || { title: cid }).title; renderHood();
 }
 
 // ---------- plan ----------
@@ -579,7 +617,7 @@ function celebrate(el) {
 }
 
 // ---------- flashcards (progress kept on this device) ----------
-let cards = [], round = [], pos = 0, flipped = false, roundKnown = 0, deckChapter = "all";
+let cards = [], round = [], pos = 0, flipped = false, roundKnown = 0, deckChapter = "all", deckConcept = null;
 const cardKey = () => "cards:" + (studentId() || "device");
 function cardState() { try { return JSON.parse(store.get(cardKey()) || "{}"); } catch (e) { return {}; } }
 function cardStats() { const st = cardState(); return { known: Object.values(st).filter(b => b >= 1).length }; }
@@ -587,13 +625,16 @@ async function loadCards() {
   const id = studentId();
   try { cards = (await (await fetch("/api/flashcards" + (id ? "?student_id=" + encodeURIComponent(id) : ""))).json()).items || []; } catch (e) { cards = []; }
   document.getElementById("mineWrap").classList.toggle("hidden", !cards.some(c => c.mine));
+  if (PRESENTER) { lastTurn = { kind: "deck", asked: deckConcept ? "Flashcards on " + ((concepts.find(x => x.concept_id === deckConcept) || {}).title || "a topic") : "Flashcards", steps: [] }; renderHood(); }
   if (!cards.some(c => c.mine)) document.getElementById("onlyMine").checked = false;
-  document.getElementById("deckFilter").innerHTML = [["all", "All"], ["light", "Light"], ["eye", "Human eye"], ["elec", "Electricity"]].map(([k, l]) => `<button type="button" class="${deckChapter === k ? "on" : ""}" onclick="deckChapter='${k}';loadCards()">${l}</button>`).join("");
+  document.getElementById("deckFilter").innerHTML = [["all", "All"], ["light", "Light"], ["eye", "Human eye"], ["elec", "Electricity"]].map(([k, l]) => `<button type="button" class="${deckChapter === k ? "on" : ""}" onclick="deckChapter='${k}';deckConcept=null;loadCards()">${l}</button>`).join("")
+    + (deckConcept ? `<span class="chip ok" style="margin-left:8px">On ${esc((concepts.find(x => x.concept_id === deckConcept) || {}).title || "this topic")} <a href="#" onclick="deckConcept=null;loadCards();return false">show all</a></span>` : "");
   newRound();
 }
 function newRound() {
   const st = cardState(); const only = document.getElementById("onlyMine").checked;
-  const pool = cards.filter(c => (deckChapter === "all" || CHAPTER_KEY[c.chapter] === deckChapter) && (!only || c.mine));
+  const near = deckConcept ? [deckConcept, ...((concepts.find(x => x.concept_id === deckConcept) || {}).prerequisites || [])] : null;
+  const pool = cards.filter(c => (deckChapter === "all" || CHAPTER_KEY[c.chapter] === deckChapter) && (!only || c.mine) && (!near || near.includes(c.concept_id)));
   // Leitner boxes: lower box first (cards you missed come back sooner), then your mix-ups, then topics on your plan.
   pool.sort((a, b) => (st[a.card_id] || 0) - (st[b.card_id] || 0) || (b.mine - a.mine) || (b.on_plan - a.on_plan) || (Math.random() - .5));
   round = pool.slice(0, 10); pos = 0; roundKnown = 0; flipped = false; renderCard();
@@ -614,7 +655,7 @@ function renderCard() {
       <div class="face back" ${flipped ? "" : 'aria-hidden="true"'}>
         <div class="lbl">The trap</div><div class="trap">${esc(c.trap)}</div>
         <div class="lbl">Why students fall for it</div><p>${esc(c.why)}</p>
-        <div class="lbl">Try this</div><p>${esc(c.fix)}</p>
+        <div class="lbl">Try this</div><p>${esc(c.fix)}</p>${figHtml(c.figure, "small")}
         <div class="row"><button class="primary" onclick="mark(true)">I had it</button><button onclick="mark(false)">Not yet</button><button class="ghost" onclick="practise('${esc(c.concept_id)}')">Ask the tutor about this</button></div>
       </div></div>`;
   const btn = el.querySelector(flipped ? ".back .primary" : ".front .primary"); if (btn) btn.focus({ preventScroll: true });
@@ -689,12 +730,19 @@ const FNODES = {
 const FEDGES = [["msg", "safe"], ["safe", "stop"], ["safe", "alert"], ["safe", "sup"], ["sup", "diag"], ["sup", "grade"], ["diag", "tutor"],
   ["grade", "mast"], ["tutor", "leak"], ["tutor", "book"], ["leak", "reply"], ["book", "reply"], ["mast", "reply"], ["stop", "reply"], ["alert", "reply"]];
 const LNODES = {
-  msg:   [128, 4,   240, "“Teach me this topic”", "person", "#5b4fd1", () => "Learn from the start"],
-  rec:   [128, 70,  240, "Learner record", "code", "#1b9aa8", () => "new, in progress or mastered"],
-  ncert: [128, 136, 240, "NCERT book", "code", "#23845a", () => "real text, the figure, the formula"],
-  reply: [128, 202, 240, "Lesson", "code", "#2c3fb8", () => "no model is called"],
+  msg:   [230, 4,   240, "“Teach me this topic”", "person", "#5b4fd1", () => "Learn from the start"],
+  rec:   [230, 70,  240, "Learner record", "code", "#1b9aa8", () => "new, in progress or mastered"],
+  ncert: [230, 136, 300, "NCERT book", "code", "#23845a", () => "real text, the figure, the formula"],
+  reply: [230, 202, 300, "Lesson", "code", "#2c3fb8", () => "no model is called"],
 };
 const LEDGES = [["msg", "rec"], ["rec", "ncert"], ["ncert", "reply"]];
+const CNODES = {
+  msg:   [230, 4,   240, "Quiz answer: not yet", "code", "#c0362c", () => "marked by the calculator"],
+  cat:   [230, 70,  240, "Mix-up catalogue", "person", "#5b4fd1", () => "written and checked by the team"],
+  deck:  [230, 136, 300, "Flashcards on this topic", "code", "#23845a", () => "and the topics it builds on"],
+  reply: [230, 202, 300, "Revise, then try again", "code", "#2c3fb8", () => "missed cards come back sooner"],
+};
+const CEDGES = [["msg", "cat"], ["cat", "deck"], ["deck", "reply"]];
 function flowSvg(nodes, edges, lit, height) {
   const H = 46; const box = k => { const [cx, y, w] = nodes[k]; return { x: cx - w / 2, y, w, cx, cy: y + H / 2, r: cx + w / 2 }; };
   const path = (a, b) => {
@@ -717,6 +765,7 @@ function flowSvg(nodes, edges, lit, height) {
 function renderRay(steps = [], t = null) {
   const el = document.getElementById("flow"); if (!el) return;
   if (t && t.kind === "lesson") { el.innerHTML = flowSvg(LNODES, LEDGES, new Set(Object.keys(LNODES)), 252); return; }
+  if (t && t.kind === "deck") { const n = { ...CNODES, msg: [230, 4, 300, "Flashcards tab", "person", "#5b4fd1", () => "the student opens a deck"] }; el.innerHTML = flowSvg(n, CEDGES, new Set(Object.keys(n)), 252); return; }
   const map = { input_guardrail: "safe", supervisor: "sup", diagnostician: "diag", tutor: "tutor", grader: "grade", output_guardrail: "leak" };
   const lit = new Set(); if (steps.length || t) lit.add("msg");
   steps.forEach(s => map[s.node] && lit.add(map[s.node]));
@@ -727,7 +776,7 @@ function renderRay(steps = [], t = null) {
     if (t.book) lit.add("book");
     if (!t.error) lit.add("reply");
   }
-  el.innerHTML = flowSvg(FNODES, FEDGES, lit, 452);
+  el.innerHTML = flowSvg(FNODES, FEDGES, lit, 452) + (t && t.flash ? `<div class="flow-then">Then, to fix the idea</div>` + flowSvg(CNODES, CEDGES, new Set(Object.keys(CNODES)), 252) : "");
 }
 // Behind the scenes: each step of the last turn, who decided it (code, a model or a person), and what it saw.
 const BLOCK_LABEL = by => !by ? "" : by.startsWith("word_rule:teacher_claim") ? "a student claiming to be the teacher (only the teacher's sign-in gives that role)"
@@ -744,6 +793,10 @@ function renderHood() {
   renderRay(t.steps || [], t);
   const cards = []; let n = 0; const add = (...a) => cards.push(hoodCard(++n, ...a));
   let kind = "";
+  if (t.kind === "deck") {
+    document.getElementById("turnTable").innerHTML = `<div class="panel hood"><div class="hood-kind">Flashcards</div><div class="hood-q">“${esc(t.asked)}”</div><ol class="hcards">${hoodCard(1, "Mix-up catalogue", "person", "ok", ["Each card is a common mix-up, written and checked by the team"])}${hoodCard(2, "Deck order", "code", "ok", ["The student's own mix-ups first, then topics on the plan; missed cards come back sooner"])}${hoodCard(3, "Figure", "code", "ok", ["The NCERT figure that fits each card, on its back"])}</ol><div class="hood-foot">No model was called.</div></div>`;
+    return;
+  }
   if (t.kind === "lesson") {
     const L = t.lesson; kind = "Learn a topic from the start";
     add("Learner record", "code", "ok", [studentId() ? `Mastery of ${esc(L.title)}: <b>${Math.round((L.mastery || 0) * 100)}%</b> (passing is ${Math.round(L.passing * 100)}%)` : "No record on this device yet, so the lesson starts from the basics",
@@ -789,6 +842,7 @@ function renderHood() {
   if (ran.has("output_guardrail")) add("Answer-leak check", by("output_guardrail"), t.answer_leak_flagged ? "warn" : "ok", [
     t.answer_leak_flagged ? "<b>Caught a leaked answer</b>; the reply was rewritten before the student saw it" : "Passed: the reply doesn't give the answer away",
     `<span class="model">Compares the reply with the answer key in code; the content-safety model (${esc(M.guard || "")}) checks it too</span>`]);
+  if (t.flash) add("Flashcards", "code", "ok", [`Revision cards on <b>${esc(t.flash)}</b> and the topics it builds on, from the team's mix-up catalogue`, "Missed cards come back sooner (spaced repetition on this device)", `<span class="model">No model: the cards are written and checked by the team</span>`]);
   document.getElementById("turnTable").innerHTML = `<div class="panel hood"><div class="hood-kind">${kind}</div><div class="hood-q">“${esc(t.asked)}”</div><ol class="hcards">${cards.join("")}</ol>
     <div class="hood-foot">${t.latency_s} s, ${t.cost_usd ? "$" + Number(t.cost_usd).toFixed(4) : "no model cost"}</div></div>`;
 }

@@ -444,6 +444,13 @@ def _run_turn(
     )
 
 
+def _safe_figure(text: str, concept_id: str | None) -> dict[str, Any] | None:
+    try:
+        return book.pick_figure(text, concept_id, book.CONCEPT_SECTIONS.get(concept_id or "", []))
+    except Exception:
+        return None
+
+
 def _book_for(values: dict[str, Any], message: str, concept_id: str | None) -> dict[str, Any] | None:
     # A follow-up ("another hint") says little on its own, so the student's last questions help pick the figure.
     asked = [str(getattr(m, "content", "")) for m in (values.get("messages") or []) if getattr(m, "type", "") == "human"]
@@ -547,7 +554,9 @@ def quiz_questions() -> dict[str, Any]:
     titles = _concept_titles()
     items = [
         {"question_id": r["id"], "concept_id": r["concept_id"], "concept": titles.get(r["concept_id"], r["concept_id"]),
-         "chapter": _concept_chapters().get(r["concept_id"], ""), "difficulty": r["difficulty"], "prompt": r["prompt"]}
+         "chapter": _concept_chapters().get(r["concept_id"], ""), "difficulty": r["difficulty"], "prompt": r["prompt"],
+         # the figure from the NCERT book that fits this question (code; never the worked answer)
+         "figure": _safe_figure(r["prompt"], r["concept_id"])}
         for r in rows
         if not str(r["prompt"]).startswith("[TEST]")  # left behind by older test runs; never shown to students
     ]
@@ -639,6 +648,7 @@ def flashcards(student_id: str = "") -> dict[str, Any]:
             "fix": m.get("scaffolding_hint", ""),
             "mine": m["id"] in mine,
             "on_plan": m.get("concept_id") in plan_topics,
+            "figure": _safe_figure(m.get("diagnostic_probe", "") + " " + m.get("name", ""), m.get("concept_id")),
         }
         for m in data
         if m.get("diagnostic_probe")

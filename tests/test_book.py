@@ -80,3 +80,11 @@ def test_the_figure_fits_the_question_or_there_is_none():
     assert pick("Why do we prefer a convex mirror as a rear-view mirror in vehicles?", "concept_convex_ray_diagrams", ["9.2.2"]) == "9.8"
     assert pick("Draw a labelled diagram to explain the formation of a rainbow.", "concept_rainbow_formation", ["10.4"]) == "10.8"
     assert pick("Can I have another hint?", "concept_reflection_laws", ["9.1"]) is None
+
+
+def test_quiz_questions_and_flashcards_carry_a_figure_field():
+    client = TestClient(app)
+    for item in client.get("/api/quiz/questions").json()["items"]:
+        assert "figure" in item and "answer" not in item
+    cards = client.get("/api/flashcards").json()["items"]
+    assert cards and all("figure" in c for c in cards)
