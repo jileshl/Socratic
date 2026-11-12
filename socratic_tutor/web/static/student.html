@@ -113,7 +113,7 @@ const PRESENTER = new URLSearchParams(location.search).get("demo") === "1";
 if (PRESENTER) document.body.classList.add("presenter");
 
 const STATIONS = [
-  ["input_guardrail", "Safety check", "code", "#e04a3b"], ["supervisor", "Supervisor", "model", "#ec7a1f"],
+  ["input_guardrail", "Safety check", "code", "#e04a3b"], ["supervisor", "Supervisor", "code", "#ec7a1f"],
   ["diagnostician", "Diagnostician", "model", "#e0a100"], ["tutor", "Tutor", "model", "#3fa34d"],
   ["grader", "Grader", "code", "#1b9aa8"], ["question_setter", "Question setter", "model", "#2a6fdb"],
   ["teacher_approval_gate", "Teacher approval", "person", "#5b4fd1"], ["output_guardrail", "Answer-leak check", "code", "#7446c4"],
@@ -699,6 +699,7 @@ function renderHood() {
   }
   const b = t.behind || {}; const sf = b.safety || {}; const ran = new Set((t.steps || []).map(s => s.node));
   const by = node => ((t.steps || []).find(s => s.node === node) || {}).decided_by || (STATIONS.find(x => x[0] === node) || [])[2] || "code";
+  const M = b.models || {}; const model = name => name ? `<span class="model">Model: ${esc(name)}</span>` : null;
   kind = t.blocked ? "Stopped by the safety check" : t.distress_level ? "A student who needs care" : t.grade ? "Quiz answer" : "Practice question";
   // 1. safety
   add("Safety check", "code + model", t.blocked ? "stop" : (t.distress_level ? "care" : "ok"), [
@@ -706,24 +707,30 @@ function renderHood() {
     t.distress_level ? `<b>${t.distress_level === "severe" ? "Serious distress" : "Study stress or frustration"}</b> found. A calm reply, no lecture.` :
     "Passed: no instruction aimed at the AI, nothing unsafe",
     sf.personal_details_masked ? "Name and phone number <b>masked</b> before any model saw them" : null,
-    t.teacher_alerted ? "<b>Teacher alerted</b>: the teacher's Alerts tab shows it straight away" : null]);
+    t.teacher_alerted ? "<b>Teacher alerted</b>: the teacher's Alerts tab shows it straight away" : null,
+    `<span class="model">Rules in code, then the content-safety model: ${esc(M.guard || "")}</span>`]);
   if (!t.blocked && ran.has("supervisor")) add("Supervisor", by("supervisor"), "ok", [
     t.concept ? `Topic: <b>${esc(t.concept.title)}</b>${b.concept_pinned ? " (the student picked it)" : ""}` : null,
-    (t.plan || []).length ? `Plan: ${esc(t.plan.join(" → "))}` : null]);
+    (t.plan || []).length ? `Plan: ${esc(t.plan.join(" → "))}` : null,
+    `<span class="model">No model: routing rules in code (mode, mastery, mix-ups)</span>`]);
   if (ran.has("diagnostician")) add("Diagnostician", by("diagnostician"), t.misconception ? "warn" : "ok", [
-    t.misconception ? `Mix-up spotted: <b>${esc(t.misconception.name)}</b> <span class="hash">${esc(t.misconception.id)}</span>` : "No mix-up spotted in this message"]);
+    t.misconception ? `Mix-up spotted: <b>${esc(t.misconception.name)}</b> <span class="hash">${esc(t.misconception.id)}</span>` : "No mix-up spotted in this message",
+    `<span class="model">Keyword match against the mix-up catalogue, then the model: ${esc(M.agents || "")}</span>`]);
   if (ran.has("tutor")) add("Tutor", by("tutor"), "ok", [
     (b.sources || []).length ? `Searched the NCERT book; found ${b.sources.map(x => `<b>${esc(x.section_id)}</b> ${esc(x.title)}`).join(", ")}` : "Searched the NCERT book",
     t.hint_step ? `Hint level <b>${t.hint_step} of ${t.max_hints || 3}</b>. It only rises when the student asks for more help or repeats a mix-up` : null,
     b.lesson_used ? `Used a teaching lesson the teacher approved` : null,
-    "Never sees an answer key"]);
+    "Never sees an answer key",
+    `<span class="model">Search: ${esc(M.search || "")}. Writes the reply: ${esc(M.agents || "")}</span>`]);
   if (t.book) add("Book card", "code", "ok", [`Section ${esc(t.book.section_id)}: text copied from the book${(t.book.formulas || []).length ? ", formula " + t.book.formulas.map(f => esc(f.eq)).join(", ") : ""}${t.book.figure ? ", Figure " + esc(t.book.figure.figure) : ""}`]);
   if (ran.has("grader") || t.grade) add("Grader", by("grader"), t.grade && t.grade.is_correct ? "ok" : "warn", [
     t.grade ? `Marked <b>${t.grade.is_correct ? "correct" : "not yet"}</b> by the calculator (math-tools), not by a model` : "Checked against the teacher-approved answer key",
     t.mastery_delta != null ? `Mastery ${t.mastery_delta >= 0 ? "+" : ""}${Math.round(t.mastery_delta * 100)} points on ${esc(t.concept ? t.concept.title : "this topic")}` : null,
-    "The answer key never leaves the server"]);
+    "The answer key never leaves the server",
+    `<span class="model">No model for numbers: math-tools calculator</span>`]);
   if (ran.has("output_guardrail")) add("Answer-leak check", by("output_guardrail"), t.answer_leak_flagged ? "warn" : "ok", [
-    t.answer_leak_flagged ? "<b>Caught a leaked answer</b>; the reply was rewritten before the student saw it" : "Passed: the reply doesn't give the answer away"]);
+    t.answer_leak_flagged ? "<b>Caught a leaked answer</b>; the reply was rewritten before the student saw it" : "Passed: the reply doesn't give the answer away",
+    `<span class="model">Compares the reply with the answer key in code; the content-safety model (${esc(M.guard || "")}) checks it too</span>`]);
   document.getElementById("turnTable").innerHTML = `<div class="panel hood"><div class="hood-kind">${kind}</div><div class="hood-q">“${esc(t.asked)}”</div><ol class="hcards">${cards.join("")}</ol>
     <div class="hood-foot">${t.latency_s} s, ${t.cost_usd ? "$" + Number(t.cost_usd).toFixed(4) : "no model cost"}</div></div>`;
 }

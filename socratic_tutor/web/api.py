@@ -80,7 +80,7 @@ APPROVALS_OFF_DETAIL: str = (
 # Who makes each decision in the graph. Shown in the student view next to each box.
 NODE_DECIDER = {
     "input_guardrail": "code",
-    "supervisor": "model",
+    "supervisor": "code",   # node_supervisor routes by rules (mode, mastery, mix-ups); it calls no model
     "planner": "code",
     "diagnostician": "model",
     "tutor": "model",
@@ -473,6 +473,8 @@ def _behind(values: dict[str, Any], message: str, mode: str, blocked_reason: str
         "concept_pinned": bool(values.get("concept_pinned")),
         "sources": sources[:4],
         "lesson_used": values.get("effective_lesson_applied"),
+        # The models behind the steps (from config / .env), so the side panel can name them.
+        "models": {"guard": config.GUARD_MODEL, "agents": config.SPECIALIST_MODEL, "search": "BM25 keywords + local embeddings (Chroma)"},
     }
 
 
