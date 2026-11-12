@@ -267,3 +267,49 @@ def test_game_and_flashcards_endpoints(client):
     h = client.get("/api/teacher/dashboard").json()["highlights"]
     assert {"topics_mastered", "mixups_sorted", "quiz_correct_7d", "active_students_7d", "shout_outs"} <= set(h)
     assert all("level" in s and "points" in s for s in client.get("/api/teacher/students").json()["items"])
+
+
+def test_stuck_alert_is_per_topic_and_progress_resolves_it(monkeypatch):
+    """Jilesh: "even if I resolve and get to the next concept, the alert shows up saying the student was stuck"."""
+    from socratic_tutor.learner_store import LearnerStore
+    from socratic_tutor.web.ops_store import OpsStore
+
+    learners, ops = LearnerStore(), OpsStore()
+    monkeypatch.setattr(api, "learners", learners)
+    monkeypatch.setattr(api, "ops", ops)
+    sid = "stu_stucktest01"
+    for _ in range(3):
+        learners.record_quiz_result(sid, "concept_ohms_law", 0.0)
+    session = "ses_stucktest01"
+    stuck_open = lambda: [a for a in ops.open_alerts() if a["student_id"] == sid and a["kind"] == "stuck"]
+
+    # three answers in a row not yet right on Ohm's law: one alert, naming the topic
+    assert api._update_stuck_alerts(sid, session, "concept_ohms_law", 0.0, {"is_correct": False}) is True
+    assert len(stuck_open()) == 1 and "Ohm" in stuck_open()[0]["detail"]
+    # a right answer closes it
+    assert api._update_stuck_alerts(sid, session, "concept_ohms_law", 0.3, {"is_correct": True}) is False
+    assert stuck_open() == []
+    # on the next topic, the old streak elsewhere does not raise it again
+    for _ in range(3):
+        learners.record_quiz_result(sid, "concept_ohms_law", 0.0)
+    assert api._update_stuck_alerts(sid, session, "concept_series_combination", 0.0, None) is False
+    assert stuck_open() == []
+    ops.forget(sid)
+
+
+def test_supervisor_is_not_stuck_because_of_another_topic():
+    from socratic_tutor import graph
+
+    class FakeStore:
+        def register_session(self, *a): pass
+        def get_profile(self, sid): return {"mastery_map": {}, "failure_streaks": {"concept_ohms_law": 5}, "stuck_counter": 5}
+    import pytest as _pytest
+    mp = _pytest.MonkeyPatch()
+    mp.setattr(graph, "LearnerStore", lambda: FakeStore())
+    try:
+        out = graph.node_supervisor({"student_id": "stu_x", "session_id": "s", "mode": "practice", "current_concept_id": "concept_series_combination", "query": "hi"})
+        assert out.get("teacher_alert_triggered") is False
+        out = graph.node_supervisor({"student_id": "stu_x", "session_id": "s", "mode": "practice", "current_concept_id": "concept_ohms_law", "query": "hi"})
+        assert out.get("teacher_alert_triggered") is True
+    finally:
+        mp.undo()
