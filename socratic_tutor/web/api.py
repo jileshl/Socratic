@@ -370,13 +370,7 @@ def _run_turn(session: dict[str, Any], message: str, current_question_id: str | 
         ops.add_alert(student_id, session_id, "distress", alert_detail)
         metrics.DISTRESS_ALERTS.inc()
         alert_filed = True
-    stuck = learners.get_profile(student_id).get("stuck_counter", 0)
-    if stuck >= config.STUCK_SESSION_COUNT and not ops.has_open_alert(student_id, "stuck"):
-        ops.add_alert(student_id, session_id, "stuck", f"Stuck on the same concept for {stuck} sessions.")
-        alert_filed = True
-    minutes, gained = ops.session_progress(session_id)
-    if minutes >= config.STUCK_MINUTES_ON_PROBLEM and gained <= 0 and not ops.has_open_alert(student_id, "stuck"):
-        ops.add_alert(student_id, session_id, "stuck", f"{int(minutes)} minutes in this session without progress (teacher rule: 10+ minutes).")
+    if _update_stuck_alerts(student_id, session_id, concept_id, delta, values.get("grade_result") if error is None else None):
         alert_filed = True
     # PR-2: a student's turn never pauses for the teacher any more (question sets wait on their own "qbset:"
     # thread), so nothing is saved here. The old save hashed the whole interrupt value, while the graph's gate
@@ -422,6 +416,30 @@ def _run_turn(session: dict[str, Any], message: str, current_question_id: str | 
             "error": bool(error),
         }
     )
+
+
+def _update_stuck_alerts(student_id: str, session_id: str, concept_id: str | None, delta: float | None, grade_now: Any) -> bool:
+    """"Stuck" alerts (teacher rules: 3 quiz answers in a row not yet right on one topic, or 10+ minutes in a
+    session without progress). Progress closes them: a quiz answer fully right, or mastery going up, resolves
+    the student's open "stuck" alerts, and only the CURRENT topic's streak can raise a new one. (Before, the
+    worst streak on any topic counted, so the alert came back even after the student had sorted it out and
+    moved on to the next topic.) Returns True when a new alert was filed."""
+    progressed: bool = (delta or 0) > 0 or (isinstance(grade_now, dict) and grade_now.get("is_correct") is True and not grade_now.get("error"))
+    if progressed:
+        ops.resolve_alerts(student_id, "stuck", "(Resolved automatically: the student then made progress.)")
+        return False
+    if ops.has_open_alert(student_id, "stuck"):
+        return False
+    streak = int((learners.get_profile(student_id).get("failure_streaks") or {}).get(concept_id or "", 0))
+    if streak >= config.STUCK_FAILURE_COUNT:
+        title = _concept_titles().get(concept_id or "", concept_id or "a topic")
+        ops.add_alert(student_id, session_id, "stuck", f"Stuck on {title}: {streak} quiz answers in a row not yet right.")
+        return True
+    minutes, gained = ops.session_progress(session_id)
+    if minutes >= config.STUCK_MINUTES_ON_PROBLEM and gained <= 0:
+        ops.add_alert(student_id, session_id, "stuck", f"{int(minutes)} minutes in this session without progress (teacher rule: 10+ minutes).")
+        return True
+    return False
 
 
 def _concept_titles() -> dict[str, str]:

@@ -215,8 +215,9 @@ def node_supervisor(state: SocraticState) -> dict:
     # Teacher Rule 3: Flag stuck student after 3 consecutive failures
     failure_streaks = profile.get("failure_streaks", {})
     concept_failures = failure_streaks.get(current_concept or "", 0)
-    stuck_counter = profile.get("stuck_counter", 0)
-    stuck = (concept_failures >= 3) or (stuck_counter >= 3)
+    # Stuck means stuck on THIS topic. (Before, the worst streak on any topic counted, so a student who had
+    # moved on to a new topic was still treated as stuck, and the teacher kept getting "stuck" alerts.)
+    stuck = concept_failures >= config.STUCK_FAILURE_COUNT
     teacher_alert = bool(stuck or state.get("teacher_alert_triggered", False))
 
     mode = state.get("mode", "practice")
