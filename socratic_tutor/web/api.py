@@ -318,6 +318,9 @@ def _run_turn(
     }
     if chapter:
         state_in["chapter"] = chapter
+    # A topic the student picked (Practise it) holds for this turn. Otherwise the tutor keeps the topic it was
+    # on, and may move to the topic of a new question (see node_supervisor).
+    state_in["concept_pinned"] = bool(concept_id)
     if concept_id:
         state_in["current_concept_id"] = concept_id
     if session["turns"] == 0:

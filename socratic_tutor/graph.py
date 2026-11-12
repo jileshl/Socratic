@@ -96,6 +96,20 @@ def _resolve_chapter(state: SocraticState) -> str | None:
 
 # --- Node Definitions ---
 
+# The student asking for more help on the same topic. Only this (or a repeated mix-up, or being stuck) moves
+# the hint ladder up; "okay, thanks" or the student's own explanation does not.
+_MORE_HELP = re.compile(
+    r"\b(hints?|help|stuck|confus\w*|lost|no idea|not sure|give up|i['’]?m done"
+    r"|(?:do|did|can)\s*(?:n['’]?t|not)\s+(?:get|understand|follow|see|know)|cannot\s+(?:get|understand|follow|see)"
+    r"|tell me|give me|show me|the answer|formula|explain (?:it |this |that )?(?:again|differently))\b",
+    re.IGNORECASE,
+)
+
+
+def asks_for_more_help(query: str) -> bool:
+    return bool(_MORE_HELP.search(query or ""))
+
+
 def node_input_guardrail(state: SocraticState) -> dict:
     query = state.get("query", "")
     guard_res = check_input_guardrails(query)
@@ -214,9 +228,14 @@ def node_supervisor(state: SocraticState) -> dict:
     next_concept = cg.next_recommended(mastery)
     explicit_concept = state.get("current_concept_id")
     current_concept = explicit_concept
+    # The topic is pinned when the student picked it for this turn (web: "Practise it"), or when a caller
+    # passes current_concept_id without saying (tests, evaluation). A topic only carried over from the last
+    # turn is not pinned: a new chapter or a new question may move the tutor to its own topic.
+    pinned = bool(state.get("concept_pinned", bool(explicit_concept)))
 
     req_chapter = state.get("chapter")
-    if not current_concept and req_chapter:
+    req_ch_num = None
+    if req_chapter:
         req_ch_num = str(req_chapter).strip()
         if req_ch_num in CHAPTER_TITLE_TO_NUM:
             req_ch_num = CHAPTER_TITLE_TO_NUM[req_ch_num]
@@ -224,7 +243,11 @@ def node_supervisor(state: SocraticState) -> dict:
             m = re.search(r"\b(9|10|11)\b", req_ch_num)
             if m:
                 req_ch_num = m.group(1)
+        current_ch_num = CHAPTER_TITLE_TO_NUM.get(cg.concepts.get(current_concept or "", {}).get("chapter", ""))
+        if current_concept and not pinned and current_ch_num and current_ch_num != req_ch_num:
+            current_concept = None  # the student moved to another chapter
 
+    if not current_concept and req_ch_num:
         for cid, cdata in cg.concepts.items():
             c_ch_num = CHAPTER_TITLE_TO_NUM.get(cdata.get("chapter", ""))
             if c_ch_num == req_ch_num and mastery.get(cid, 0.0) < config.PASSING_MASTERY_THRESHOLD:
@@ -261,10 +284,13 @@ def node_supervisor(state: SocraticState) -> dict:
     if last_qid and qid and last_qid != qid:
         hint_step = 1
 
-    # Hint progression: adjust once per turn at start of practice turn if continuing on same concept/question or stuck
+    # Hint progression, at most once per turn: a bigger hint only when the student asks for more help on the
+    # same topic ("another hint", "still confused", "just tell me the answer"), or is stuck. A reply such as
+    # "okay, thanks" or the student's own explanation keeps the hint level (a repeated mix-up raises it below).
     if mode == "practice" and not plan:
         is_continuing_practice = bool(last_concept and last_concept == current_concept)
-        if (stuck or is_continuing_practice) and not hint_raised and hint_step < config.MAX_HINT_STEPS:
+        wants_more_help = is_continuing_practice and asks_for_more_help(state.get("query", ""))
+        if (stuck or wants_more_help) and not hint_raised and hint_step < config.MAX_HINT_STEPS:
             hint_step = min(hint_step + 1, config.MAX_HINT_STEPS)
             hint_raised = True
 
@@ -421,7 +447,7 @@ def node_supervisor(state: SocraticState) -> dict:
         miscon_id = diag.get("id") if (diag and isinstance(diag, dict)) else None
         last_miscon = state.get("last_misconception_id")
 
-        if not explicit_concept and diag and isinstance(diag, dict) and miscon_id:
+        if not pinned and diag and isinstance(diag, dict) and miscon_id:
             try:
                 catalog = getattr(diagnostician, "_load_catalog", lambda: [])()
                 for m in catalog:
@@ -431,6 +457,8 @@ def node_supervisor(state: SocraticState) -> dict:
                             diag_ch = diag.get("chapter")
                             curr_ch = cg.concepts.get(current_concept, {}).get("chapter")
                             if current_concept == "concept_reflection_laws" or (diag_ch and diag_ch != curr_ch):
+                                if diag_concept != current_concept:
+                                    hint_step, hint_raised = 1, False  # a new topic starts at the smallest hint
                                 current_concept = diag_concept
                         break
             except Exception:

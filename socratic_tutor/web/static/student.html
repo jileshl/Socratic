@@ -167,6 +167,9 @@ const SCENARIOS = [
 const store = { get(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }, set(k,v){ try { localStorage.setItem(k,v); } catch(e){} }, del(k){ try { localStorage.removeItem(k); } catch(e){} } };
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 let persona = "", sessions = {}, busy = false, quiz = [], lastTurn = null, quizFocus = null;
+// Topic sent with the next message: the chapter keeps the tutor in the right chapter; a concept is sent once,
+// when the student picks a topic (Practise it), so a new question typed later can move to its own topic.
+let activeChapter = null, activeConcept = null;
 
 // ---------- navigation ----------
 function go(view) {
@@ -196,6 +199,7 @@ async function session(mode) {
 }
 function setPersona(p, quiet) {
   persona = p; document.getElementById("persona").value = p;
+  activeChapter = null; activeConcept = null;
   // On a shared device, one student's conversation is never left on screen for the next.
   if (!PRESENTER) { if (p) store.set("picked", p); else store.del("picked"); logEl().innerHTML = ""; document.getElementById("welcome").classList.remove("hidden"); }
   consentStrip();
@@ -260,10 +264,9 @@ function reply(ev, holder) {
   holder.innerHTML = `<div class="trow"><span class="avatar" aria-hidden="true"></span><div class="body">${persona ? `<div class="who">Tutor to ${esc(label(persona))}</div>` : ""}${body.join("")}</div></div>`;
   scroll();
 }
-let activeChapter = null;
-let activeConcept = null;
 async function stream(mode, text, questionId) {
   const s = await session(mode);
+  const pinned = activeConcept; activeConcept = null;
   const r = await fetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -272,7 +275,7 @@ async function stream(mode, text, questionId) {
       message: text,
       current_question_id: questionId || null,
       chapter: activeChapter || null,
-      concept_id: activeConcept || null,
+      concept_id: pinned || null,
     })
   });
   const reader = r.body.getReader(); const dec = new TextDecoder(); let buf = ""; const steps = []; let final = null;
@@ -286,7 +289,6 @@ async function stream(mode, text, questionId) {
       if (ev.type === "step") { steps.push(ev); stream.onstep && stream.onstep(steps); }
       if (ev.type === "reply") {
         ev.steps = steps; ev.asked = text; final = ev;
-        if (ev.concept && ev.concept.id) activeConcept = ev.concept.id;
         if (ev.concept && ev.concept.chapter) {
           const ch = ev.concept.chapter;
           activeChapter = ch.includes("Light") ? "9" : ch.includes("Eye") ? "10" : ch.includes("Electricity") ? "11" : activeChapter;
