@@ -20,6 +20,8 @@ Endpoints:
     GET  /api/concepts               Topics in the concept graph (for plans)
     GET  /api/students               Class list for the student picker (names the teacher typed)
     GET  /api/student/{id}/plan      The student's study plan: teacher's plan and the suggestion
+    GET  /api/student/{id}/game      Points, level, streak and badges (worked out from real records)
+    GET  /api/flashcards             Revision cards from the misconception catalogue
     GET  /api/teacher/students       Every student with name, mastery, alerts and plan status
     POST /api/teacher/students       Add a student to the class list (creates a random ID)
     PUT  /api/teacher/students/{id}  Rename a student
@@ -35,7 +37,7 @@ import json
 import sqlite3
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -51,7 +53,7 @@ from socratic_tutor import config, trace
 from socratic_tutor.graph import build_graph
 from socratic_tutor.learner_store import LearnerStore
 from socratic_tutor.tools import textbook_kb
-from socratic_tutor.web import approvals, demo_data, metrics, study_plan
+from socratic_tutor.web import approvals, demo_data, game, metrics, study_plan
 from socratic_tutor.web.ops_store import OpsStore
 
 api_router = APIRouter()
@@ -372,6 +374,53 @@ def _fallback_name(student_id: str) -> str:
     return "Student " + student_id.removeprefix("stu_")[-4:].upper()
 
 
+def _game_for(student_id: str, profile: dict[str, Any] | None = None) -> dict[str, Any]:
+    profile = profile or learners.get_profile(student_id)
+    times = ops.message_times(student_id)
+    assigned = _plan_for(student_id).get("assigned")
+    return game.summary(profile, len(times), times, _concept_chapters(), assigned)
+
+
+@api_router.get("/api/student/{student_id}/game")
+def student_game(student_id: str) -> dict[str, Any]:
+    if not student_id.startswith("stu_"):
+        raise HTTPException(404)
+    return {"student_id": student_id, **_game_for(student_id)}
+
+
+@api_router.get("/api/flashcards")
+def flashcards(student_id: str = "") -> dict[str, Any]:
+    """One card per common mix-up: the question that exposes it, then the trap and how to fix it.
+
+    Text comes from data/misconceptions.json (written and checked by the team). The student's own
+    mix-ups and the topics on their plan are marked so the deck can put them first."""
+    data = json.loads((config.DATA_DIR / "misconceptions.json").read_text(encoding="utf-8"))
+    mine: set[str] = set()
+    plan_topics: set[str] = set()
+    if student_id.startswith("stu_"):
+        mine = {m["id"] for m in _open_misconceptions(learners.get_profile(student_id))}
+        assigned = ops.plan(student_id)
+        plan_topics = set((assigned or {}).get("concepts") or [])
+    titles = _concept_titles()
+    cards = [
+        {
+            "card_id": m["id"],
+            "chapter": m.get("chapter", ""),
+            "concept_id": m.get("concept_id"),
+            "concept": titles.get(m.get("concept_id"), m.get("concept_id")),
+            "front": m.get("diagnostic_probe", ""),
+            "trap": m.get("name", ""),
+            "why": m.get("description", ""),
+            "fix": m.get("scaffolding_hint", ""),
+            "mine": m["id"] in mine,
+            "on_plan": m.get("concept_id") in plan_topics,
+        }
+        for m in data
+        if m.get("diagnostic_probe")
+    ]
+    return {"items": cards}
+
+
 @api_router.get("/api/concepts")
 def concepts() -> dict[str, Any]:
     graph_data = json.loads((config.DATA_DIR / "concept_graph.json").read_text(encoding="utf-8"))
@@ -518,6 +567,30 @@ def _pending_items() -> list[dict[str, Any]]:
     return items
 
 
+def _class_highlights() -> dict[str, Any]:
+    """Real numbers only: what the class achieved, and who passed a quiz in the last 7 days."""
+    passing = config.PASSING_MASTERY_THRESHOLD
+    since = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
+    mastered = sorted_mixups = 0
+    with sqlite3.connect(learners.db_path) as conn:
+        for mastery_json, misconceptions_json in conn.execute("SELECT mastery_json, misconceptions_json FROM learners WHERE student_id LIKE 'stu_%'"):
+            mastered += sum(1 for v in json.loads(mastery_json or "{}").values() if float(v) >= passing)
+            sorted_mixups += sum(1 for m in json.loads(misconceptions_json or "[]") if isinstance(m, dict) and m.get("resolved"))
+        recent = conn.execute(
+            "SELECT student_id, concept_id, MAX(score), MAX(created_at) FROM quiz_attempts WHERE student_id LIKE 'stu_%' AND created_at >= ? AND score >= ? "
+            "GROUP BY student_id, concept_id ORDER BY MAX(created_at) DESC LIMIT 8",
+            (since, passing),
+        ).fetchall()
+        correct_week = conn.execute("SELECT COUNT(*) FROM quiz_attempts WHERE student_id LIKE 'stu_%' AND created_at >= ? AND score >= 1.0", (since,)).fetchone()[0]
+    active_week = ops._all("SELECT COUNT(DISTINCT student_id) AS n FROM turns WHERE student_id LIKE 'stu_%' AND at >= ?", ((datetime.now(timezone.utc) - timedelta(days=7)).isoformat(timespec="seconds"),))[0]["n"]
+    roster, titles = ops.roster(), _concept_titles()
+    shout_outs = [
+        {"student_id": sid, "name": roster.get(sid) or _fallback_name(sid), "concept": titles.get(cid, cid), "score": round(float(score), 2), "at": at}
+        for sid, cid, score, at in recent
+    ]
+    return {"topics_mastered": mastered, "mixups_sorted": sorted_mixups, "quiz_correct_7d": correct_week, "active_students_7d": active_week, "shout_outs": shout_outs}
+
+
 def _named_alerts() -> list[dict[str, Any]]:
     roster = ops.roster()
     return [{**a, "student_name": roster.get(a["student_id"]) or _fallback_name(a["student_id"])} for a in ops.open_alerts()]
@@ -536,6 +609,7 @@ def dashboard() -> dict[str, Any]:
         "class_mastery": _class_mastery(),
         "waiting_approvals": len(_pending_items()),
         "open_alerts": _named_alerts(),
+        "highlights": _class_highlights(),
         "demo_students": _demo_student_count(),
         "ops_demo": config.OPS_DEMO == "1",
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -649,9 +723,15 @@ def teacher_students() -> dict[str, Any]:
             "plan_done": sum(1 for c in plan_ids if study_plan.status_of(mastery, c) == "mastered"),
             "plan_due": plan["due"] if plan else None,
             "demo": sid.startswith(demo_data.DEMO_PREFIX),
+            **_game_brief(sid, profile),
         })
     items.sort(key=lambda i: (-i["open_alerts"], not i["named"], i["name"].lower()))
     return {"items": items}
+
+
+def _game_brief(student_id: str, profile: dict[str, Any]) -> dict[str, Any]:
+    g = _game_for(student_id, profile)
+    return {"points": g["points"], "level": g["level"], "streak_days": g["streak_days"], "badges_earned": sum(1 for b in g["badges"] if b["earned"])}
 
 
 class StudentIn(BaseModel):
@@ -692,6 +772,7 @@ def teacher_student(student_id: str) -> dict[str, Any]:
         "open_alerts": [a for a in ops.open_alerts() if a["student_id"] == student_id],
         "last_active": ops.last_active().get(student_id),
         "plan": _plan_for(student_id),
+        "game": _game_for(student_id),
     }
 
 

@@ -36,6 +36,7 @@
     </div>
 
     <section id="t-dash">
+      <div class="panel" id="highlights"></div>
       <div class="stats" id="stats"></div>
       <div class="grid2">
         <div class="panel"><h2>Misconceptions across the class</h2><p class="muted">How many students the tutor saw with each misconception, by chapter.</p><div id="miscTable"></div></div>
@@ -146,6 +147,10 @@ async function refresh() {
     [d.sessions, "tutoring sessions"], [d.sessions ? "$" + d.avg_cost_per_session_usd.toFixed(4) : "none yet", "average cost per session"], [d.blocked_turns, "messages stopped by the safety check"],
   ].map(([n, l]) => `<div class="stat"><div class="n">${esc(n)}</div><div class="l">${esc(l)}</div></div>`).join("");
 
+  const h = d.highlights || { shout_outs: [] };
+  document.getElementById("highlights").innerHTML = `<h2>Class highlights</h2><p class="muted" style="margin-top:0">What your students achieved, counted from their quiz results and mix-ups. Students see the same points, levels and badges.</p>
+    <div class="hl"><div><b>${h.topics_mastered}</b><span>topics mastered across the class</span></div><div><b>${h.mixups_sorted}</b><span>mix-ups sorted</span></div><div><b>${h.quiz_correct_7d}</b><span>quiz answers fully right this week</span></div><div><b>${h.active_students_7d}</b><span>students active this week</span></div></div>
+    <h3>Shout-outs this week</h3>${h.shout_outs.length ? h.shout_outs.map(x => `<div class="shout"><span class="star" aria-hidden="true">★</span><span><b>${esc(x.name)}</b> passed the quiz on ${esc(x.concept)} with ${Math.round(x.score * 100)}%</span><span class="hash" style="margin-left:auto">${esc(new Date(x.at.replace(" ", "T") + "Z").toLocaleDateString(undefined, { day: "numeric", month: "short" }))}</span></div>`).join("") : "<p class='muted'>No quizzes passed in the last 7 days yet. Passing a quiz (70% or more) puts a student here.</p>"}`;
   const max = Math.max(1, ...d.misconceptions_by_concept.map(m => m.students));
   document.getElementById("miscTable").innerHTML = d.misconceptions_by_concept.length ? byChapter(d.misconceptions_by_concept).map(([ch, rows]) =>
     `<div class="chapter c-${CHAPTER[ch] || "other"}">${esc(ch)}</div>` + rows.map(m => `<div class="mbar c-${CHAPTER[ch] || "other"}"><span>${esc(m.name)}<div class="hash">${esc(nice(m.concept_id))}</div></span><span><div class="bar" style="width:${100 * m.students / max}%"></div></span><span class="n">${m.students}</span></div>`).join("")).join("")
@@ -248,14 +253,15 @@ async function loadStudents() {
   // Named students first. Students who used the tutor without a name (their own device) are folded away unless they need you.
   const shown = students.filter(s => s.named || s.open_alerts || s.student_id === current || showUnnamed);
   const folded = students.length - shown.length;
-  document.getElementById("classTable").innerHTML = "<tr><th>Name</th><th>Mastery</th><th>Mix-ups</th><th>Alerts</th><th>Study plan</th><th class='hide-sm'>Last active</th></tr>" + (shown.length ? shown.map(s => `<tr data-id="${esc(s.student_id)}" class="${s.student_id === current ? "sel" : ""}" onclick="openStudent('${esc(s.student_id)}')" tabindex="0" onkeydown="if(event.key==='Enter')openStudent('${esc(s.student_id)}')">
+  document.getElementById("classTable").innerHTML = "<tr><th>Name</th><th>Level</th><th>Mastery</th><th>Mix-ups</th><th>Alerts</th><th>Study plan</th><th class='hide-sm'>Last active</th></tr>" + (shown.length ? shown.map(s => `<tr data-id="${esc(s.student_id)}" class="${s.student_id === current ? "sel" : ""}" onclick="openStudent('${esc(s.student_id)}')" tabindex="0" onkeydown="if(event.key==='Enter')openStudent('${esc(s.student_id)}')">
     <td><span class="stu-name">${esc(s.name)}</span>${s.named ? "" : `<div class="hash">no name yet</div>`}</td>
+    <td><span class="lvl-chip">${s.level.number} ${esc(s.level.name)}</span><div class="hash">${s.points} points, ${s.badges_earned} badge${s.badges_earned === 1 ? "" : "s"}${s.streak_days ? `, ${s.streak_days}-day streak` : ""}</div></td>
     <td>${s.avg_mastery == null ? "<span class='muted'>no quizzes yet</span>" : `<span class="meter"><span style="width:${Math.round(s.avg_mastery * 100)}%" class="${passBand(s.avg_mastery)}"></span></span>${Math.round(s.avg_mastery * 100)}%<div class="hash">${s.topics} topic${s.topics === 1 ? "" : "s"}</div>`}</td>
     <td>${s.open_mixups || "<span class='muted'>none</span>"}</td>
     <td>${s.open_alerts ? `<span class="chip bad">${s.open_alerts} open</span>` : "<span class='muted'>none</span>"}</td>
     <td>${s.plan_topics ? `${s.plan_done} of ${s.plan_topics} done${s.plan_due ? `<div class="hash">due ${esc(when(s.plan_due + "T00:00"))}</div>` : ""}` : "<span class='muted'>not set</span>"}</td>
-    <td class="hide-sm">${esc(when(s.last_active))}</td></tr>`).join("") : "<tr><td colspan='6' class='muted'>No students yet. Add one above, or add the demo class in the Demo guide (presenter mode).</td></tr>")
-    + (folded ? `<tr><td colspan="6"><button class="ghost" onclick="showUnnamed=true;loadStudents()">Show ${folded} more student${folded === 1 ? "" : "s"} without a name</button></td></tr>` : (showUnnamed && students.some(s => !s.named) ? `<tr><td colspan="6"><button class="ghost" onclick="showUnnamed=false;loadStudents()">Hide students without a name</button></td></tr>` : ""));
+    <td class="hide-sm">${esc(when(s.last_active))}</td></tr>`).join("") : "<tr><td colspan='7' class='muted'>No students yet. Add one above, or add the demo class in the Demo guide (presenter mode).</td></tr>")
+    + (folded ? `<tr><td colspan="7"><button class="ghost" onclick="showUnnamed=true;loadStudents()">Show ${folded} more student${folded === 1 ? "" : "s"} without a name</button></td></tr>` : (showUnnamed && students.some(s => !s.named) ? `<tr><td colspan="7"><button class="ghost" onclick="showUnnamed=false;loadStudents()">Hide students without a name</button></td></tr>` : ""));
 }
 async function addStudent(e) {
   e.preventDefault();
@@ -278,6 +284,7 @@ async function openStudent(id) {
   el.innerHTML = `<div class="panel" style="border-top:4px solid var(--royal)">
     <div class="plan-head"><div><h2 style="font-size:22px">${esc(d.name)}</h2><div class="hash">Random ID ${esc(d.student_id)}, last active ${esc(when(d.last_active))}</div></div>
       <form class="row" onsubmit="rename(event)"><input id="renameBox" value="${esc(d.named ? d.name : "")}" placeholder="Give this student a name" maxlength="60" aria-label="Student's name"><button>Save name</button></form></div>
+    <div class="row" style="gap:8px;margin-top:8px"><span class="lvl-chip">Level ${d.game.level.number} ${esc(d.game.level.name)}</span><span class="muted">${d.game.points} points${d.game.streak_days ? `, ${d.game.streak_days}-day streak` : ""}</span>${d.game.badges.map(b => `<span class="chip ${b.earned ? "ok" : ""}" title="${esc(b.how)}">${esc(b.name)}${b.earned ? "" : " (not yet)"}</span>`).join("")}</div>
     ${d.open_alerts.map(a => `<div class="teacher-note" style="background:var(--bad-soft);border-color:var(--bad)"><b style="color:var(--bad)">${a.kind === "distress" ? "Please check in" : "Stuck"}:</b> ${esc(a.detail)}</div>`).join("")}
     <div class="grid2" style="margin-top:12px">
       <div><h3>Mastery</h3>${d.mastery.length ? Object.entries(groups).map(([ch, rows]) => `<div class="chapter c-${CHAPTER[ch] || "other"}">${esc(ch)}</div>` + rows.map(m => `<div class="mrow"><span>${esc(m.title)}</span><span class="meter"><span style="width:${Math.round(m.mastery * 100)}%" class="${passBand(m.mastery)}"></span></span><span class="pct">${Math.round(m.mastery * 100)}%</span></div>`).join("")).join("") : "<p class='muted'>No quiz results yet.</p>"}

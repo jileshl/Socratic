@@ -298,3 +298,64 @@ table.class td .meter { width: 90px; display: inline-block; vertical-align: midd
 .builder .row select { flex: 1; min-width: 0; }
 .maxed { font-size: 14px; padding: 7px 11px; border-radius: var(--r-sm); background: var(--royal-soft); border-left: 3px solid var(--royal); }
 .quick button.strong { background: var(--royal); color: #fff; border-color: var(--royal); font-weight: 700; }
+
+/* ---------- level pill (header) ---------- */
+.lvl { display: inline-flex; gap: 8px; align-items: center; border-radius: 999px; padding: 4px 12px 4px 4px; font-size: 14px; font-weight: 700; border-color: var(--rule); }
+.lvl .lv { background: var(--royal); color: #fff; border-radius: 999px; padding: 2px 9px; font-size: 12.5px; }
+.lvl .streak { color: var(--warn); font-weight: 700; font-size: 13px; }
+.lvl .streak::before { content: ""; display: inline-block; width: 8px; height: 11px; margin-right: 5px; background: var(--warn); clip-path: polygon(50% 0, 100% 60%, 80% 100%, 20% 100%, 0 60%); vertical-align: -1px; }
+
+/* ---------- flashcards ---------- */
+.deckbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin: 14px 0; }
+.deckprog { display: grid; grid-template-columns: auto minmax(60px, 1fr) auto; gap: 12px; align-items: center; font-size: 14px; color: var(--ink-2); margin-bottom: 10px; }
+/* both faces share one grid cell, so the card is as tall as its longer side */
+.fcard { position: relative; perspective: 1400px; display: grid; }
+.fcard .face { grid-area: 1 / 1; min-height: 300px; background: var(--sheet); border: 1px solid var(--rule); border-top: 6px solid var(--c); border-radius: var(--r-lg); padding: 22px 24px; display: grid; gap: 12px; align-content: start; backface-visibility: hidden; transition: transform .5s cubic-bezier(.2, .7, .2, 1); box-shadow: 0 6px 20px rgba(28, 33, 64, .07); overflow: auto; }
+.fcard .back { transform: rotateY(180deg); border-top-color: var(--ink); }
+.fcard.flip .front { transform: rotateY(-180deg); }
+.fcard.flip .back { transform: rotateY(0); }
+.fcard .topic { font-size: 13.5px; color: var(--ink-2); font-weight: 700; }
+.fcard .q { font-size: 21px; line-height: 1.45; }
+.fcard .lbl { font-size: 13px; font-weight: 700; color: var(--ink-2); margin-top: 2px; }
+.fcard .trap { font-size: 20px; font-weight: 700; color: var(--bad); line-height: 1.3; }
+.fcard p { margin: 0; }
+@media (prefers-reduced-motion: reduce) { .fcard .face { transition: none; } }
+@media (max-width: 560px) { .fcard .q { font-size: 18px; } }
+.done { text-align: center; padding: 28px 20px; display: grid; gap: 8px; justify-items: center; }
+.done .big { font-size: 46px; font-weight: 700; color: var(--royal); line-height: 1; font-variant-numeric: tabular-nums; }
+
+/* ---------- level, points and badges ---------- */
+.game { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 20px; align-items: center; }
+.ring { width: 112px; height: 112px; border-radius: 50%; background: conic-gradient(var(--royal) var(--p), var(--rule-2) 0); display: grid; place-items: center; }
+.ring > div { width: 88px; height: 88px; border-radius: 50%; background: var(--sheet); display: grid; place-items: center; align-content: center; }
+.ring b { font-size: 32px; line-height: 1; color: var(--royal); }
+.ring span { font-size: 12px; color: var(--ink-2); }
+.gtext h2 { font-size: 24px; }
+.gstats { display: flex; gap: 8px 18px; flex-wrap: wrap; margin-top: 10px; font-size: 14px; color: var(--ink-2); }
+.gstats b { color: var(--ink); font-size: 17px; margin-right: 3px; font-variant-numeric: tabular-nums; }
+.badges { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.badge { display: grid; gap: 3px; justify-items: center; text-align: center; padding: 14px 10px; border: 1px dashed var(--rule); border-radius: var(--r); color: var(--ink-2); font-size: 13px; }
+.badge b { color: var(--ink-2); font-size: 14.5px; }
+.badge .ic { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 18px; background: var(--rule-2); color: var(--ink-2); margin-bottom: 4px; }
+.badge.on { border-style: solid; border-color: var(--royal-soft); background: var(--sheet); }
+.badge.on b { color: var(--ink); }
+.badge.on .ic { background: linear-gradient(135deg, #f2a516, #e04a3b 40%, #7446c4); color: #fff; }
+@media (max-width: 560px) { .game { grid-template-columns: 1fr; justify-items: center; text-align: center; } .gstats { justify-content: center; } }
+.plus { display: inline-block; margin-left: 6px; padding: 0 8px; border-radius: 999px; background: var(--ok); color: #fff; font-size: 13px; }
+
+/* one small burst for a right answer or a perfect round (skipped with reduced motion) */
+.burst { position: absolute; left: 50%; top: 50%; width: 0; height: 0; pointer-events: none; z-index: 3; }
+.burst i { position: absolute; width: 8px; height: 8px; border-radius: 2px; background: var(--c); animation: burst .8s ease-out forwards; transform: rotate(var(--a)) translateY(0); }
+@keyframes burst { to { transform: rotate(var(--a)) translateY(-90px); opacity: 0; } }
+
+/* ---------- teacher: class highlights ---------- */
+.hl { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 8px 0 12px; }
+.hl div { background: var(--paper); border-radius: var(--r); padding: 10px 14px; }
+.hl b { display: block; font-size: 26px; color: var(--royal); font-variant-numeric: tabular-nums; }
+.hl span { font-size: 13.5px; color: var(--ink-2); }
+.shout { display: flex; gap: 10px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--rule-2); font-size: 14.5px; }
+.shout .star { color: #f2a516; }
+.lvl-chip { display: inline-block; font-size: 12.5px; font-weight: 700; padding: 1px 8px; border-radius: 999px; background: var(--royal-soft); color: var(--royal); white-space: nowrap; }
+.topnav { flex-wrap: wrap; }
+.fcard.flip .front, .fcard:not(.flip) .back { pointer-events: none; }
+@media (max-width: 560px) { header { position: static; } .lvl { font-size: 13px; } }
