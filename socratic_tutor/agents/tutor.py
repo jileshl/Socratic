@@ -55,7 +55,7 @@ def generate_hint(
         + f"\nRetrieved NCERT Context:\n{passages_text}\n\n"
         "Draft exactly ONE concise, encouraging Socratic hint that cites the NCERT section ID. "
         "If the student has already correctly and sufficiently explained the concept or relationship, "
-        "validate and praise their correct understanding warmly, summarize the core takeaway with the NCERT citation, "
+        "confirm it warmly, restate in one sentence what they said with the NCERT citation (adding no new facts or numbers), "
         "and invite them to take the quiz or try the next topic instead of asking another probing question."
     )
 

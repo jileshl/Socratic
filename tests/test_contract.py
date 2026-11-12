@@ -1345,3 +1345,80 @@ def test_skip_proposing_when_no_question_or_fallback_for_concept(monkeypatch: py
     assert setter_out["proposed_set"]["set_id"] == ""
     # The graph has no gate node of its own any more: the setter ends the run.
     assert "teacher_approval_gate" not in build_graph().get_graph().nodes
+
+
+# ---- Hint ladder and topic: the hint grows only when the student asks for more help; a new question can move topic ----
+
+def _practice_app(monkeypatch, diagnose=None):
+    from langgraph.checkpoint.memory import InMemorySaver
+    from socratic_tutor import graph
+
+    levels: list[int] = []
+
+    def fake_hint(**kwargs):
+        levels.append(kwargs.get("hint_level", 1))
+        return f"Hint level {levels[-1]}: which way does the ray go after it reflects? (Section 9.2)"
+
+    monkeypatch.setattr(graph.tutor, "generate_hint", fake_hint)
+    monkeypatch.setattr(graph.diagnostician, "diagnose_response", diagnose or (lambda *a, **k: None))
+    monkeypatch.setattr(graph.textbook_kb, "search_textbook", lambda *a, **k: [{"section_id": "9.2.1", "title": "Concave mirror", "content": "Rays reflect."}])
+    return graph.build_graph(checkpointer=InMemorySaver())
+
+
+def _turn(app, thread, message, **extra):
+    from langchain_core.messages import HumanMessage
+
+    state = {"session_id": "ses_ladder2", "student_id": "stu_ladder2", "mode": "practice", "query": message,
+             "messages": [HumanMessage(content=message)], "steps": [], "concept_pinned": False}
+    state.update(extra)
+    return app.invoke(state, config={"configurable": {"thread_id": thread}})
+
+
+def test_hint_grows_only_when_the_student_asks_for_more_help(monkeypatch):
+    app = _practice_app(monkeypatch)
+    first = _turn(app, "t_help", "Why is the image in a concave mirror upside down?",
+                  current_concept_id="concept_concave_ray_diagrams", concept_pinned=True)
+    assert first["hint_step"] == 1
+    # Thanks, or the student's own explanation, keeps the level (Jilesh: "the hint increases without the student asking")
+    assert _turn(app, "t_help", "Okay, thanks.")["hint_step"] == 1
+    assert _turn(app, "t_help", "The focal length is negative and the image is virtual and upright.")["hint_step"] == 1
+    # Asking for more help raises it, one step per turn, up to the biggest hint
+    assert _turn(app, "t_help", "Can I have another hint?")["hint_step"] == 2
+    assert _turn(app, "t_help", "Just tell me the answer please")["hint_step"] == 3
+    assert _turn(app, "t_help", "Still confused")["hint_step"] == 3
+
+
+def test_asks_for_more_help_phrases():
+    from socratic_tutor.graph import asks_for_more_help
+
+    for yes in ("Can I have another hint?", "I don't understand. Can you explain it differently?", "I’m done.",
+                "Still confused about the angle.", "Need more help.", "just tell me the answer"):
+        assert asks_for_more_help(yes), yes
+    for no in ("Okay, thanks.", "Is it because the rays cross after reflecting?", "I think I've got it: the image is upright."):
+        assert not asks_for_more_help(no), no
+
+
+def test_a_new_question_in_another_chapter_moves_the_topic_unless_it_was_picked(monkeypatch):
+    sky = {"id": "MISCON_EYE_10", "name": "The sky is blue because the atmosphere is blue", "chapter": "Human Eye and the Colourful World"}
+    app = _practice_app(monkeypatch, diagnose=lambda q, *a, **k: sky if "sky" in q.lower() else None)
+    _turn(app, "t_topic", "Why is the image in a concave mirror upside down?",
+          current_concept_id="concept_concave_ray_diagrams", concept_pinned=True)
+    _turn(app, "t_topic", "Can I have another hint?")
+    moved = _turn(app, "t_topic", "Why is the sky blue?")
+    assert moved["current_concept_id"] == "concept_scattering"
+    assert moved["hint_step"] == 1  # a new topic starts at the smallest hint
+
+    # A topic the student picked (Practise it) holds for that turn
+    app2 = _practice_app(monkeypatch, diagnose=lambda q, *a, **k: sky)
+    held = _turn(app2, "t_pick", "Help me practise concave mirrors. Why is the sky blue?",
+                 current_concept_id="concept_concave_ray_diagrams", concept_pinned=True)
+    assert held["current_concept_id"] == "concept_concave_ray_diagrams"
+
+
+def test_picking_another_chapter_moves_the_carried_topic():
+    from socratic_tutor import graph
+
+    res = graph.node_supervisor({"mode": "practice", "chapter": "11", "concept_pinned": False,
+                                 "current_concept_id": "concept_concave_ray_diagrams", "query": "Why does a heater wire get hot?"})
+    cg = graph.ConceptGraph()
+    assert cg.concepts[res["current_concept_id"]]["chapter"] == "Electricity"
