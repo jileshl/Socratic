@@ -19,6 +19,12 @@ def _load_catalog() -> list[dict[str, Any]]:
     return []
 
 
+GENERIC_TOPIC_WORDS = {
+    "mirror", "mirrors", "lens", "lenses", "light", "image", "images", "ray", "rays", "object", "objects", "current",
+    "circuit", "eye", "eyes", "know", "about", "question", "answer", "student", "students", "physics", "science",
+}
+
+
 def match_misconception_by_keywords(query: str, catalog: list[dict[str, Any]]) -> dict[str, Any] | None:
     """Deterministic matching based on token overlap with catalogued misconceptions."""
     if not query.strip() or not catalog:
@@ -34,6 +40,7 @@ def match_misconception_by_keywords(query: str, catalog: list[dict[str, Any]]) -
 
     best_match = None
     best_score = 0
+    best_common: set[str] = set()
 
     for item in catalog:
         text = f"{item.get('name', '')} {item.get('description', '')} {item.get('diagnostic_probe', '')}"
@@ -45,8 +52,14 @@ def match_misconception_by_keywords(query: str, catalog: list[dict[str, Any]]) -
         if score > best_score:
             best_score = score
             best_match = item
+            best_common = common
 
-    if best_score >= 2 and best_match:
+    # A topic word on its own ("does he know about mirrors") is not a mix-up: at least two words must be shared,
+    # and one of them must be more than a general topic word. (Before, the mix-up's name counted double, so the
+    # single word "mirrors" flagged "Concave mirrors always invert images" on any message about mirrors, and the
+    # repeated mix-up then pushed the hint up every turn. Team testing, 12 Nov.)
+    specific = best_common - GENERIC_TOPIC_WORDS
+    if best_score >= 2 and best_match and len(best_common) >= 2 and specific:
         return {
             "identified_misconception_id": best_match["id"],
             "identified_misconception_name": best_match["name"],

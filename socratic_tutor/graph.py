@@ -12,6 +12,7 @@ from socratic_tutor import config
 from socratic_tutor import approval_gate, solver_key, tool_hooks
 from socratic_tutor.state import SocraticState
 from socratic_tutor.policy import check_input_guardrails, check_answer_leak, check_reply, keep_retrieved_citations
+from socratic_tutor import intent as intent_check
 from socratic_tutor.concept_graph import ConceptGraph
 from socratic_tutor.learner_store import LearnerStore
 from socratic_tutor.reflexion import ReflexionPlaybook
@@ -138,6 +139,9 @@ def node_input_guardrail(state: SocraticState) -> dict:
         "plan": [],
         "distress_detected": False,
         "teacher_alert_triggered": False,
+        "intent": "physics",
+        "intent_rule": None,
+        "off_topic": False,
     }
     if state.get("chapter"):
         reset_state["chapter"] = state["chapter"]
@@ -204,6 +208,23 @@ def node_input_guardrail(state: SocraticState) -> dict:
         "injection_detected": False,
         "distress_detected": False,
     })
+
+    # [IG5] Intent check (code, practice mode): is this about learning physics? Another student's results, a role
+    # claim, rudeness, "go away", "hi" or "ok thanks" get a short fixed reply here, with no diagnosis and no new
+    # hint, so the tutor no longer answers every message with the same hint (team testing, 12 Nov).
+    # Only for a student's own message: a teacher's "propose a question set" request runs the same graph.
+    if state.get("mode", "practice") == "practice" and not state.get("teacher_approval_required"):
+        kind, rule = intent_check.classify(str(guard_res["sanitized_query"] or ""))
+        reset_state["intent"], reset_state["intent_rule"] = kind, rule
+        if kind == "confused":
+            # "huh?": the same topic, explained another way (and it counts as asking for more help).
+            reset_state["query"] = intent_check.CONFUSED_REWRITE
+        elif kind != "physics":
+            reset_state["off_topic"] = True
+            reset_state["response"] = intent_check.reply_for(kind, rule)
+            reset_state["messages"] = [AIMessage(content=reset_state["response"])]
+            if kind == "rude":
+                reset_state["rude_count"] = int(state.get("rude_count") or 0) + 1
     return reset_state
 
 
@@ -612,6 +633,26 @@ def _tutor_search(arguments: dict[str, Any], state: SocraticState) -> list[dict[
     return result
 
 
+def _last_tutor_reply(messages: list) -> str:
+    """The tutor's last real reply, skipping the intent check's fixed replies ("No problem...", "Hi!...")."""
+    fixed = set(intent_check.REPLIES.values()) | {intent_check.ACK_REPLY}
+    for m in reversed(messages or []):
+        if getattr(m, "type", "") == "ai":
+            text = str(getattr(m, "content", "") or "")
+            if text not in fixed:
+                return text
+    return ""
+
+
+def _too_similar(a: str, b: str, threshold: float = 0.8) -> bool:
+    """Nearly the same reply (ignoring case, spacing and the citation tag)."""
+    import difflib
+
+    norm = lambda t: re.sub(r"\s+", " ", re.sub(r"\[NCERT[^\]]*\]", "", t.lower())).strip()
+    x, y = norm(a), norm(b)
+    return bool(x and y) and difflib.SequenceMatcher(None, x, y).ratio() >= threshold
+
+
 def node_tutor(state: SocraticState) -> dict:
     query = state.get("query", "")
     hint_tries = state.get("hint_tries", 0) + 1
@@ -650,6 +691,24 @@ def node_tutor(state: SocraticState) -> dict:
         misconception=state.get("identified_misconception"),
         conversation_history=state.get("messages", []),
     )
+
+    # Repeat guard: a reply almost the same as the tutor's last one helps nobody (team testing, 12 Nov: the same
+    # concave-mirror hint, turn after turn). Ask once more for a different approach.
+    # Only on the first try of a turn: on a leak retry the last reply in the history is this turn's own draft.
+    previous: str = _last_tutor_reply(state.get("messages", [])) if hint_tries == 1 else ""
+    if previous and _too_similar(hint, previous):
+        retry = tutor.generate_hint(
+            student_query=query + "\n\n(Your last reply was nearly the same as this one. Do not repeat it. Change approach: "
+            "use an everyday example, or ask a smaller and easier question that leads to the same idea.)",
+            ncert_passages=passages,
+            hint_level=hint_step,
+            approved_lesson=lesson,
+            remediation=remediation,
+            misconception=state.get("identified_misconception"),
+            conversation_history=state.get("messages", []),
+        )
+        if retry and not _too_similar(retry, previous):
+            hint = retry
 
     all_citations = _extract_section_ids(initial_citations, hint)
 
@@ -893,7 +952,7 @@ def node_question_setter(state: SocraticState) -> dict:
 # --- Routing Functions ---
 
 def route_guardrail(state: SocraticState) -> str:
-    if state.get("injection_detected") or state.get("distress_detected"):
+    if state.get("injection_detected") or state.get("distress_detected") or state.get("off_topic"):
         return END
     return "supervisor"
 

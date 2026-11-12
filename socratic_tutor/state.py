@@ -17,6 +17,10 @@ class SocraticState(TypedDict, total=False):
     current_concept_id: str | None
     current_question_id: str | None
     chapter: str | None
+    intent: str                              # intent check: physics, confused, others_data, role_claim, rude, opt_out, small_talk
+    intent_rule: str | None
+    off_topic: bool                          # the turn ended at the intent check with a fixed reply
+    rude_count: int                          # rude messages in this session (a gentle teacher alert after 3)
     concept_pinned: bool                     # True when the student picked this topic for this turn (Practise it)
     
     # --- Dialogue & History ---------------------------------------------------
