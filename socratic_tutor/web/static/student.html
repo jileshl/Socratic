@@ -23,6 +23,15 @@
   </div>
 </header>
 
+<dialog id="codeDlg" class="codedlg" aria-labelledby="codeTitle">
+  <form method="dialog" onsubmit="sendCode(event)">
+    <h3 id="codeTitle">Hi <span data-who></span>!</h3>
+    <p class="muted">Type the 4-digit sign-in code your teacher gave you. You only need it once on this device.</p>
+    <input inputmode="numeric" autocomplete="off" maxlength="12" aria-label="Sign-in code" placeholder="4-digit code">
+    <p class="error" data-err role="status"></p>
+    <div class="row"><button class="primary">Continue</button><button type="button" onclick="this.closest('dialog').close()">Not me</button></div>
+  </form>
+</dialog>
 <div class="layout-p">
 <main>
   <!-- ============ LEARN ============ -->
@@ -86,7 +95,7 @@
     <div id="progressBody"></div>
     <div class="panel privacy">
       <div><h3>Your data</h3><p class="muted" style="margin:4px 0 0">Stored under a random ID, kept for 90 days without use. Deleting removes your progress and your saved conversations.</p></div>
-      <button class="danger" onclick="forgetMe()">Delete my data</button>
+      <button class="danger" id="forgetBtn" onclick="forgetMe()">Delete my data</button><span class="muted" id="forgetNote"></span>
     </div>
   </section>
 </main>
@@ -201,9 +210,34 @@ async function session(mode) {
   const r = await fetch("/api/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode, consent, student_id: persona || (consent ? store.get("student_id") : null) }) });
   const s = await r.json();
   if (!persona && consent) store.set("student_id", s.student_id);
+  if (mode === "practice" && !PRESENTER) store.set("ses:" + persona, s.session_id);  // to bring the chat back after a reload
   return (sessions[key] = s);
 }
-function setPersona(p, quiet) {
+// A named student (added by the teacher) types their 4-digit sign-in code once on a device; the teacher gives it
+// to them. Without it, anyone on a shared device could open (or delete) a classmate's record (team review, 12 Nov).
+async function setPersona(p, quiet) {
+  if (p) {
+    let ok = true;
+    try { ok = (await (await fetch("/api/student/" + encodeURIComponent(p) + "/access")).json()).allowed; } catch (e) {}
+    if (!ok) { document.getElementById("persona").value = persona; askCode(p, quiet); return; }
+  }
+  applyPersona(p, quiet);
+}
+function askCode(p, quiet) {
+  const d = document.getElementById("codeDlg");
+  d.querySelector("[data-who]").textContent = label(p);
+  d.querySelector("input").value = ""; d.querySelector("[data-err]").textContent = "";
+  d.dataset.p = p; d.dataset.quiet = quiet ? "1" : "";
+  d.showModal(); d.querySelector("input").focus();
+}
+async function sendCode(e) {
+  e.preventDefault();
+  const d = document.getElementById("codeDlg"); const p = d.dataset.p;
+  const r = await fetch("/api/student/" + encodeURIComponent(p) + "/unlock", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: d.querySelector("input").value }) });
+  if (!r.ok) { d.querySelector("[data-err]").textContent = "That code isn't right. Check it with your teacher."; return; }
+  d.close(); applyPersona(p, !!d.dataset.quiet);
+}
+function applyPersona(p, quiet) {
   persona = p; document.getElementById("persona").value = p;
   activeChapter = null; activeConcept = null; setTimeout(renderJourney, 0);
   // On a shared device, one student's conversation is never left on screen for the next.
@@ -213,6 +247,13 @@ function setPersona(p, quiet) {
   refreshNextUp(); refreshGame();
   const open = document.querySelector(".topnav button.on").dataset.view;
   if (open === "plan") loadPlan(); if (open === "progress") loadProgress(); if (open === "cards") loadCards(); if (open === "quiz") loadQuiz();
+  privacyBox(); restoreChat();
+}
+// "Delete my data" is for this device's own record. A named student's record is deleted by the teacher.
+function privacyBox() {
+  const named = !!(persona && roster[persona] && !persona.startsWith("stu_demo"));
+  document.getElementById("forgetBtn").classList.toggle("hidden", named);
+  document.getElementById("forgetNote").textContent = named ? "Your teacher can delete your data for you from the teacher page." : "";
 }
 // Names come from the teacher's class list. They are shown here only; chats use the random ID.
 async function loadRoster() {
@@ -223,10 +264,27 @@ async function loadRoster() {
   sel.innerHTML = `<option value="">${esc(label(""))}</option>` + ids.map(id => `<option value="${esc(id)}">${esc(label(id))}</option>`).join("")
     + (ids.length ? "" : `<option disabled>No class list yet: your teacher adds names under Students and plans</option>`);
   const picked = store.get("picked");
-  if (!PRESENTER && picked && roster[picked]) setPersona(picked, true); else { refreshNextUp(); refreshGame(); }
+  if (!PRESENTER && picked && roster[picked]) setPersona(picked, true); else { refreshNextUp(); refreshGame(); privacyBox(); restoreChat(); }
 }
 // A student the teacher added is on the class list already, so the consent question is for "Me, on this device" only.
 function consentStrip() { document.getElementById("consent").classList.toggle("hidden", !!persona || !!store.get("consent")); }
+
+// ---------- after a reload: the last conversation comes back (it used to be lost) ----------
+async function restoreChat() {
+  const id = store.get("ses:" + persona);
+  if (PRESENTER || !id || logEl().children.length) return;
+  let st = null; try { const r = await fetch("/api/session/" + encodeURIComponent(id) + "/state"); if (r.ok) st = await r.json(); } catch (e) {}
+  if (!st || !(st.messages || []).length) { store.del("ses:" + persona); return; }
+  sessions["practice:" + persona] = { session_id: id };
+  document.getElementById("welcome").classList.add("hidden"); document.getElementById("homeBar").classList.remove("hidden");
+  note("Your last conversation. Carry on below, or press \"Back to all topics\".", "scenario");
+  st.messages.forEach(m => {
+    const d = document.createElement("div"); d.className = "msg " + (m.role === "student" ? "me" : "tutor");
+    d.innerHTML = m.role === "student" ? `<div class="bubble">${esc(m.text)}</div>` : `<div class="trow"><span class="avatar" aria-hidden="true"></span><div class="body"><div class="bubble">${esc(m.text)}</div></div></div>`;
+    logEl().appendChild(d);
+  });
+  scroll();
+}
 
 // ---------- home: back to the chapter cards to pick a new topic ----------
 // Ends the open lesson and starts a fresh conversation, so the old topic doesn't follow the student.
@@ -234,7 +292,7 @@ function goHome() {
   if (busy) return;
   delete journeys[persona || "me"]; renderJourney();
   activeChapter = null; activeConcept = null;
-  delete sessions["practice:" + persona];
+  delete sessions["practice:" + persona]; store.del("ses:" + persona);
   lastBook[persona] = undefined; lastMixup[persona] = undefined;
   if (!PRESENTER) logEl().innerHTML = "";
   document.getElementById("welcome").classList.remove("hidden");
@@ -283,7 +341,8 @@ function reply(ev, holder) {
   // The book card once per section: a repeat of the card just shown adds nothing.
   if (ev.book) {
     const key = ev.book.section_id + "|" + (ev.book.figure ? ev.book.figure.figure : "");
-    if (lastBook[persona] !== key) body.push(bookCard(ev.book, true));
+    // On a phone the card starts folded: open, it filled the whole screen (team review, 12 Nov).
+    if (lastBook[persona] !== key) body.push(bookCard(ev.book, !matchMedia("(max-width: 640px)").matches));
     lastBook[persona] = key;
   }
   const chips = [];
@@ -337,11 +396,11 @@ async function stream(mode, text, questionId) {
   lastTurn = final; renderHood();
   return final;
 }
-async function ask(text) {
+async function ask(text, questionId) {
   mine(text);
   const holder = thinking();
   stream.onstep = steps => { showSteps(holder, steps); renderRay(steps); };
-  const ev = await stream("practice", text);
+  const ev = await stream("practice", text, questionId);
   stream.onstep = null;
   let j = journey();
   // The student asked about another topic, so the tutor moved there: the lesson's path closes.
@@ -512,25 +571,53 @@ async function checkAnswer(e, qid) {
     stream.onstep = steps => renderRay(steps);
     const ev = await stream("quiz", answer, qid); stream.onstep = null;
     refreshNextUp();
-    if (ev.grade) out.innerHTML = `<div class="result ${ev.grade.is_correct ? "ok" : "bad"}">${ev.grade.is_correct ? `Correct. Well done.${studentId() ? (ev.grade.already_solved ? " (Already solved)" : ` <span class="plus">+10 points</span>`) : ""}` : "Not yet. Check your sign convention and units, then try again. That's how learning works: let's fix the idea behind it."}</div>`;
     const q = (quiz || []).find(x => x.question_id === qid) || {};
+    if (ev.grade && !ev.grade.is_correct) misses[qid] = (misses[qid] || 0) + 1;
+    if (ev.grade) out.innerHTML = `<div class="result ${ev.grade.is_correct ? "ok" : "bad"}">${ev.grade.is_correct ? `Correct. Well done.${studentId() ? (ev.grade.already_solved ? " (Already solved)" : ` <span class="plus">+10 points</span>`) : ""}` : `Not yet. ${esc(quizTip(q.concept_id))} Then try again.`}</div>`;
     if (ev.grade && ev.grade.is_correct) {
       celebrate(card);
       const before = gameCache && gameCache.level; await refreshGame(true); const after = gameCache && gameCache.level;
       out.insertAdjacentHTML("beforeend", await encouragement(q, before, after));
-      if (q.concept_id && !journey()) setJourney(q.concept_id, 3);
+      // Only an open lesson on this topic moves on; a quiz answer alone doesn't tick "Read it in your book".
       const j = journey(); if (j && j.cid === q.concept_id) { j.step = 4; renderJourney(); }
       if (q.concept_id) out.insertAdjacentHTML("beforeend", nextTopicsBox(q.concept_id));
       // A solved question leaves the list (#65); the student moves on when ready, so the encouragement stays readable.
       out.insertAdjacentHTML("beforeend", `<div class="quick" style="margin-top:8px"><button type="button" onclick="loadQuiz(lastQuizFocus)">Next question</button></div>`);
     }
     else if (ev.grade) {
+      // Two misses on the same question: an offer to work through it with the tutor (without the answer).
+      if (misses[qid] >= 2) out.insertAdjacentHTML("beforeend", `<div class="quick" style="margin-top:8px"><button type="button" class="strong" onclick="tutorOn('${esc(qid)}')">Work through it with the tutor</button><span class="muted">It won't give you the answer, but it will take you there step by step.</span></div>`);
       if (q.concept_id) { out.insertAdjacentHTML("beforeend", await revisionCards(q.concept_id)); showFlashFlow(q.concept_id); }
     }
     else out.innerHTML = `<div class="result bad">${esc(ev.text || "This answer couldn't be checked.")}</div>`;
   });
 }
 
+// What to check after a wrong answer, by topic (it used to say "check your sign convention" even for resistors).
+const misses = {};
+function quizTip(cid) {
+  const c = cid || "";
+  if (/lens_power/.test(c)) return "Power is 1/f with f in metres, and a concave lens has a negative power.";
+  if (/mirror|lens|sign_convention|ray_diagrams/.test(c)) return "Check the sign convention (distances are measured from the pole or optical centre; in front of a mirror is negative) and the unit.";
+  if (/series/.test(c)) return "In series, the resistances simply add up.";
+  if (/parallel|resistors_combination/.test(c)) return "In parallel, add the reciprocals (1/R = 1/R1 + 1/R2), so the total is less than the smallest resistance.";
+  if (/ohms_law/.test(c)) return "Use V = IR, and check which quantity the question asks for and its unit.";
+  if (/factors_resistance/.test(c)) return "Use R = ρL/A, and check the length, the area and their units.";
+  if (/joules_heating/.test(c)) return "Use H = I²Rt: square the current, and use seconds for the time.";
+  if (/electric_power/.test(c)) return "Use P = VI (or I²R, V²/R); 1 kWh = 3.6 × 10⁶ J.";
+  if (/electric_current|potential/.test(c)) return "Use I = Q/t or V = W/Q, and check the units.";
+  if (/refractive_index/.test(c)) return "Use n = c/v: a bigger refractive index means slower light.";
+  if (/refraction|prism|dispersion|scatter|rainbow|atmospheric/.test(c)) return "Think about how the light bends, and which way.";
+  if (/myopia|hypermetropia|presbyopia|accommodation|eye/.test(c)) return "Think about where the image forms in the eye and which lens moves it.";
+  return "Check each step and the unit.";
+}
+// The quiz question, worked through with the tutor (practice mode with the question's id, so the answer-leak
+// check knows the key and the tutor never gives it away).
+function tutorOn(qid) {
+  const q = (quiz || []).find(x => x.question_id === qid); if (!q || busy) return;
+  go("learn"); activeConcept = q.concept_id; activeChapter = chapterNum(q.chapter) || activeChapter;
+  guarded(() => ask(`Help me with this quiz question, step by step, without telling me the answer: ${q.prompt.replace(/^\[DEMO\]\s*/, "")}`, qid));
+}
 // After a right answer: what changed, in the student's own numbers, and a level-up when it happens.
 async function encouragement(q, before, after) {
   if (!studentId()) return `<div class="cheer">Great work! Pick your name at the top to keep your progress and climb the levels.</div>`;
@@ -539,7 +626,7 @@ async function encouragement(q, before, after) {
   const up = before && after && after.number > before.number;
   const lines = [];
   if (up) lines.push(`<div class="levelup"><span class="lv-big">${after.number}</span><div><b>Level up! You've moved to Level ${after.number}: ${esc(after.name)}</b><span>Real learning, counted from your quiz results.</span></div></div>`);
-  if (pct != null) lines.push(`<div class="cheer">${pct >= 70 ? `<b>${esc(q.concept)}: mastered (${pct}%).</b> You've got this topic.` : `<b>${esc(q.concept)}: ${pct}%</b>, passing is 70%. One more right answer and it's yours.`}
+  if (pct != null) lines.push(`<div class="cheer">${pct >= 70 ? `<b>${esc(q.concept)}: mastered (${pct}%).</b> You've got this topic.` : `<b>${esc(q.concept)}: ${pct}%</b>, passing is 70%. ${m.right_needed === 1 ? "One more right answer and it's yours." : m.right_needed ? `${m.right_needed} more right answers in a row and it's yours.` : "Keep going: every right answer moves it up."}`}
     ${after && after.next_at ? `<span class="muted">${gameCache.points} points, ${after.next_at - gameCache.points} to Level ${after.number + 1}: ${esc(after.next_name)}.</span>` : ""}</div>`);
   return lines.join("");
 }
@@ -739,7 +826,7 @@ async function forgetMe() {
   if (!confirm("Delete your progress and saved conversations? This cannot be undone.")) return;
   const out = await (await fetch("/api/forget_me", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ student_id: id }) })).json();
   if (!persona) store.del("student_id");
-  sessions = {};
+  sessions = {}; store.del("ses:" + persona);
   alertBox(`Deleted. Your progress ${out.learner_record_deleted ? "and" : "(none was stored) and"} ${out.checkpoint_threads_deleted} saved conversation(s) are gone.`);
   loadProgress();
 }
@@ -855,7 +942,7 @@ function renderHood() {
   const b = t.behind || {}; const sf = b.safety || {}; const ran = new Set((t.steps || []).map(s => s.node));
   const by = node => ((t.steps || []).find(s => s.node === node) || {}).decided_by || (STATIONS.find(x => x[0] === node) || [])[2] || "code";
   const M = b.models || {}; const model = name => name ? `<span class="model">Model: ${esc(name)}</span>` : null;
-  const INTENT = { others_data: "another student's results", role_claim: "a role claim (faculty, parent, ...)", rude: "a rude message", opt_out: "opting out", fed_up: "frustration (\u201cnonsense\u201d, \u201cboring\u201d)", gibberish: "a keyboard mash", small_talk: "small talk", confused: "\u201chuh?\u201d: explain it another way", physics: "a physics question or answer" };
+  const INTENT = { others_data: "another student's results", role_claim: "a role claim (faculty, parent, ...)", rude: "a rude message", opt_out: "opting out", off_syllabus: "another subject (not Light, the Eye or Electricity)", fed_up: "frustration (\u201cnonsense\u201d, \u201cboring\u201d)", gibberish: "a keyboard mash", small_talk: "small talk", confused: "\u201chuh?\u201d: explain it another way", physics: "a physics question or answer" };
   kind = t.blocked ? "Stopped by the safety check" : t.distress_level ? "A student who needs care" : t.grade ? "Quiz answer" : b.off_topic ? "Not a physics question" : "Practice question";
   // 1. safety
   add("Safety check", "code + model", t.blocked ? "stop" : (t.distress_level ? "care" : "ok"), [

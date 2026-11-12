@@ -110,8 +110,10 @@ configs:
               labels: {severity: warn}
               annotations:
                 summary: "The tutor raised more than 5 errors in 10 minutes"
+            # Fires while a distress alert is still open on the teacher page (it used to look only at the last
+            # 5 minutes and go quiet by itself even if no teacher had handled it).
             - alert: DistressAlertWaiting
-              expr: increase(socratic_distress_alerts_total[5m]) > 0
+              expr: max(socratic_open_alerts{kind="distress"}) > 0
               labels: {severity: page}
               annotations:
                 summary: "A student showed signs of distress; a teacher needs to check the teacher view now"

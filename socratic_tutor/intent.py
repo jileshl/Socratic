@@ -15,6 +15,7 @@ intent is one of:
 - "opt_out"      "I don't need it", "go away", "not now", "bye"
 - "fed_up"       frustration that isn't aimed at anyone: "nonsense", "boring", "useless", "waste of time"
 - "gibberish"    a keyboard mash such as "kjsadfkmnasdkfnhlas": nothing to answer
+- "off_syllabus" another subject ("what is photosynthesis", "Newton's laws", "my maths homework")
 - "small_talk"   greetings and chatter with nothing to learn from ("hi", "lol", "my friend is acting smart")
 
 Distress is NOT decided here: the safety check runs first, so "I'm so stupid, I want to give up" is already
@@ -32,7 +33,8 @@ PHYSICS_WORDS = re.compile(
     r"|sky|blue|eye|eyes|retina|cornea|pupil|myopia|hypermetropia|presbyopia|sighted\w*|vision|accommodation|twinkl\w*"
     r"|current|voltage|volt|volts|potential|resist\w*|ohm|ohms|circuit|series|parallel|ammeter|voltmeter|charge|power"
     r"|watt|watts|energy|heat\w*|joule|wire|battery|cell|formula|dioptre|diopter|angle|normal|medium|glass|water|speed"
-    r"|diverge\w*|converge\w*|sign convention)\b",
+    r"|diverge\w*|converge\w*|sign convention|electric\w*|electron\w*|optic\w*|lens\w*|mirror\w*|colou?rs?|sunlight|sun"
+    r"|ampere|amps?|coulombs?|fuse|heater|bulb|resistor\w*|physics|science|chapter|topic|quiz|question|answer)\b",
     re.IGNORECASE,
 )
 
@@ -73,6 +75,17 @@ FED_UP = re.compile(
     r"|^\s*((this is|it'?s|so|all) )?(useless|stupid|dumb)\s*[.!]*\s*$",
     re.IGNORECASE,
 )
+# Another subject: the tutor covers three chapters of Class 10 Science (Light, the Human Eye, Electricity).
+OFF_SYLLABUS = re.compile(
+    r"\b(photosynth\w*|chlorophyll|respiration|digestion|heredity|evolution|reproduction|hormones?|nervous system"
+    r"|newton\w*|gravit\w*|motion|velocity|accelerat\w*|momentum|friction|magnet\w*|electromagnet\w*"
+    r"|acids?|bases?|salts?|metals?|non-?metals?|carbon compounds?|chemical\w*|chemistry|periodic table|biology"
+    r"|maths?|mathematics|algebra|geometry|trigonometry|calculus|equations? of motion|history|geography|civics"
+    r"|economics|english|grammar|hindi|tamil|essay|poem)\b",
+    re.IGNORECASE,
+)
+# "I don't know" is an answer to the tutor's question: a smaller step, not small talk.
+DONT_KNOW = re.compile(r"^\s*(i\s+)?(do\s*n[o']?t|dont|dunno|really don'?t)\s+know\b|^\s*(idk|no idea|not sure|no clue|i'?m not sure)\b", re.IGNORECASE)
 CONFUSED = re.compile(r"^\s*(huh+|what+|wha+t?|eh+|umm*|\?+|i don'?t get it)\s*[?!.]*\s*$", re.IGNORECASE)
 
 
@@ -92,8 +105,13 @@ def _looks_like_gibberish(t: str) -> bool:
     return sum(odd(w) for w in words) * 2 >= len(words)
 
 
-def classify(text: str) -> tuple[str, str | None]:
-    """(intent, rule). Order matters: privacy and conduct first, then the physics test."""
+def classify(text: str, in_conversation: bool = False) -> tuple[str, str | None]:
+    """(intent, rule). Order matters: privacy and conduct first, then the physics test.
+
+    in_conversation: the tutor has already replied in this chat. Then a message the rules can't place ("I
+    already answered that", "give me a harder one", "can we do something else") goes to the tutor, which has
+    the conversation in front of it; the fixed greeting is only for a chat that hasn't started (team review,
+    12 Nov: those got "Hi! I'm your science tutor" in the middle of a lesson)."""
     t = (text or "").strip()
     if not t:
         return "small_talk", "empty"
@@ -103,12 +121,14 @@ def classify(text: str) -> tuple[str, str | None]:
         return "others_data", "others_data"
     if RUDE.search(t):
         return "rude", "rude"
-    if CONFUSED.match(t):
-        return "confused", "confused"
+    if CONFUSED.match(t) or DONT_KNOW.search(t):
+        return "confused", "dont_know" if DONT_KNOW.search(t) else "confused"
     # Numbers or an equation ("v = -60 cm", "2/3") are an attempt at an answer, so they count as physics too.
     physics = bool(PHYSICS_WORDS.search(t) or re.search(r"\d|=", t))
     if not physics and _looks_like_gibberish(t):
         return "gibberish", "gibberish"
+    if OFF_SYLLABUS.search(t) and not PHYSICS_WORDS.search(t):
+        return "off_syllabus", "off_syllabus"
     if FED_UP.search(t) and not physics:
         return "fed_up", "fed_up"
     if OPT_OUT.search(t) and not physics:
@@ -117,7 +137,7 @@ def classify(text: str) -> tuple[str, str | None]:
         return "small_talk", "greeting"
     if SMALL_TALK.match(t):
         return "small_talk", "ack"
-    if not physics and len(t.split()) >= 3 and not re.search(r"\?|\b(why|how|what|explain|help|hint|answer|question|i think|because|so)\b", t, re.IGNORECASE):
+    if not physics and not in_conversation and len(t.split()) >= 3 and not re.search(r"\?|\b(why|how|what|explain|help|hint|answer|question|i think|because|so)\b", t, re.IGNORECASE):
         return "small_talk", "no_topic"
     return "physics", None
 
@@ -142,6 +162,10 @@ REPLIES: dict[str, str] = {
         "topic. Which would you like?"
     ),
     "gibberish": "I didn't catch that. Could you type it again, or ask your question in a few words?",
+    "off_syllabus": (
+        "That's outside what I can help with: I cover three chapters of Class 10 Science, Light, the Human Eye and "
+        "Electricity. For that one, your teacher or your textbook is the best place. Shall we try one of my topics?"
+    ),
     "opt_out": (
         "No problem. Your progress is saved. Whenever you're ready, ask me a question, take a quiz, or press "
         "\"Learn from the start\" on any topic."

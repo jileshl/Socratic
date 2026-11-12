@@ -111,7 +111,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(increase(socratic_answer_leaks_total{source=\"live\"}[24h]))",
+          "expr": "sum(increase(socratic_answer_leaks_total{source=\"live\"}[24h])) or vector(0)",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -152,7 +152,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "socratic_pending_approvals",
+          "expr": "socratic_pending_approvals or vector(0)",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -193,7 +193,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "socratic_stuck_students_count",
+          "expr": "socratic_stuck_students_count or vector(0)",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -234,7 +234,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(increase(socratic_distress_alerts_total[24h]))",
+          "expr": "sum(increase(socratic_distress_alerts_total[24h])) or vector(0)",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -316,7 +316,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(increase(socratic_stale_approvals_total[24h]))",
+          "expr": "sum(increase(socratic_stale_approvals_total[24h])) or vector(0)",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -357,7 +357,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (outcome) (rate(socratic_requests_total[5m])) * 60",
+          "expr": "sum by (outcome) (rate(socratic_requests_total[5m])) * 60 or vector(0)",
           "legendFormat": "{{outcome}}",
           "datasource": {
             "type": "prometheus",
@@ -430,7 +430,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (source) (increase(socratic_answer_leaks_total[10m]))",
+          "expr": "sum by (source) (increase(socratic_answer_leaks_total[10m])) or vector(0)",
           "legendFormat": "{{source}}",
           "datasource": {
             "type": "prometheus",
@@ -462,7 +462,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (reason) (increase(socratic_guardrail_blocks_total[10m]))",
+          "expr": "sum by (reason) (increase(socratic_guardrail_blocks_total[10m])) or vector(0)",
           "legendFormat": "{{reason}}",
           "datasource": {
             "type": "prometheus",
@@ -526,7 +526,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(socratic_llm_cost_dollars_total[15m])) * 3600",
+          "expr": "sum(rate(socratic_llm_cost_dollars_total[15m])) * 3600 or vector(0)",
           "legendFormat": "USD per hour",
           "datasource": {
             "type": "prometheus",
@@ -535,7 +535,7 @@
         },
         {
           "refId": "B",
-          "expr": "sum(rate(socratic_llm_calls_total[15m])) * 60",
+          "expr": "sum(rate(socratic_llm_calls_total[15m])) * 60 or vector(0)",
           "legendFormat": "calls per minute",
           "datasource": {
             "type": "prometheus",
@@ -603,7 +603,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (where) (increase(socratic_errors_total[10m]))",
+          "expr": "sum by (where) (increase(socratic_errors_total[10m])) or vector(0)",
           "legendFormat": "{{where}}",
           "datasource": {
             "type": "prometheus",
@@ -664,6 +664,76 @@
           "placement": "bottom"
         }
       }
+    },
+    {
+      "id": 17,
+      "type": "stat",
+      "title": "Open teacher alerts",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 46,
+        "w": 8,
+        "h": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (kind) (socratic_open_alerts) or vector(0)",
+          "legendFormat": "{{kind}}"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "background"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "What students sent (practice turns by kind, 10 min)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 46,
+        "w": 16,
+        "h": 6
+      },
+      "description": "physics questions and answers, \"huh?\", off-topic, fed up, keyboard mashes, other subjects. A rise in fed_up or confused can mean the tutor is looping.",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (intent) (increase(socratic_intents_total[10m])) or vector(0)",
+          "legendFormat": "{{intent}}"
+        }
+      ]
     }
   ]
 }

@@ -188,6 +188,15 @@ class LearnerStore:
             self._write_profile(conn, student_id, profile)
             conn.commit()
 
+    def recent_scores(self, student_id: str, concept_id: str, limit: int) -> list[float]:
+        """The student's latest quiz scores on a topic, newest first (mastery is their average)."""
+        with sqlite3.connect(self.db_path) as conn:
+            rows = conn.execute(
+                "SELECT score FROM quiz_attempts WHERE student_id = ? AND concept_id = ? ORDER BY attempt_id DESC LIMIT ?",
+                (student_id, concept_id, limit),
+            ).fetchall()
+        return [float(r[0]) for r in rows]
+
     def record_quiz_result(
         self,
         student_id: str,

@@ -19,6 +19,8 @@ SESSIONS = Counter("socratic_sessions_started_total", "Tutoring sessions started
 ANSWER_LEAKS = Counter("socratic_answer_leaks_total", "Practice-mode replies flagged as giving away the answer", ["source"], registry=REGISTRY)
 GUARDRAIL_BLOCKS = Counter("socratic_guardrail_blocks_total", "Turns stopped or replaced by a safety check (input guardrail, distress hand-off, reply check)", ["reason"], registry=REGISTRY)
 DISTRESS_ALERTS = Counter("socratic_distress_alerts_total", "Distress hand-offs to a teacher", registry=REGISTRY)
+OPEN_ALERTS = Gauge("socratic_open_alerts", "Teacher alerts still open, by kind (distress, stuck, conduct)", ["kind"], registry=REGISTRY)
+INTENTS = Counter("socratic_intents_total", "Practice turns by the kind of message (physics, confused, fed_up, off_syllabus, ...)", ["intent"], registry=REGISTRY)
 STUCK_STUDENTS = Gauge("socratic_stuck_students_count", "Students with an open 'stuck' alert", registry=REGISTRY)
 PENDING_APPROVALS = Gauge("socratic_pending_approvals", "Question items waiting for teacher approval", registry=REGISTRY)
 APPROVAL_LATENCY = Histogram(

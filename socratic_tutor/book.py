@@ -160,6 +160,9 @@ def _vocab() -> Counter:
     return words
 
 
+_KNOWN_SPLITS: dict[str, str] = {"deter mining": "determining", "deter mine": "determine", "for med": "formed", "in for mation": "information"}
+
+
 def _join_split_words(text: str) -> str:
     """The PDF text splits some words ("for mation", "mirr ors"); join a pair when the joined word is in the book
     and one half is rare on its own. Also tidy spaces before punctuation ("mirror ," -> "mirror,")."""
@@ -181,6 +184,9 @@ def _join_split_words(text: str) -> str:
         out.append(a)
         i += 1
     text = " ".join(out)
+    # Splits whose halves are both common words, so the rule above can't tell (team review, 12 Nov).
+    for split, word in _KNOWN_SPLITS.items():
+        text = re.sub(r"\b" + split + r"\b", word, text)
     text = re.sub(r"\s+([,.;:)])", r"\1", text)
     text = re.sub(r"(\w)\s*-\s+(\w)|(\w)\s+-(\w)", lambda m: (m.group(1) or m.group(3)) + "-" + (m.group(2) or m.group(4)), text)
     return re.sub(r"\(\s+", "(", text)
@@ -191,6 +197,9 @@ def _sentences(section_id: str, with_breaks: bool = False) -> list[str]:
     if not row:
         return []
     text = row.get("content", "")
+    # "In Activity 9.2, you have seen..." keeps its sense; only the activity headings themselves go
+    # (removing every "Activity 9.2" left "In, you have seen", team review 12 Nov).
+    text = re.sub(r"\b(In|in|From|from|of|Recall)\s+Activity\s+\d+\.\d+", lambda m: m.group(1) + " an earlier activity", text)
     text = re.sub(r"(Activity \d+\.\d+)+", " ", text)
     text = text.replace("\n", " ")
     text = re.sub(r"\s+", " ", text)
@@ -314,7 +323,7 @@ def _figure_index() -> tuple[dict[str, set[str]], dict[str, float]]:
     return words, {w: math.log((total + 1) / (c + 0.5)) for w, c in df.items()}
 
 
-def pick_figure(query: str, concept_id: str | None, section_ids: list[str]) -> dict[str, Any] | None:
+def pick_figure(query: str, concept_id: str | None, section_ids: list[str], prefer_own: bool = False) -> dict[str, Any] | None:
     """The figure that fits the question best, or none (an unrelated figure is worse than no figure).
 
     Every figure in the book is a candidate. Its score is the rarity-weighted overlap between the question's
@@ -340,6 +349,9 @@ def pick_figure(query: str, concept_id: str | None, section_ids: list[str]) -> d
 
     best = max(words, key=lambda n: (overlap(n), n in cited))
     mine = max(own, key=overlap) if own else None
+    # A quiz question is about exactly its topic: its own figure, when the book has one.
+    if prefer_own and mine:
+        return figure(mine)
     # The topic's own figure, when the question touches it at all and nothing else fits clearly better.
     if mine and overlap(mine) > 0 and overlap(best) < overlap(mine) + 2.0:
         return figure(mine)

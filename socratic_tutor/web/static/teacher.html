@@ -52,7 +52,7 @@
         <label class="picker"><span>Student</span><select id="stuPick" onchange="openStudent(this.value)" aria-label="Choose a student"></select></label>
         <form class="row" onsubmit="addStudent(event)"><input id="newName" placeholder="First name or nickname" maxlength="60" aria-label="New student's name"><button>Add a student</button><span id="addOut" class="error" role="status"></span></form>
       </div>
-      <p class="muted" style="max-width:80ch;margin-top:0">Names stay in this app: the tutor and its AI models only ever see each student's random ID. A student picks their name under "Learning as" on the student page.</p>
+      <p class="muted" style="max-width:80ch;margin-top:0">Names stay in this app: the tutor and its AI models only ever see each student's random ID. A student picks their name under "Learning as" on the student page, then types the 4-digit sign-in code shown next to their name here (once per device), so classmates can't open each other's records.</p>
       <div id="stuDetail"></div>
       <div class="panel"><h2>Your class</h2><p class="muted">Click a student to see their record and set their study plan. Students with an open alert are listed first.</p><table class="class" id="classTable"></table></div>
     </section>
@@ -195,11 +195,13 @@ async function loadApprovals() {
   }
   // [H2] the concepts for the propose form (filled once, so the teacher's choice isn't reset).
   const select = document.getElementById("proposeConcept");
+  // The topic's real title ("Ohm's Law and Resistance"), not one made from its id ("Ohms law").
+  if (!concepts.length) { try { concepts = (await (await fetch("/api/concepts")).json()).items; } catch (e) {} }
   if (select.options.length === 0) {
     for (const conceptId of body.concept_ids || []) {
       const option = document.createElement("option");
       option.value = conceptId;
-      option.textContent = nice(conceptId);
+      option.textContent = (concepts.find(c => c.concept_id === conceptId) || {}).title || nice(conceptId);
       select.appendChild(option);
     }
   }
@@ -382,7 +384,7 @@ async function loadStudents() {
   const shown = students.filter(s => s.named || s.open_alerts || s.student_id === current || showUnnamed);
   const folded = students.length - shown.length;
   document.getElementById("classTable").innerHTML = "<tr><th>Name</th><th>Level</th><th>Mastery</th><th>Mix-ups</th><th>Alerts</th><th>Study plan</th><th class='hide-sm'>Last active</th></tr>" + (shown.length ? shown.map(s => `<tr data-id="${esc(s.student_id)}" class="${s.student_id === current ? "sel" : ""}" onclick="openStudent('${esc(s.student_id)}')" tabindex="0" onkeydown="if(event.key==='Enter')openStudent('${esc(s.student_id)}')">
-    <td><span class="stu-name">${esc(s.name)}</span>${s.named ? "" : `<div class="hash">no name yet</div>`}</td>
+    <td><span class="stu-name">${esc(s.name)}</span>${s.named ? (s.code ? `<div class="hash">sign-in code ${esc(s.code)}</div>` : "") : `<div class="hash">no name yet</div>`}</td>
     <td><span class="lvl-chip">${s.level.number} ${esc(s.level.name)}</span><div class="hash">${s.points} points, ${s.badges_earned} badge${s.badges_earned === 1 ? "" : "s"}${s.streak_days ? `, ${s.streak_days}-day streak` : ""}</div></td>
     <td>${s.avg_mastery == null ? "<span class='muted'>no quizzes yet</span>" : `<span class="meter"><span style="width:${Math.round(s.avg_mastery * 100)}%" class="${passBand(s.avg_mastery)}"></span></span>${Math.round(s.avg_mastery * 100)}%<div class="hash">${s.topics} topic${s.topics === 1 ? "" : "s"}</div>`}</td>
     <td>${s.open_mixups || "<span class='muted'>none</span>"}</td>
@@ -410,7 +412,7 @@ async function openStudent(id) {
   draft = (d.plan.assigned ? d.plan.assigned.items : []).map(i => i.concept_id);
   const groups = {}; d.mastery.forEach(m => (groups[m.chapter || "Other"] = groups[m.chapter || "Other"] || []).push(m));
   el.innerHTML = `<div class="panel" style="border-top:4px solid var(--royal)">
-    <div class="plan-head"><div><h2 style="font-size:22px">${esc(d.name)}</h2><div class="hash">Random ID ${esc(d.student_id)}, last active ${esc(when(d.last_active))}</div></div>
+    <div class="plan-head"><div><h2 style="font-size:22px">${esc(d.name)}</h2><div class="hash">Random ID ${esc(d.student_id)}, last active ${esc(when(d.last_active))}</div>${d.named && d.code ? `<div class="muted" style="margin-top:4px">Sign-in code <b>${esc(d.code)}</b>: give it to ${esc(d.name)}, who types it once on their device after picking their name.</div>` : ""}</div>
       <form class="row" onsubmit="rename(event)"><input id="renameBox" value="${esc(d.named ? d.name : "")}" placeholder="Give this student a name" maxlength="60" aria-label="Student's name"><button>Save name</button></form></div>
     <div class="row" style="gap:8px;margin-top:8px"><span class="lvl-chip">Level ${d.game.level.number} ${esc(d.game.level.name)}</span><span class="muted">${d.game.points} points${d.game.streak_days ? `, ${d.game.streak_days}-day streak` : ""}</span>${d.game.badges.map(b => `<span class="chip ${b.earned ? "ok" : ""}" title="${esc(b.how)}">${esc(b.name)}${b.earned ? "" : " (not yet)"}</span>`).join("")}</div>
     ${d.open_alerts.map(a => `<div class="teacher-note" style="background:var(--bad-soft);border-color:var(--bad)"><b style="color:var(--bad)">${a.kind === "distress" ? "Please check in" : a.kind === "conduct" ? "Fed up" : "Stuck"}:</b> ${esc(a.detail)}</div>`).join("")}
@@ -424,10 +426,19 @@ async function openStudent(id) {
         <div id="suggList"></div>
         <label class="muted" for="planNote">Note for ${esc(d.name)}</label><textarea id="planNote" rows="2" maxlength="500" placeholder="For example: Ohm's law first, then try the quiz.">${esc(d.plan.assigned ? d.plan.assigned.note : "")}</textarea>
         <div class="row" style="margin-top:8px"><label class="muted" style="margin:0" for="planDue">Due</label><input id="planDue" type="date" value="${esc(d.plan.assigned && d.plan.assigned.due || "")}"><button class="primary" onclick="savePlan()">Assign plan</button><span id="planOut" class="muted" role="status"></span></div>
-      </div></div></div>`;
+      </div></div>
+    <div class="row" style="margin-top:14px;border-top:1px solid var(--rule);padding-top:12px"><button class="danger" id="forgetStu" onclick="forgetStudent()">Delete ${esc(d.name)}'s data</button><span class="muted" id="forgetOut" role="status">Removes their progress, conversations and place on the class list. Students can't do this themselves for a named student.</span></div></div>`;
   window._sugg = d.plan.suggested; window._name = d.name; window._status = Object.fromEntries([...(d.plan.assigned ? d.plan.assigned.items : []), ...d.plan.suggested].map(i => [i.concept_id, i]));
   renderDraft();
   el.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+}
+// Two clicks, so a slip of the mouse doesn't delete a student's record.
+async function forgetStudent() {
+  const b = document.getElementById("forgetStu"), out = document.getElementById("forgetOut");
+  if (!b.dataset.armed) { b.dataset.armed = "1"; b.textContent = "Click again to delete for good"; out.textContent = "This can't be undone."; return; }
+  const { status } = await api("/api/teacher/students/" + encodeURIComponent(current) + "/forget", { method: "POST" });
+  if (status !== 200) { out.textContent = "That didn't work. Try again."; return; }
+  current = null; document.getElementById("stuDetail").innerHTML = `<div class="panel">Deleted.</div>`; loadStudents();
 }
 function cInfo(id) { return concepts.find(c => c.concept_id === id) || { title: id, chapter: "" }; }
 function renderDraft() {
