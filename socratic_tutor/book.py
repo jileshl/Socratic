@@ -324,6 +324,13 @@ def pick_figure(query: str, concept_id: str | None, section_ids: list[str]) -> d
     words, idf = _figure_index()
     if not words:
         return None
+    # Stay in the topic's chapter: "an object in front of a concave mirror" must not pick the eye chapter's
+    # concave-lens figure just because both say "object", "concave" and "in front of".
+    chapter = (CONCEPT_SECTIONS.get(concept_id or "") or section_ids or [""])[0].split(".")[0]
+    if chapter:
+        words = {n: w for n, w in words.items() if str(_figures()[n].get("chapter", "")) == chapter}
+        if not words:
+            return None
     q = _stems(query)
     own = set(CONCEPT_FIGURES.get(concept_id or "", []))
     cited = {n for sid in section_ids[:2] for n in figures_in_section(sid)}
