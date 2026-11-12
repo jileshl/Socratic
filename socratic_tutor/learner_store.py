@@ -38,9 +38,15 @@ class LearnerStore:
                     concept_id TEXT NOT NULL,
                     score REAL NOT NULL,
                     duration_seconds REAL NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    question_id TEXT
                 )
             """)
+            columns_qa = {row[1] for row in conn.execute("PRAGMA table_info(quiz_attempts)")}
+            if "question_id" not in columns_qa:
+                conn.execute(
+                    "ALTER TABLE quiz_attempts ADD COLUMN question_id TEXT"
+                )
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS learner_sessions (
                     student_id TEXT NOT NULL,
@@ -61,7 +67,7 @@ class LearnerStore:
             row = cursor.fetchone()
             if row:
                 attempts = conn.execute(
-                    "SELECT concept_id, score, duration_seconds, created_at "
+                    "SELECT concept_id, score, duration_seconds, created_at, question_id "
                     "FROM quiz_attempts WHERE student_id = ? ORDER BY attempt_id DESC LIMIT 50",
                     (student_id,),
                 ).fetchall()
@@ -78,6 +84,7 @@ class LearnerStore:
                             "score": attempt[1],
                             "duration_seconds": attempt[2],
                             "created_at": attempt[3],
+                            "question_id": attempt[4],
                         }
                         for attempt in reversed(attempts)
                     ],
@@ -182,12 +189,22 @@ class LearnerStore:
         concept_id: str,
         score: float,
         duration_seconds: float = 0,
+        question_id: str | None = None,
     ) -> dict:
         self._validate_student_and_concept(student_id, concept_id)
         if not math.isfinite(score) or not 0.0 <= score <= 1.0:
             raise ValueError("quiz score must be between 0 and 1")
         if not math.isfinite(duration_seconds) or duration_seconds < 0:
             raise ValueError("duration_seconds must be finite and non-negative")
+
+        already_solved = False
+        if question_id:
+            with sqlite3.connect(self.db_path) as conn:
+                existing = conn.execute(
+                    "SELECT 1 FROM quiz_attempts WHERE student_id = ? AND question_id = ? AND score >= 1.0",
+                    (student_id, question_id),
+                ).fetchone()
+                already_solved = bool(existing)
 
         profile = self.get_profile(student_id)
         score = round(score, 2)
@@ -207,9 +224,9 @@ class LearnerStore:
         with sqlite3.connect(self.db_path) as conn:
             self._write_profile(conn, student_id, profile)
             conn.execute(
-                "INSERT INTO quiz_attempts (student_id, concept_id, score, duration_seconds) "
-                "VALUES (?, ?, ?, ?)",
-                (student_id, concept_id, score, duration_seconds),
+                "INSERT INTO quiz_attempts (student_id, concept_id, score, duration_seconds, question_id) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (student_id, concept_id, score, duration_seconds, question_id),
             )
             conn.commit()
 
@@ -218,8 +235,20 @@ class LearnerStore:
             "score": score,
             "mastery": profile["mastery_map"][concept_id],
             "failure_streak": failure_streak,
+            "already_solved": already_solved,
             "teacher_alert_triggered": failure_streak >= config.STUCK_FAILURE_COUNT or duration_seconds > 600,
         }
+
+    def get_solved_question_ids(self, student_id: str) -> set[str]:
+        """Return the set of question_ids that this student has already solved correctly (score >= 1.0)."""
+        if not student_id:
+            return set()
+        with sqlite3.connect(self.db_path) as conn:
+            rows = conn.execute(
+                "SELECT DISTINCT question_id FROM quiz_attempts WHERE student_id = ? AND score >= 1.0 AND question_id IS NOT NULL",
+                (student_id,),
+            ).fetchall()
+            return {row[0] for row in rows if row[0]}
 
     def register_session(self, student_id: str, thread_id: str) -> None:
         self._validate_student_and_concept(student_id, thread_id)
