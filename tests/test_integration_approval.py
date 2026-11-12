@@ -8,9 +8,10 @@ What these tests show:
   found are gone (a web approval was always refused; an approval without a hash was accepted; nothing could
   reach the question setter; the teacher routes resumed the student's thread).
 
-No test calls a model: llm.get_llm fails if anything tries, and the question setter's model call
-(llm.chat_json) is replaced by a fake. Every test uses temporary files for the bank, the checkpoints and
-the ops log, and the concept list is stubbed (data/ is never read).
+No test calls a model: llm.get_llm fails and llm.chat_json is a recorder that must stay empty, unless a test
+gives the question setter a fake model (model_calls). Every test uses temporary files for the bank, the
+checkpoints and the ops log. The question bank's concept list is stubbed; the graph's own ConceptGraph and
+/api/quiz/next still load the concept graph file as the app does (the tests never print it).
 """
 
 from __future__ import annotations
@@ -61,13 +62,23 @@ SOLVER_KEYS: dict[str, str] = {"easy": "-60 cm", "medium": "-40 cm", "hard": "20
 
 
 @pytest.fixture(autouse=True)
-def no_model_calls(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Any real model call in these tests is a bug: make it fail loudly."""
+def no_model_calls(monkeypatch: pytest.MonkeyPatch) -> Any:
+    """Any real model call in these tests is a bug. llm.chat_json swallows every exception, so a raising
+    get_llm alone would stay silent: chat_json is a recorder too, which must be empty at the end (a test
+    that fakes the model replaces it again)."""
+    calls: list[str] = []
 
     def refuse(*args: Any, **kwargs: Any) -> Any:
         raise AssertionError("a model call in a test")
 
+    def record(prompt: str, system_prompt: str = "", **kwargs: Any) -> dict[str, Any]:
+        calls.append(prompt)
+        return {"error": "a model call in a test"}
+
     monkeypatch.setattr(llm, "get_llm", refuse)
+    monkeypatch.setattr(llm, "chat_json", record)
+    yield
+    assert calls == [], "a test reached llm.chat_json without a fake model"
 
 
 @pytest.fixture
@@ -373,6 +384,66 @@ def test_old_item_ids_are_not_found(teacher: TestClient, model_calls: list[str])
                                   json={"action": "approve", "payload_hash": item["payload_hash"]})
     assert student_thread.status_code == 404
     assert statuses([first_id]) == ["pending_approval"]
+
+
+def test_a_stale_edit_from_a_second_tab_is_refused_not_reported_as_edited(
+    teacher: TestClient, model_calls: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review fix: two tabs show version 1. Tab B's edit lands while tab A's request is on its way, so A's edit
+    (signed for version 1) is refused by the gate: the route must say 409, never "edited", and log a refusal."""
+    item = propose_through_the_web(teacher)
+    first_id: str = item["payload"]["questions"][0]["id"]
+    real_decide = approval_gate.decide
+    tab_b_done: list[bool] = []
+
+    def decide_after_tab_b(gate_graph: Any, set_id: str, decision: Any) -> dict[str, Any]:
+        # Tab B's edit, just before tab A's decision reaches the gate.
+        if len(tab_b_done) == 0:
+            tab_b_done.append(True)
+            changes_b = {first_id: {"gold_answer": "-0.6 m"}}
+            signed_b = approval_gate.sign_decision(set_id, "edit", item["payload_hash"], "teacher", changes_b)
+            assert real_decide(gate_graph, set_id, signed_b)["status"] == "waiting"
+        return real_decide(gate_graph, set_id, decision)
+
+    monkeypatch.setattr(approval_gate, "decide", decide_after_tab_b)
+    tab_a = teacher.post("/api/teacher/approvals/" + item["item_id"],
+                         json={"action": "edit", "payload_hash": item["payload_hash"],
+                               "changes": {first_id: {"gold_answer": "-60.0 cm"}}})
+    assert tab_a.status_code == 409, tab_a.text
+    assert api.ops.approval_log()[0]["outcome"].startswith("refused")
+    # Tab B's version is the one waiting.
+    waiting = teacher.get("/api/teacher/approvals").json()["items"][0]
+    assert waiting["payload"]["questions"][0]["gold_answer"] == "-0.6 m"
+
+
+def test_a_broken_list_is_reported_not_shown_as_empty(teacher: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Review fix: if the waiting sets can't be read, the view is told so; it never shows "Nothing waiting"."""
+
+    def broken(gate_graph: Any) -> list[dict[str, Any]]:
+        raise RuntimeError("checkpoint file unreadable")
+
+    monkeypatch.setattr(approval_gate, "waiting_sets", broken)
+    listed = teacher.get("/api/teacher/approvals").json()
+    assert listed["items"] == []
+    assert "could not be read" in listed["list_error"]
+
+
+def test_the_teacher_is_told_when_fallback_questions_stood_in(teacher: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Review fix: when the model gives no usable question, the agent's fixed fallback question stands in; the
+    teacher's note says so (and the repeats of it are refused as duplicates)."""
+    calls: list[str] = []
+
+    def model_down(prompt: str, system_prompt: str = "", **kwargs: Any) -> dict[str, Any]:
+        calls.append(prompt)
+        return {"error": "Failed to complete chat_json: the model is down"}
+
+    monkeypatch.setattr(llm, "chat_json", model_down)
+    proposed = teacher.post("/api/teacher/question_sets", json={"concept_id": CONCEPT, "count": 3}).json()
+    assert len(calls) == 3
+    assert proposed["ok"] is True
+    assert proposed["question_count"] == 1
+    assert "fixed fallback" in proposed["note"]
+    assert len(proposed["refused"]) == 2
 
 
 def test_the_dashboard_counts_waiting_sets(teacher: TestClient, model_calls: list[str]) -> None:
