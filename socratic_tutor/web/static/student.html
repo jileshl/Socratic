@@ -32,6 +32,11 @@
         <h2>What are you studying today?</h2>
         <p>Learn any topic from the start with your NCERT book, or ask a question. Your tutor won't just hand you the answer: it shows you the page, the figure and the formula from your book, then asks you a question back.</p>
       </div>
+      <div class="howto" id="howto">
+        <b>New here? Learn any topic in four steps</b>
+        <ol><li><span>1</span>Read it in your book</li><li><span>2</span>Answer one question</li><li><span>3</span>Take the quiz</li><li><span>4</span>Move to the next topic</li></ol>
+        <span class="muted">Pick a chapter below, choose a topic and press "Learn from the start".</span>
+      </div>
       <div id="nextUp"></div>
       <div class="chapters-grid" id="chapterCards"></div>
       <div class="consent-inline" id="consent">
@@ -39,6 +44,7 @@
         <button class="primary" onclick="giveConsent(true)">Yes, remember me</button><button onclick="giveConsent(false)">No thanks</button>
       </div>
     </div>
+    <div class="journey-slot"></div>
     <div class="panel chat" style="margin-top:16px">
       <div id="log" aria-live="polite"></div>
       <form class="composer" onsubmit="send(event)">
@@ -68,6 +74,7 @@
   <!-- ============ QUIZ ============ -->
   <section id="v-quiz" class="view hidden">
     <div class="hello"><h2>Quiz</h2><p>Questions your teacher has approved. Type your answer with its unit; a calculator checks it, so the marking is exact.</p></div>
+    <div class="journey-slot"></div>
     <div id="quizList"></div>
   </section>
 
@@ -196,7 +203,7 @@ async function session(mode) {
 }
 function setPersona(p, quiet) {
   persona = p; document.getElementById("persona").value = p;
-  activeChapter = null; activeConcept = null;
+  activeChapter = null; activeConcept = null; setTimeout(renderJourney, 0);
   // On a shared device, one student's conversation is never left on screen for the next.
   if (!PRESENTER) { if (p) store.set("picked", p); else store.del("picked"); logEl().innerHTML = ""; document.getElementById("welcome").classList.remove("hidden"); }
   consentStrip();
@@ -313,7 +320,16 @@ async function ask(text) {
   stream.onstep = steps => { showSteps(holder, steps); renderRay(steps); };
   const ev = await stream("practice", text);
   stream.onstep = null;
+  const j = journey();
+  if (j && j.step === 2 && ev && !ev.blocked && !ev.error) {
+    j.turns = (j.turns || 0) + 1;
+    if (j.turns >= 2) { j.step = hasQuiz(j.cid) ? 3 : 4; renderJourney(); }   // the tutor asked, the student answered
+  }
   reply(ev, holder);
+  if (j && j.step === 3 && j.turns === 2 && ev && !ev.blocked && !ev.error) {
+    note(`Step 3: you're ready for the quiz on ${j.title}.`, "scenario");
+    logEl().lastChild.insertAdjacentHTML("beforeend", ` <button type="button" class="primary" onclick="quizOn('${esc(j.cid)}')">Take the quiz</button>`);
+  }
 }
 async function guarded(fn) {
   busy = true; document.getElementById("sendBtn").disabled = true;
@@ -359,6 +375,7 @@ async function learnTopic(cid) {
     const L = await (await fetch("/api/lesson/" + encodeURIComponent(cid) + (studentId() ? "?student_id=" + encodeURIComponent(studentId()) : ""))).json();
     activeChapter = chapterNum(L.chapter) || activeChapter;
     renderLesson(L, holder);
+    setJourney(cid, L.level === "mastered" ? 4 : 2);
     lastTurn = { kind: "lesson", asked: `Teach me "${c.title}" from the start.`, lesson: L, steps: [], latency_s: ((performance.now() - t0) / 1000).toFixed(2) };
     renderHood();
   });
@@ -392,6 +409,35 @@ function checkTopic(cid) {
   activeConcept = cid; activeChapter = chapterNum(c.chapter) || activeChapter;
   guarded(() => ask(`I've read the book section on ${c.title}. Ask me one simple question to check I understood.`));
 }
+// ---------- the learning path: 1 read it in the book, 2 answer one question, 3 take the quiz, 4 next topic ----------
+const JSTEPS = ["Read it in your book", "Answer one question", "Take the quiz", "Next topic"];
+let journeys = {};  // per student on this page
+const journey = () => journeys[persona || "me"];
+function setJourney(cid, step) {
+  const c = concepts.find(x => x.concept_id === cid) || { title: cid };
+  const j = journey();
+  journeys[persona || "me"] = { cid, title: c.title, step, turns: j && j.cid === cid ? j.turns : 0 };
+  renderJourney();
+}
+function renderJourney() {
+  const j = journey();
+  document.querySelectorAll(".journey-slot").forEach(el => el.innerHTML = !j ? "" : `<div class="journey"><div class="jt"><span class="muted">Learning</span> <b>${esc(j.title)}</b></div>
+    <ol>${JSTEPS.map((t, i) => `<li class="${i + 1 < j.step ? "done" : i + 1 === j.step ? "now" : ""}"><span>${i + 1 < j.step ? "✓" : i + 1}</span>${t}</li>`).join("")}</ol></div>`);
+  const h = document.getElementById("howto"); if (h) h.classList.toggle("hidden", !!j || (gameCache && gameCache.points > 0));
+}
+// Topics that open up once this one is done (they build on it), ones with a quiz ready first.
+function unlockedAfter(cid) {
+  const mastered = new Set(((gameCache && gameCache.mastered) || []));
+  return concepts.filter(c => (c.prerequisites || []).includes(cid) && !mastered.has(c.concept_id))
+    .sort((a, b) => hasQuiz(b.concept_id) - hasQuiz(a.concept_id)).slice(0, 3);
+}
+function nextTopicsBox(cid) {
+  const next = unlockedAfter(cid);
+  if (!next.length) return "";
+  return `<div class="unlocked"><b>Next topics unlocked</b><span class="muted">They build on what you just learned.</span>
+    <div class="quick">${next.map((c, i) => `<button type="button" class="${i === 0 ? "strong" : ""}" onclick="learnTopic('${esc(c.concept_id)}')">${esc(c.title)}${hasQuiz(c.concept_id) ? " · quiz ready" : ""}</button>`).join("")}</div></div>`;
+}
+
 function renderChapterCards() {
   document.getElementById("chapterCards").innerHTML = CHAPTERS.map((c, i) => {
     const mine = concepts.filter(x => CHAPTER_KEY[x.chapter] === c.key);
@@ -424,8 +470,17 @@ async function checkAnswer(e, qid) {
     const ev = await stream("quiz", answer, qid); stream.onstep = null;
     refreshNextUp();
     if (ev.grade) out.innerHTML = `<div class="result ${ev.grade.is_correct ? "ok" : "bad"}">${ev.grade.is_correct ? `Correct. Well done.${studentId() ? ` <span class="plus">+10 points</span>` : ""}` : "Not yet. Check your sign convention and units, then try again, or ask for a hint in Learn."}</div>`;
-    if (ev.grade && ev.grade.is_correct) { celebrate(card); refreshGame(true); }
-    else out.innerHTML = `<div class="result bad">${esc(ev.text || "This answer couldn't be checked.")}</div>`;
+    const q = (quiz || []).find(x => x.question_id === qid) || {};
+    if (ev.grade && ev.grade.is_correct) {
+      celebrate(card); await refreshGame(true);
+      if (q.concept_id && !journey()) setJourney(q.concept_id, 3);
+      const j = journey();
+      if (j && j.cid === q.concept_id) { j.step = 4; renderJourney(); out.insertAdjacentHTML("beforeend", nextTopicsBox(q.concept_id)); }
+    }
+    else {
+      out.innerHTML = `<div class="result bad">${esc(ev.text || "This answer couldn't be checked.")}</div>`;
+      if (q.concept_id) out.insertAdjacentHTML("beforeend", `<div class="quick" style="margin-top:8px"><button type="button" onclick="learnTopic('${esc(q.concept_id)}')">Read the book page again</button><button type="button" onclick="practise('${esc(q.concept_id)}')">Ask the tutor for help</button></div>`);
+    }
   });
 }
 
@@ -493,6 +548,7 @@ async function refreshGame(levelUpCheck) {
   pill.innerHTML = `<span class="lv">Level ${g.level.number}</span>${esc(g.level.name)}${g.streak_days ? `<span class="streak">${g.streak_days}-day streak</span>` : ""}`;
   if (levelUpCheck && before && g.level.number > before) note(`Level up! You're now level ${g.level.number}: ${g.level.name}.`, "scenario");
   if (!document.getElementById("v-progress").classList.contains("hidden")) renderGame();
+  renderJourney();
 }
 const BADGE_ICON = { first_question: "?", quiz_starter: "Q", bullseye: "◎", myth_buster: "✕", topic_master: "★", explorer: "◆", on_a_roll: "3", plan_finisher: "✓", flashcard_fan: "▤" };
 async function renderGame() {

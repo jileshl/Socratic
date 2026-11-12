@@ -65,3 +65,13 @@ def test_lesson_endpoint():
     assert out["level"] == "new" and out["chapter"].startswith("Light")
     assert any(s.get("figure") == "9.7" for s in out["steps"])
     assert "no model" in out["how"]
+
+
+@needs_index
+def test_the_figure_fits_the_question_or_there_is_none():
+    pick = lambda q, c, s: (book.pick_figure(q, c, s) or {}).get("figure")
+    assert pick("Why is the image in a concave mirror upside down?", "concept_concave_ray_diagrams", ["9.2.2"]) == "9.7"
+    assert pick("Why does adding a resistor in parallel lower the total resistance?", "concept_parallel_combination", ["11.6.2"]) == "11.7"
+    assert pick("How does a concave lens correct short-sightedness?", "concept_myopia", ["10.2"]) == "10.2"
+    assert pick("Why is the sky blue?", "concept_scattering", ["10.6.2"]) is None  # the book has no figure for it
+    assert pick("Can I have another hint?", "concept_reflection_laws", ["9.1"]) is None

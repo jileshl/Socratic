@@ -291,23 +291,44 @@ def section_title(section_id: str) -> str:
     return _join_split_words(str(row.get("section_title") or ""))
 
 
+def _figure_words(num: str) -> set[str]:
+    f = _figures().get(num) or {}
+    return _words(f.get("caption", "") + " " + f.get("about", ""))
+
+
+def pick_figure(query: str, concept_id: str | None, section_ids: list[str]) -> dict[str, Any] | None:
+    """The figure that matches the question best, or none (an unrelated figure is worse than no figure).
+
+    Candidates: the topic's own figures and the figures the cited sections refer to. Each is scored by the
+    words it shares with the question (its caption plus a short "about" list in figures.json, e.g. 9.7:
+    "image real inverted virtual upright ... upside down"). The topic's own figure wins a tie.
+    """
+    q = _words(query)
+    own = [n for n in CONCEPT_FIGURES.get(concept_id or "", []) if n in _figures()]
+    cands = list(own)
+    for sid in section_ids[:2]:
+        cands += [n for n in figures_in_section(sid) if n not in cands]
+    if not cands:
+        return None
+    scored = sorted(cands, key=lambda n: (-len(q & _figure_words(n)), n not in own, cands.index(n)))
+    best = scored[0]
+    if len(q & _figure_words(best)) >= 2 or (best in own and len(q & _figure_words(best)) >= 1):
+        return figure(best)
+    return None
+
+
 def book_card(section_ids: list[str], query: str = "", concept_id: str | None = None) -> dict[str, Any] | None:
-    """The "From your NCERT book" card for a tutor reply: the first cited section that the index has."""
+    """The "From your NCERT book" card for a tutor reply: the first cited section that the index has,
+    the part of it closest to the question, its formulas, and the figure that fits the question (if any)."""
     sid = next((s for s in section_ids if s in _chunks()), None)
     if sid is None:
         return None
-    figs = [n for n in CONCEPT_FIGURES.get(concept_id or "", []) if sid in CONCEPT_SECTIONS.get(concept_id or "", [])]
-    figs = figs or figures_in_section(sid)
-    # Prefer a figure the question is about (e.g. "concave" -> the concave-mirror ray diagrams).
-    q = _words(query)
-    figs.sort(key=lambda n: -len(q & _words(_figures()[n].get("caption", ""))))
-    fig = figure(figs[0]) if figs else None
     return {
         "section_id": sid,
         "title": section_title(sid),
         "excerpt": excerpt(sid, query),
         "formulas": _formulas().get(sid, [])[:2],
-        "figure": fig,
+        "figure": pick_figure(query, concept_id, [s for s in section_ids if s in _chunks()]),
         "source": "NCERT Class 10 Science",
     }
 

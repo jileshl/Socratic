@@ -445,8 +445,11 @@ def _run_turn(
 
 
 def _book_for(values: dict[str, Any], message: str, concept_id: str | None) -> dict[str, Any] | None:
+    # A follow-up ("another hint") says little on its own, so the student's last questions help pick the figure.
+    asked = [str(getattr(m, "content", "")) for m in (values.get("messages") or []) if getattr(m, "type", "") == "human"]
+    query = " ".join([message] + asked[-3:-1])
     try:
-        return book.book_card(list(values.get("citations") or []), message, concept_id)
+        return book.book_card(list(values.get("citations") or []), query, concept_id)
     except Exception:  # the book card is extra help; a reply never fails because of it
         return None
 
