@@ -52,6 +52,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel, Field
 
 from socratic_tutor import approval_gate, book, config, trace
+from socratic_tutor import topics
 from socratic_tutor.concept_graph import ConceptGraph
 from socratic_tutor.graph import build_graph
 from socratic_tutor.learner_store import LearnerStore
@@ -472,8 +473,10 @@ def _safe_figure(text: str, concept_id: str | None) -> dict[str, Any] | None:
 
 def _book_for(values: dict[str, Any], message: str, concept_id: str | None) -> dict[str, Any] | None:
     # A follow-up ("another hint") says little on its own, so the student's last questions help pick the figure.
+    # A message that names its own topic ("why is the sky blue?") stands alone: the earlier questions may be about
+    # the old topic (a reflection lesson once gave the sky question a long-sightedness figure).
     asked = [str(getattr(m, "content", "")) for m in (values.get("messages") or []) if getattr(m, "type", "") == "human"]
-    query = " ".join([message] + asked[-3:-1])
+    query = message if topics.topic_of(message) else " ".join([message] + asked[-3:-1])
     # Which page to open: the section the reply itself names ("[NCERT Sec 11.4]") first, then the topic's own
     # sections, then the rest of the search results.
     cited = list(values.get("citations") or [])

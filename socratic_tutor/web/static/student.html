@@ -8,7 +8,7 @@
 </head>
 <body>
 <header>
-  <div class="brand"><span class="prism" aria-hidden="true"></span><div><h1>Socratic Tutor</h1><div class="sub">NCERT Class 10 Science</div></div></div>
+  <a class="brand" href="#" onclick="goHome(); return false;" title="Back to all topics"><span class="prism" aria-hidden="true"></span><div><h1>Socratic Tutor</h1><div class="sub">NCERT Class 10 Science</div></div></a>
   <nav class="topnav" aria-label="Sections">
     <button data-view="learn" class="on" onclick="go('learn')">Learn</button>
     <button data-view="plan" onclick="go('plan')">My plan</button>
@@ -44,6 +44,7 @@
         <button class="primary" onclick="giveConsent(true)">Yes, remember me</button><button onclick="giveConsent(false)">No thanks</button>
       </div>
     </div>
+    <div class="homebar hidden" id="homeBar"><button type="button" onclick="goHome()">Back to all topics</button><span class="muted">pick a new topic, or just ask about it below</span></div>
     <div class="journey-slot"></div>
     <div class="panel chat" style="margin-top:16px">
       <div id="log" aria-live="polite"></div>
@@ -206,7 +207,7 @@ function setPersona(p, quiet) {
   persona = p; document.getElementById("persona").value = p;
   activeChapter = null; activeConcept = null; setTimeout(renderJourney, 0);
   // On a shared device, one student's conversation is never left on screen for the next.
-  if (!PRESENTER) { if (p) store.set("picked", p); else store.del("picked"); logEl().innerHTML = ""; document.getElementById("welcome").classList.remove("hidden"); }
+  if (!PRESENTER) { if (p) store.set("picked", p); else store.del("picked"); logEl().innerHTML = ""; document.getElementById("welcome").classList.remove("hidden"); document.getElementById("homeBar").classList.add("hidden"); }
   consentStrip();
   if (!quiet && PRESENTER) note(p ? `Now learning as ${label(p)}${PERSONAS[p] ? ", who " + PERSONAS[p].note : ""}.` : `Now learning as ${label("")}.`);
   refreshNextUp(); refreshGame();
@@ -227,12 +228,28 @@ async function loadRoster() {
 // A student the teacher added is on the class list already, so the consent question is for "Me, on this device" only.
 function consentStrip() { document.getElementById("consent").classList.toggle("hidden", !!persona || !!store.get("consent")); }
 
+// ---------- home: back to the chapter cards to pick a new topic ----------
+// Ends the open lesson and starts a fresh conversation, so the old topic doesn't follow the student.
+function goHome() {
+  if (busy) return;
+  delete journeys[persona || "me"]; renderJourney();
+  activeChapter = null; activeConcept = null;
+  delete sessions["practice:" + persona];
+  lastBook[persona] = undefined; lastMixup[persona] = undefined;
+  if (!PRESENTER) logEl().innerHTML = "";
+  document.getElementById("welcome").classList.remove("hidden");
+  document.getElementById("homeBar").classList.add("hidden");
+  go("learn"); renderChapterCards(); refreshNextUp();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
 // ---------- chat ----------
 function logEl() { return document.getElementById("log"); }
 function scroll() { const l = logEl(); l.scrollTop = l.scrollHeight; }
 function note(text, cls = "") { const d = document.createElement("div"); d.className = "msg note " + cls; d.textContent = text; logEl().appendChild(d); scroll(); }
 function mine(text) {
   document.getElementById("welcome").classList.add("hidden");
+  document.getElementById("homeBar").classList.remove("hidden");
   const d = document.createElement("div"); d.className = "msg me";
   d.innerHTML = (persona ? `<div class="who">${esc(label(persona))}</div>` : "") + `<div class="bubble">${esc(text)}</div>`;
   logEl().appendChild(d); scroll();
@@ -326,7 +343,12 @@ async function ask(text) {
   stream.onstep = steps => { showSteps(holder, steps); renderRay(steps); };
   const ev = await stream("practice", text);
   stream.onstep = null;
-  const j = journey();
+  let j = journey();
+  // The student asked about another topic, so the tutor moved there: the lesson's path closes.
+  if (j && ev && ev.concept && ev.concept.id && ev.concept.id !== j.cid) {
+    delete journeys[persona || "me"]; renderJourney(); j = null;
+    note(`Moved to ${ev.concept.title}. Press "Back to all topics" any time to pick a topic.`, "scenario");
+  }
   // Only a real answer counts as a step forward: "huh", "nonsense" or "go away" don't move the path on.
   const answered = ev && !ev.blocked && !ev.error && !(ev.behind && (ev.behind.off_topic || ev.behind.intent === "confused"));
   if (j && j.step === 2 && answered) {

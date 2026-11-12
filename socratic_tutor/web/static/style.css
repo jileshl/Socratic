@@ -482,3 +482,9 @@ table.class td .meter { width: 90px; display: inline-block; vertical-align: midd
 .mini .trap { color: var(--bad); font-weight: 700; }
 .mini p { margin: 0; font-size: 14px; }
 .flow-then { margin: 10px 0 0; font-size: 12.5px; font-weight: 700; color: var(--ink-2); }
+
+/* Home: the logo and the "Back to all topics" bar take the student back to the chapter cards. */
+a.brand { color: inherit; text-decoration: none; border-radius: 10px; }
+a.brand:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; }
+.homebar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+.homebar button { font-weight: 600; }

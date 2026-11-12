@@ -13,6 +13,7 @@ from socratic_tutor import approval_gate, solver_key, tool_hooks
 from socratic_tutor.state import SocraticState
 from socratic_tutor.policy import check_input_guardrails, check_answer_leak, check_reply, keep_retrieved_citations
 from socratic_tutor import intent as intent_check
+from socratic_tutor import topics
 from socratic_tutor.concept_graph import ConceptGraph
 from socratic_tutor.learner_store import LearnerStore
 from socratic_tutor.reflexion import ReflexionPlaybook
@@ -255,7 +256,6 @@ def node_supervisor(state: SocraticState) -> dict:
     lesson_concept = state.get("lesson_concept_id")
     if lesson_concept and lesson_concept in cg.concepts and not state.get("concept_pinned"):
         current_concept = lesson_concept
-    lesson_pinned = bool(lesson_concept) and current_concept == lesson_concept
     # The topic is pinned when the student picked it for this turn (web: "Practise it"), or when a caller
     # passes current_concept_id without saying (tests, evaluation). A topic only carried over from the last
     # turn is not pinned: a new chapter or a new question may move the tutor to its own topic.
@@ -289,6 +289,16 @@ def node_supervisor(state: SocraticState) -> dict:
 
     if not current_concept:
         current_concept = next_concept
+
+    # A question that clearly names another topic ("what is the power of a lens?", "why is the sky blue?") moves
+    # the tutor there, also out of a lesson, and its chapter comes along for the book search. A topic the
+    # student picked for this turn ("Practise it") still wins.
+    chapter_out = state.get("chapter")
+    asked = topics.topic_of(state.get("query", "")) if state.get("mode", "practice") == "practice" else None
+    if asked and asked in cg.concepts and asked != current_concept and not pinned:
+        current_concept = asked
+        chapter_out = CHAPTER_TITLE_TO_NUM.get(cg.concepts[asked].get("chapter", ""), chapter_out)
+    lesson_pinned = bool(lesson_concept) and current_concept == lesson_concept
 
     # Teacher Rule 3: Flag stuck student after 3 consecutive failures
     failure_streaks = profile.get("failure_streaks", {})
@@ -339,7 +349,7 @@ def node_supervisor(state: SocraticState) -> dict:
                 "teacher_alert_triggered": teacher_alert,
                 "hint_step": hint_step,
                 "hint_raised_this_turn": hint_raised,
-                "chapter": state.get("chapter"),
+                "chapter": chapter_out,
             }
         else:
             # N3: If grader encountered an error (e.g. unapproved question), do not run replan
@@ -361,7 +371,7 @@ def node_supervisor(state: SocraticState) -> dict:
                     "hint_raised_this_turn": hint_raised,
                     "last_concept_id": current_concept,
                     "last_question_id": qid,
-                    "chapter": state.get("chapter"),
+                    "chapter": chapter_out,
                 }
 
             # Grader finished! Supervisor saves quiz result and replans
@@ -436,7 +446,7 @@ def node_supervisor(state: SocraticState) -> dict:
                 "hint_raised_this_turn": hint_raised,
                 "last_concept_id": current_concept,
                 "last_question_id": qid,
-                "chapter": state.get("chapter"),
+                "chapter": chapter_out,
             }
 
     # Question Setter Mode:
@@ -453,7 +463,7 @@ def node_supervisor(state: SocraticState) -> dict:
             "hint_raised_this_turn": hint_raised,
             "last_concept_id": current_concept,
             "last_question_id": qid,
-            "chapter": state.get("chapter"),
+            "chapter": chapter_out,
         }
 
     # Practice Mode:
@@ -472,7 +482,7 @@ def node_supervisor(state: SocraticState) -> dict:
             "last_concept_id": current_concept,
             "last_question_id": qid,
             "last_misconception_id": state.get("last_misconception_id"),
-            "chapter": state.get("chapter"),
+            "chapter": chapter_out,
         }
 
     # 2. Has diagnostician produced a result?
@@ -530,7 +540,7 @@ def node_supervisor(state: SocraticState) -> dict:
             "last_concept_id": current_concept,
             "last_question_id": qid,
             "last_misconception_id": miscon_id or last_miscon,
-            "chapter": state.get("chapter"),
+            "chapter": chapter_out,
         }
 
     # First pass in practice mode:
@@ -546,7 +556,7 @@ def node_supervisor(state: SocraticState) -> dict:
         "hint_raised_this_turn": hint_raised,
         "last_concept_id": current_concept,
         "last_question_id": qid,
-        "chapter": state.get("chapter"),
+        "chapter": chapter_out,
     }
 
 
