@@ -34,6 +34,12 @@ TEAM_CHAT = [
     ("my friend is acting smart", "small_talk"),
     ("ok", "small_talk"),
     ("lol", "small_talk"),
+    # Isha's lesson chat (12 Nov, evening)
+    ("nonsense", "fed_up"),
+    ("kjsadfkmnasdkfnhlas", "gibberish"),
+    ("I dont like this.. dont want to do this", "opt_out"),
+    ("this is boring", "fed_up"),
+    ("asdfgh", "gibberish"),
 ]
 
 # Real physics questions and answers must still reach the tutor.
@@ -46,6 +52,9 @@ PHYSICS = [
     "What is the far point of the human eye?",
     "how does a prism split light",
     "I don't want to use the formula, can I draw a ray diagram instead?",
+    "this mirror formula is too hard",
+    "strengths of lenses",
+    "rhythm",
 ]
 
 
@@ -60,7 +69,7 @@ def test_physics_messages_stay_physics(message: str) -> None:
 
 
 def test_every_off_topic_intent_has_a_fixed_reply() -> None:
-    for name in ("others_data", "role_claim", "rude", "opt_out", "small_talk"):
+    for name in ("others_data", "role_claim", "rude", "opt_out", "small_talk", "fed_up", "gibberish"):
         assert intent.reply_for(name, None)
     assert intent.reply_for("small_talk", "ack") == intent.ACK_REPLY
 
@@ -167,3 +176,64 @@ def test_repeat_guard_looks_past_fixed_replies(monkeypatch: pytest.MonkeyPatch) 
     _turn(app_graph, "go away", "past")
     out = _turn(app_graph, "ok why does it flip then", "past")
     assert len(calls) == 3 and out["response"] != same
+
+
+# --------------------------------------------------------------------------- Isha's lesson chat (12 Nov evening)
+
+
+def _lesson_turn(app_graph: Any, message: str, thread: str) -> dict[str, Any]:
+    state_in = {"session_id": "ses_" + thread, "student_id": "stu_test", "mode": "practice", "query": message,
+                "messages": [], "steps": [], "chapter": "9", "lesson_concept_id": "concept_reflection_laws",
+                "concept_pinned": False}
+    return app_graph.invoke(state_in, config={"configurable": {"thread_id": thread}})
+
+
+def test_isha_lesson_chat_stays_on_topic_without_climbing_the_hints(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Laws of Reflection lesson: "huh", "nonsense", a keyboard mash and "I don't want to do this" used to flag a
+    mix-up she never made, push the hint to the top in three turns and drift to the mirror formula (9.2.4)."""
+    calls = _fakes(monkeypatch, ["Which line do we measure both angles from? [NCERT Sec 9.1]",
+                                 "Look at your face in a flat bathroom mirror: what do you notice? [NCERT Sec 9.1]"])
+    searches: list[str] = []
+    real_search = graph.textbook_kb.search_textbook
+
+    def spy(query: str, *a: Any, **k: Any) -> Any:
+        searches.append(query)
+        return real_search(query, *a, **k)
+
+    monkeypatch.setattr(graph.textbook_kb, "search_textbook", spy)
+    diagnoses: list[str] = []
+    monkeypatch.setattr(graph.diagnostician, "diagnose_response",
+                        lambda q, *a, **k: diagnoses.append(q) or {"identified_misconception_id": None, "identified_misconception_name": None})
+    app_graph: Any = graph.build_graph(checkpointer=InMemorySaver())
+
+    first = _lesson_turn(app_graph, "I've read the book section on Laws of Reflection. Ask me one simple question to check I understood.", "isha")
+    assert first["current_concept_id"] == "concept_reflection_laws"
+    level = first["hint_step"]
+    diagnosed = len(diagnoses)
+
+    huh = _lesson_turn(app_graph, "huh", "isha")
+    assert "diagnostician" not in huh["turn_steps"] and len(diagnoses) == diagnosed  # nothing to diagnose in "huh"
+    assert huh["hint_step"] == level                                             # not a request for a bigger hint
+    assert searches[-1].startswith("Laws of Reflection")                         # the book search stays on the topic
+    assert huh["current_concept_id"] == "concept_reflection_laws"
+
+    for message, kind in [("nonsense", "fed_up"), ("kjsadfkmnasdkfnhlas", "gibberish"), ("I dont like this.. dont want to do this", "opt_out")]:
+        out = _lesson_turn(app_graph, message, "isha")
+        assert out["intent"] == kind and out["off_topic"] is True
+        assert out["hint_step"] == level
+        assert out["response"] == intent.reply_for(kind, kind)
+    assert len(calls) == 2
+
+
+def test_fed_up_three_times_counts_towards_the_teacher_alert(monkeypatch: pytest.MonkeyPatch) -> None:
+    _fakes(monkeypatch, ["Which line do we measure both angles from? [NCERT Sec 9.1]"])
+    app_graph: Any = graph.build_graph(checkpointer=InMemorySaver())
+    for message in ["nonsense", "this is boring", "you are stupid"]:
+        out = _turn(app_graph, message, "fed")
+    assert out["rude_count"] == 3
+
+
+def test_tutor_prompt_asks_for_short_replies_without_guessing_feelings() -> None:
+    from socratic_tutor import prompts
+    assert "at most three short sentences" in prompts.TUTOR_PROMPT
+    assert "It sounds like you're feeling" in prompts.TUTOR_PROMPT  # named as the thing NOT to do

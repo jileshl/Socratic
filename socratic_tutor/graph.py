@@ -223,7 +223,7 @@ def node_input_guardrail(state: SocraticState) -> dict:
             reset_state["off_topic"] = True
             reset_state["response"] = intent_check.reply_for(kind, rule)
             reset_state["messages"] = [AIMessage(content=reset_state["response"])]
-            if kind == "rude":
+            if kind in ("rude", "fed_up"):
                 reset_state["rude_count"] = int(state.get("rude_count") or 0) + 1
     return reset_state
 
@@ -249,6 +249,13 @@ def node_supervisor(state: SocraticState) -> dict:
     next_concept = cg.next_recommended(mastery)
     explicit_concept = state.get("current_concept_id")
     current_concept = explicit_concept
+    # "Learn from the start": while the student works through a lesson, the tutor stays on the lesson's topic.
+    # A mix-up from another chapter can still move it; one in the same chapter can't (a vague reply or "huh"
+    # used to drift a Laws of Reflection lesson to the mirror formula).
+    lesson_concept = state.get("lesson_concept_id")
+    if lesson_concept and lesson_concept in cg.concepts and not state.get("concept_pinned"):
+        current_concept = lesson_concept
+    lesson_pinned = bool(lesson_concept) and current_concept == lesson_concept
     # The topic is pinned when the student picked it for this turn (web: "Practise it"), or when a caller
     # passes current_concept_id without saying (tests, evaluation). A topic only carried over from the last
     # turn is not pinned: a new chapter or a new question may move the tutor to its own topic.
@@ -311,7 +318,9 @@ def node_supervisor(state: SocraticState) -> dict:
     # "okay, thanks" or the student's own explanation keeps the hint level (a repeated mix-up raises it below).
     if mode == "practice" and not plan:
         is_continuing_practice = bool(last_concept and last_concept == current_concept)
-        wants_more_help = is_continuing_practice and asks_for_more_help(state.get("query", ""))
+        # "huh?" is not a request for a bigger hint: the tutor explains the same step another way instead.
+        wants_more_help = (is_continuing_practice and state.get("intent") != "confused"
+                           and asks_for_more_help(state.get("query", "")))
         if (stuck or wants_more_help) and not hint_raised and hint_step < config.MAX_HINT_STEPS:
             hint_step = min(hint_step + 1, config.MAX_HINT_STEPS)
             hint_raised = True
@@ -481,7 +490,7 @@ def node_supervisor(state: SocraticState) -> dict:
                         if diag_concept in cg.concepts:
                             diag_ch = diag.get("chapter")
                             curr_ch = cg.concepts.get(current_concept, {}).get("chapter")
-                            if current_concept == "concept_reflection_laws" or (diag_ch and diag_ch != curr_ch):
+                            if (current_concept == "concept_reflection_laws" and not lesson_pinned) or (diag_ch and diag_ch != curr_ch):
                                 if diag_concept != current_concept:
                                     hint_step, hint_raised = 1, False  # a new topic starts at the smallest hint
                                 current_concept = diag_concept
@@ -658,12 +667,18 @@ def node_tutor(state: SocraticState) -> dict:
     hint_tries = state.get("hint_tries", 0) + 1
     chapter = _resolve_chapter(state)
     passages = state.get("retrieved_sections")
+    # "huh?" or a lesson reply with no topic words of its own ("I don't get it") would search the book for
+    # nothing and cite random sections: search with the topic's title instead.
+    search_query = query
+    topic_title = ConceptGraph().concepts.get(state.get("current_concept_id") or "", {}).get("title")
+    if topic_title and (state.get("intent") == "confused" or (state.get("lesson_concept_id") and not intent_check.PHYSICS_WORDS.search(query))):
+        search_query = f"{topic_title}: {query}"
     if not passages:
         # Both searches go through R4's tool hooks (permission, quiz rule, budget, log), as the tutor's tool.
-        passages = _tutor_search({"query": query, "chapter": chapter, "top_k": 4}, state)
+        passages = _tutor_search({"query": search_query, "chapter": chapter, "top_k": 4}, state)
         if not passages and chapter:
             # Fall back to unfiltered search if filtered search returned no relevant passages
-            passages = _tutor_search({"query": query, "top_k": 4}, state)
+            passages = _tutor_search({"query": search_query, "top_k": 4}, state)
     passages = passages or []
 
     initial_citations = []
@@ -971,7 +986,9 @@ def route_supervisor(state: SocraticState) -> str:
     # Practice mode
     turn_steps = state.get("turn_steps", [])
     plan = state.get("plan", [])
-    if "diagnostician" not in turn_steps and ("diagnose" in plan or not state.get("identified_misconception")):
+    # "huh?" has nothing to diagnose (it used to flag a mix-up the student never made).
+    if "diagnostician" not in turn_steps and state.get("intent") != "confused" \
+            and ("diagnose" in plan or not state.get("identified_misconception")):
         return "diagnostician"
 
     if "tutor" not in turn_steps or not state.get("response"):

@@ -261,12 +261,12 @@ function reply(ev, holder) {
   const mix = ev.misconception && ev.misconception.id; const fresh = mix && lastMixup[persona] !== mix; if (mix) lastMixup[persona] = mix;
   if (fresh) body.push(`<div class="mixup"><b>Common mix-up:</b> ${esc(ev.misconception.name)}</div>`);
   body.push(`<div class="bubble">${esc(ev.text || "")}</div>`);
+  // The book card once per section: a repeat of the card just shown adds nothing.
   if (ev.book) {
     const key = ev.book.section_id + "|" + (ev.book.figure ? ev.book.figure.figure : "");
-    body.push(bookCard(ev.book, lastBook[persona] !== key)); lastBook[persona] = key;
+    if (lastBook[persona] !== key) body.push(bookCard(ev.book, true));
+    lastBook[persona] = key;
   }
-  const maxed = ev.hint_step && ev.hint_step >= (ev.max_hints || 3);
-  if (maxed) body.push(`<div class="maxed">Now it's your turn: write what you think, in your own words, and the tutor will check it. The book page above has everything you need.</div>`);
   const chips = [];
   (ev.citations || []).filter(c => !ev.book || c !== ev.book.section_id).slice(0, 3).forEach(c => chips.push(`<span class="chip book">NCERT ${esc(c)}</span>`));
   if (ev.teacher_alerted) chips.push(`<span class="chip calm">Your teacher knows and will check in with you</span>`);
@@ -293,6 +293,8 @@ async function stream(mode, text, questionId) {
       current_question_id: questionId || null,
       chapter: activeChapter || null,
       concept_id: pinned || null,
+      // While a "Learn from the start" lesson is open, the tutor stays on its topic.
+      lesson_concept_id: (journey() && journey().step < 4) ? journey().cid : null,
     })
   });
   const reader = r.body.getReader(); const dec = new TextDecoder(); let buf = ""; const steps = []; let final = null;
@@ -323,12 +325,15 @@ async function ask(text) {
   const ev = await stream("practice", text);
   stream.onstep = null;
   const j = journey();
-  if (j && j.step === 2 && ev && !ev.blocked && !ev.error) {
+  // Only a real answer counts as a step forward: "huh", "nonsense" or "go away" don't move the path on.
+  const answered = ev && !ev.blocked && !ev.error && !(ev.behind && (ev.behind.off_topic || ev.behind.intent === "confused"));
+  if (j && j.step === 2 && answered) {
     j.turns = (j.turns || 0) + 1;
     if (j.turns >= 2) { j.step = hasQuiz(j.cid) ? 3 : 4; renderJourney(); }   // the tutor asked, the student answered
   }
   reply(ev, holder);
-  if (j && j.step === 3 && j.turns === 2 && ev && !ev.blocked && !ev.error) {
+  if (j && j.step === 3 && j.turns === 2 && answered && !j.toldQuiz) {
+    j.toldQuiz = true;
     note(`Step 3: you're ready for the quiz on ${j.title}.`, "scenario");
     logEl().lastChild.insertAdjacentHTML("beforeend", ` <button type="button" class="primary" onclick="quizOn('${esc(j.cid)}')">Take the quiz</button>`);
   }
@@ -385,6 +390,9 @@ async function learnTopic(cid) {
 function renderLesson(L, holder) {
   const [head, sub] = LESSON_LEVEL[L.level] || LESSON_LEVEL.new;
   const pct = Math.round((L.mastery || 0) * 100);
+  // The lesson already shows this page of the book, so the tutor's first reply doesn't repeat it.
+  const rd = L.steps.find(st => st.kind === "read"), fg = L.steps.find(st => st.kind === "figure");
+  if (rd) lastBook[persona] = rd.section_id + "|" + (fg ? fg.figure : "");
   const parts = L.steps.map(st => {
     if (st.kind === "read") return `<div class="lstep"><div class="lt">${esc(st.title)} <span class="muted">· NCERT ${esc(st.section_id)} ${esc(st.section_title)}</span></div><blockquote>${esc(st.text)}</blockquote></div>`;
     if (st.kind === "figure") return `<div class="lstep"><div class="lt">${esc(st.title)}</div><figure><img src="${esc(st.url)}" alt="Figure ${esc(st.figure)} from the NCERT book: ${esc(st.caption || "")}"><figcaption><b>Figure ${esc(st.figure)}</b> ${esc(st.caption || "")}</figcaption></figure></div>`;
@@ -823,7 +831,7 @@ function renderHood() {
   const b = t.behind || {}; const sf = b.safety || {}; const ran = new Set((t.steps || []).map(s => s.node));
   const by = node => ((t.steps || []).find(s => s.node === node) || {}).decided_by || (STATIONS.find(x => x[0] === node) || [])[2] || "code";
   const M = b.models || {}; const model = name => name ? `<span class="model">Model: ${esc(name)}</span>` : null;
-  const INTENT = { others_data: "another student's results", role_claim: "a role claim (faculty, parent, ...)", rude: "a rude message", opt_out: "opting out", small_talk: "small talk", confused: "\u201chuh?\u201d: explain it another way", physics: "a physics question or answer" };
+  const INTENT = { others_data: "another student's results", role_claim: "a role claim (faculty, parent, ...)", rude: "a rude message", opt_out: "opting out", fed_up: "frustration (\u201cnonsense\u201d, \u201cboring\u201d)", gibberish: "a keyboard mash", small_talk: "small talk", confused: "\u201chuh?\u201d: explain it another way", physics: "a physics question or answer" };
   kind = t.blocked ? "Stopped by the safety check" : t.distress_level ? "A student who needs care" : t.grade ? "Quiz answer" : b.off_topic ? "Not a physics question" : "Practice question";
   // 1. safety
   add("Safety check", "code + model", t.blocked ? "stop" : (t.distress_level ? "care" : "ok"), [

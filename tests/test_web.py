@@ -382,3 +382,10 @@ def test_three_rude_messages_raise_a_fed_up_alert(client):
         client.post("/api/chat", json={"session_id": session["session_id"], "message": "you are stupid"})
     alerts = client.get("/api/teacher/dashboard").json()["open_alerts"]
     assert sum(1 for a in alerts if a["student_id"] == session["student_id"] and a["kind"] == "conduct") == 1
+
+
+def test_reply_chips_only_show_sections_the_reply_cites():
+    """A Laws of Reflection reply used to show "NCERT 9.3", "9.3.1", "9.3.8" (refraction) from the search."""
+    assert api._cited_in("Measure both angles from the normal [NCERT Sec 9.1].", ["9.1", "9.3", "9.3.1", "9.3.8"]) == ["9.1"]
+    assert api._cited_in("See Section 10.2 and NCERT 10.2.1.", ["10.2", "10.2.1", "10.3"]) == ["10.2", "10.2.1"]
+    assert api._cited_in("No citation here.", ["9.1"]) == []

@@ -160,6 +160,8 @@ class ChatIn(BaseModel):
     current_question_id: str | None = None
     chapter: str | None = None
     concept_id: str | None = None
+    # "Learn from the start": the topic of the lesson the student is working through (the tutor stays on it).
+    lesson_concept_id: str | None = None
 
 
 def _sse(event: dict[str, Any]) -> str:
@@ -176,7 +178,7 @@ def chat(body: ChatIn) -> StreamingResponse:
     if session is None:
         raise HTTPException(404, "Unknown session; start one with POST /api/session")
     return StreamingResponse(
-        _run_turn(session, body.message, body.current_question_id, body.chapter, body.concept_id),
+        _run_turn(session, body.message, body.current_question_id, body.chapter, body.concept_id, body.lesson_concept_id),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
@@ -299,6 +301,7 @@ def _run_turn(
     current_question_id: str | None = None,
     chapter: str | None = None,
     concept_id: str | None = None,
+    lesson_concept_id: str | None = None,
 ) -> Iterator[str]:
     session_id, student_id, mode = session["session_id"], session["student_id"], session["mode"]
     meter = trace.CostMeter()
@@ -329,6 +332,7 @@ def _run_turn(
     # A topic the student picked (Practise it) holds for this turn. Otherwise the tutor keeps the topic it was
     # on, and may move to the topic of a new question (see node_supervisor).
     state_in["concept_pinned"] = bool(concept_id)
+    state_in["lesson_concept_id"] = lesson_concept_id
     if concept_id:
         state_in["current_concept_id"] = concept_id
     if session["turns"] == 0:
@@ -396,7 +400,7 @@ def _run_turn(
     if _update_stuck_alerts(student_id, session_id, concept_id, delta, values.get("grade_result") if error is None else None):
         alert_filed = True
     # Rude three times in one session: often frustration, so a gentle heads-up for the teacher (once per session).
-    if values.get("off_topic") and values.get("intent") == "rude" and int(values.get("rude_count") or 0) >= 3 \
+    if values.get("off_topic") and values.get("intent") in ("rude", "fed_up") and int(values.get("rude_count") or 0) >= 3 \
             and not ops.has_open_alert(student_id, "conduct"):
         ops.add_alert(student_id, session_id, "conduct", "Rude or fed-up messages three times in one session; they may be frustrated. A quick check-in could help.")
         alert_filed = True
@@ -422,7 +426,8 @@ def _run_turn(
         {
             "type": "reply",
             "text": reply,
-            "citations": values.get("citations") or [],
+            # Only the sections the reply actually cites (the rest of the search results were often off topic).
+            "citations": _cited_in(reply, values.get("citations") or []),
             "blocked": shown_as_blocked,
             "teacher_alerted": alert_filed,
             # "academic" (study stress or frustration) or "severe": the page offers study steps only for the first.
@@ -449,6 +454,12 @@ def _run_turn(
             "error": bool(error),
         }
     )
+
+
+def _cited_in(reply: str, citations: list[str]) -> list[str]:
+    """The sections from the search that the reply names ("[NCERT Sec 9.1]", "Section 10.2")."""
+    named = set(re.findall(r"(?:Sec(?:tion)?\.?|NCERT)\s*(\d+(?:\.\d+)+)", reply or "", re.IGNORECASE))
+    return [c for c in citations if c in named]
 
 
 def _safe_figure(text: str, concept_id: str | None) -> dict[str, Any] | None:
