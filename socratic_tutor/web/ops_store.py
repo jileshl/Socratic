@@ -154,6 +154,13 @@ class OpsStore:
     def ack_alert(self, alert_id: int) -> bool:
         return self._exec("UPDATE alerts SET acknowledged = 1 WHERE id = ?", (alert_id,)).rowcount > 0
 
+    def resolve_alerts(self, student_id: str, kind: str, note: str) -> int:
+        """Close a student's open alerts of one kind (e.g. "stuck" once they make progress), saying why."""
+        return self._exec(
+            "UPDATE alerts SET acknowledged = 1, detail = detail || ' ' || ? WHERE student_id = ? AND kind = ? AND acknowledged = 0",
+            (note, student_id, kind),
+        ).rowcount
+
     def has_open_alert(self, student_id: str, kind: str) -> bool:
         return bool(self._all("SELECT 1 FROM alerts WHERE student_id = ? AND kind = ? AND acknowledged = 0", (student_id, kind)))
 
