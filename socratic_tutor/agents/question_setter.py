@@ -123,6 +123,8 @@ def select_question(concept_id: str, difficulty: str = "medium") -> dict[str, An
         "difficulty": fallback.get("difficulty", difficulty),
         "question_text": fallback["question_text"],
         "gold_answer": fallback["gold_answer"],
+        # PR-2 (R4): marks a fixed fallback question, so the teacher view can say the model gave none.
+        "source": "fallback",
     }
     if "calculation" in fallback:
         result["calculation"] = fallback["calculation"]

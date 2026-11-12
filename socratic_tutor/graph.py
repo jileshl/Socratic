@@ -690,11 +690,17 @@ def node_question_setter(state: SocraticState) -> dict:
     #         yes -> approval_gate.propose_set(drafts): ONE set, waiting for the teacher
     #   [QS4] the summary: ok, the set id, the question ids, every refusal with its difficulty. Never a key.
 
+    # This turn's trajectory, plus what the summary will report (filled in below).
     turn_steps: list[str] = state.get("turn_steps", []) + ["question_setter"]
+    # Every refused draft: {"difficulty", "error"}.
     refused: list[dict[str, Any]] = []
+    # The set that went to the teacher ("" if none did), and its question ids.
     set_id: str = ""
     question_ids: list[str] = []
+    # One sentence for the teacher about what happened.
     note: str = ""
+    # How many of the drafts are the agent's fixed fallback questions (the model gave none).
+    fallback_count: int = 0
 
     # [QS1] the concept the teacher asked for, and the set size (QUESTION_SET_SIZE unless the request says).
     concept: Any = state.get("current_concept_id")
@@ -710,6 +716,7 @@ def node_question_setter(state: SocraticState) -> dict:
         # [QS2] one model call per draft; the solver computes each key, and refuses what it can't compute.
         made: dict[str, Any] = solver_key.drafts_for_concept(concept, count, question_setter.select_question)
         drafts: list[dict[str, Any]] = made["drafts"]
+        fallback_count = made["fallback_count"]
         for item in made["refused"]:
             refused.append({"difficulty": item["difficulty"], "error": item["error"]})
         # [QS3] nothing left to send: the teacher gets nothing to approve.
@@ -730,6 +737,10 @@ def node_question_setter(state: SocraticState) -> dict:
                 question_ids = list(proposed["question_ids"])
                 note = (str(len(question_ids)) + " question(s) are waiting for the teacher's approval in set "
                         + set_id + ".")
+                # Say so when fixed fallback questions stood in for the model's own (e.g. the model is down).
+                if fallback_count > 0:
+                    note = (note + " " + str(fallback_count) + " of the drafts were fixed fallback questions, "
+                            "because the model gave no usable question.")
             else:
                 note = str(proposed.get("error", "The set could not be sent to the teacher."))
 

@@ -3,6 +3,8 @@
 import json
 import sqlite3
 from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
 
 import pytest
 from langchain_core.messages import HumanMessage
@@ -1201,9 +1203,10 @@ def test_lens_power_calculation_no_typeerror() -> None:
     assert keyed["gold_answer"] == "2 D"
 
 
-def test_unmatched_conceptual_question_is_refused_not_proposed(monkeypatch, tmp_path) -> None:
+def test_unmatched_conceptual_question_is_refused_not_proposed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """A question the solver can't key (a text answer) is refused (PR-2, P2-4): nothing reaches the bank or the teacher."""
-    from socratic_tutor import graph
+    from socratic_tutor import graph, solver_key
+    from socratic_tutor.agents import question_setter
     from socratic_tutor.tools import question_bank, question_bank_server
 
     monkeypatch.setattr(question_bank, "DB_PATH", tmp_path / "qb_unverified.db")
@@ -1216,17 +1219,24 @@ def test_unmatched_conceptual_question_is_refused_not_proposed(monkeypatch, tmp_
 
     prompt: str = "State the laws of reflection of light."
     raw_ans: str = "1. Angle of incidence equals angle of reflection. 2. Incident ray, normal, and reflected ray lie in same plane."
+    text_reply: dict = {"concept_id": "concept_reflection_laws", "difficulty": "easy", "question_text": prompt, "gold_answer": raw_ans}
 
-    def text_only_reply(*args, **kwargs) -> dict:
-        return {"concept_id": "concept_reflection_laws", "difficulty": "easy", "question_text": prompt, "gold_answer": raw_ans}
+    # The solver itself refuses a text-only question: there is no calculation to key it with.
+    made: dict = solver_key.draft_from_model_reply("concept_reflection_laws", "easy", text_reply)
+    assert made["ok"] is False
+    assert "without a calculation" in made["error"]
+
+    # Through the graph node: the agent drops a reply without a calculation and, with no fallback question for
+    # this concept, has nothing to offer. Nothing is saved, and the model's text key appears nowhere.
+    def text_only_reply(*args: Any, **kwargs: Any) -> dict:
+        return dict(text_reply)
 
     monkeypatch.setattr(graph.question_setter.llm, "chat_json", text_only_reply)
-
+    monkeypatch.setattr(question_setter, "CONCEPT_FALLBACK_QUESTIONS", {})
     setter_state: dict = {"current_concept_id": "concept_reflection_laws", "turn_steps": [], "steps": []}
     setter_res: dict = graph.node_question_setter(setter_state)
     assert setter_res["proposed_set"]["ok"] is False
     assert len(setter_res["proposed_set"]["refused"]) == graph.QUESTION_SET_SIZE
-    # No row was saved, and the model's text key appears nowhere in the node's output.
     with sqlite3.connect(question_bank.DB_PATH) as connection:
         assert connection.execute("SELECT COUNT(*) FROM questions").fetchone()[0] == 0
     assert raw_ans not in json.dumps(setter_res)
@@ -1252,7 +1262,7 @@ def test_parallel_resistors_fallback_split_into_two_single_value_questions() -> 
     assert grader.grade_answer("2 A", made_med["draft"]["gold_answer"], is_numeric=True)["is_correct"] is True
 
 
-def test_skip_proposing_when_no_question_or_fallback_for_concept(monkeypatch, tmp_path) -> None:
+def test_skip_proposing_when_no_question_or_fallback_for_concept(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """The model fails and the concept has no fallback: nothing is proposed, and the run ends at the setter."""
     from socratic_tutor import graph
     from socratic_tutor.tools import question_bank, question_bank_server
@@ -1265,7 +1275,7 @@ def test_skip_proposing_when_no_question_or_fallback_for_concept(monkeypatch, tm
 
     monkeypatch.setattr(question_bank_server, "load_concept_ids", known_concepts)
 
-    def failed_call(*args, **kwargs) -> dict:
+    def failed_call(*args: Any, **kwargs: Any) -> dict:
         return {"error": "LLM generation unavailable"}
 
     monkeypatch.setattr(graph.question_setter.llm, "chat_json", failed_call)
