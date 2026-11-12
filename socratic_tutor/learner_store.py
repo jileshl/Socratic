@@ -148,6 +148,11 @@ class LearnerStore:
         misconception_id: str,
         resolved: bool = False,
     ) -> None:
+        if not misconception_id or not isinstance(misconception_id, str):
+            return
+        misconception_id = misconception_id.strip()
+        if misconception_id.lower() in ("null", "none", "nil", "n/a", ""):
+            return
         self._validate_student_and_concept(student_id, misconception_id)
         profile = self.get_profile(student_id)
         now = datetime.now(timezone.utc).isoformat(timespec="seconds")

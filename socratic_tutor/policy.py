@@ -134,7 +134,7 @@ ACADEMIC_DISTRESS_PATTERNS: dict[str, str] = {
     "cant_do_this": r"\bi can'?t do (this|it|physics|anything)\b",
     "stressed": r"\b(stressed|anxious|overwhelmed|panicking)\b",
     "calls_self_stupid": r"\bi'?m (so |too |just )?(stupid|dumb|useless|hopeless)\b",
-    "going_to_fail": r"\b(going to|gonna|will) fail\b",
+    "going_to_fail": r"\b(going to|gonna|will|going) (fail|flunk)\b|\b(i'?m|i am) (failing|flunking)\b",
     "killing_me": r"\b(this|it|physics|that|this question) is killing me\b",
     "hates_study": r"\bi hate (physics|studying|this subject|school)\b",
     "crying": r"\b(i'?m|i am|i keep) crying\b",
@@ -192,9 +192,9 @@ ABBREVIATIONS: set[str] = {"st.", "dr.", "mt.", "sr.", "jr."}
 
 # One layer that lowers the rate. Matched on the lower-case copy. The rule's name is logged, never the text.
 INJECTION_PATTERNS: dict[str, str] = {
-    "teacher_claim": r"\b(i'?m|i am|im|this is)\s+(the |your |ur |a |ya )?(\w+ )?(teacher|sir|ma'?am|principal|admin|instructor)\b(?!')",
+    "teacher_claim": r"\b(i'?m|i am|im|this is)\s+(the |your |ur |a |ya )?(\w+ )?(teacher|faculty|sir|ma'?am|principal|admin|instructor)\b(?!')",
     "as_teacher": r"\bas (the|your|a|ur) (\w+ )?teacher\b(?!')",
-    "teacher_here": r"\b(teacher|admin|principal) here\b",
+    "teacher_here": r"\b(teacher|faculty|admin|principal) here\b",
     "answer_key": r"\b(show|give|tell|print|reveal|send|share|list|display|need|want)\s+(me\s+|us\s+)?(the\s+|your\s+|all\s+the\s+)?(answer[\s-]*keys?|final answers)\b",
     "all_answers": r"\b(show|give|tell|print|reveal|send|share|list|display)\s+(me\s+|us\s+)?all\s+(of\s+)?(the\s+)?(answers|solutions)\b",
     "answer_key_please": r"\banswer[\s-]*keys?\s+(please|pls|plz|now|asap)\b",
