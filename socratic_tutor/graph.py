@@ -125,6 +125,8 @@ def node_input_guardrail(state: SocraticState) -> dict:
         "distress_detected": False,
         "teacher_alert_triggered": False,
     }
+    if state.get("chapter"):
+        reset_state["chapter"] = state["chapter"]
 
     # Flowchart of the blocked case (each [box] matches a comment below):
     #
@@ -210,7 +212,32 @@ def node_supervisor(state: SocraticState) -> dict:
 
     cg = ConceptGraph()
     next_concept = cg.next_recommended(mastery)
-    current_concept = state.get("current_concept_id") or next_concept
+    explicit_concept = state.get("current_concept_id")
+    current_concept = explicit_concept
+
+    req_chapter = state.get("chapter")
+    if not current_concept and req_chapter:
+        req_ch_num = str(req_chapter).strip()
+        if req_ch_num in CHAPTER_TITLE_TO_NUM:
+            req_ch_num = CHAPTER_TITLE_TO_NUM[req_ch_num]
+        else:
+            m = re.search(r"\b(9|10|11)\b", req_ch_num)
+            if m:
+                req_ch_num = m.group(1)
+
+        for cid, cdata in cg.concepts.items():
+            c_ch_num = CHAPTER_TITLE_TO_NUM.get(cdata.get("chapter", ""))
+            if c_ch_num == req_ch_num and mastery.get(cid, 0.0) < config.PASSING_MASTERY_THRESHOLD:
+                current_concept = cid
+                break
+        if not current_concept:
+            for cid, cdata in cg.concepts.items():
+                if CHAPTER_TITLE_TO_NUM.get(cdata.get("chapter", "")) == req_ch_num:
+                    current_concept = cid
+                    break
+
+    if not current_concept:
+        current_concept = next_concept
 
     # Teacher Rule 3: Flag stuck student after 3 consecutive failures
     failure_streaks = profile.get("failure_streaks", {})
@@ -255,6 +282,7 @@ def node_supervisor(state: SocraticState) -> dict:
                 "teacher_alert_triggered": teacher_alert,
                 "hint_step": hint_step,
                 "hint_raised_this_turn": hint_raised,
+                "chapter": state.get("chapter"),
             }
         else:
             # N3: If grader encountered an error (e.g. unapproved question), do not run replan
@@ -276,6 +304,7 @@ def node_supervisor(state: SocraticState) -> dict:
                     "hint_raised_this_turn": hint_raised,
                     "last_concept_id": current_concept,
                     "last_question_id": qid,
+                    "chapter": state.get("chapter"),
                 }
 
             # Grader finished! Supervisor saves quiz result and replans
@@ -347,6 +376,7 @@ def node_supervisor(state: SocraticState) -> dict:
                 "hint_raised_this_turn": hint_raised,
                 "last_concept_id": current_concept,
                 "last_question_id": qid,
+                "chapter": state.get("chapter"),
             }
 
     # Question Setter Mode:
@@ -363,6 +393,7 @@ def node_supervisor(state: SocraticState) -> dict:
             "hint_raised_this_turn": hint_raised,
             "last_concept_id": current_concept,
             "last_question_id": qid,
+            "chapter": state.get("chapter"),
         }
 
     # Practice Mode:
@@ -381,6 +412,7 @@ def node_supervisor(state: SocraticState) -> dict:
             "last_concept_id": current_concept,
             "last_question_id": qid,
             "last_misconception_id": state.get("last_misconception_id"),
+            "chapter": state.get("chapter"),
         }
 
     # 2. Has diagnostician produced a result?
@@ -388,6 +420,21 @@ def node_supervisor(state: SocraticState) -> dict:
         diag = state.get("identified_misconception")
         miscon_id = diag.get("id") if (diag and isinstance(diag, dict)) else None
         last_miscon = state.get("last_misconception_id")
+
+        if not explicit_concept and diag and isinstance(diag, dict) and miscon_id:
+            try:
+                catalog = getattr(diagnostician, "_load_catalog", lambda: [])()
+                for m in catalog:
+                    if m.get("id") == miscon_id and m.get("concept_id"):
+                        diag_concept = m["concept_id"]
+                        if diag_concept in cg.concepts:
+                            diag_ch = diag.get("chapter")
+                            curr_ch = cg.concepts.get(current_concept, {}).get("chapter")
+                            if current_concept == "concept_reflection_laws" or (diag_ch and diag_ch != curr_ch):
+                                current_concept = diag_concept
+                        break
+            except Exception:
+                pass
 
         # Raise hint ladder when the same concept and misconception returned (last hint didn't help)
         # N4: Ensure hint can only be raised at most once per turn
@@ -420,6 +467,7 @@ def node_supervisor(state: SocraticState) -> dict:
             "last_concept_id": current_concept,
             "last_question_id": qid,
             "last_misconception_id": miscon_id or last_miscon,
+            "chapter": state.get("chapter"),
         }
 
     # First pass in practice mode:
@@ -435,6 +483,7 @@ def node_supervisor(state: SocraticState) -> dict:
         "hint_raised_this_turn": hint_raised,
         "last_concept_id": current_concept,
         "last_question_id": qid,
+        "chapter": state.get("chapter"),
     }
 
 

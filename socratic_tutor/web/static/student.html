@@ -258,9 +258,21 @@ function reply(ev, holder) {
   holder.innerHTML = `<div class="trow"><span class="avatar" aria-hidden="true"></span><div class="body">${persona ? `<div class="who">Tutor to ${esc(label(persona))}</div>` : ""}${body.join("")}</div></div>`;
   scroll();
 }
+let activeChapter = null;
+let activeConcept = null;
 async function stream(mode, text, questionId) {
   const s = await session(mode);
-  const r = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: s.session_id, message: text, current_question_id: questionId || null }) });
+  const r = await fetch("/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      session_id: s.session_id,
+      message: text,
+      current_question_id: questionId || null,
+      chapter: activeChapter || null,
+      concept_id: activeConcept || null,
+    })
+  });
   const reader = r.body.getReader(); const dec = new TextDecoder(); let buf = ""; const steps = []; let final = null;
   while (true) {
     const { done, value } = await reader.read(); if (done) break;
@@ -270,7 +282,14 @@ async function stream(mode, text, questionId) {
       if (!line.trim()) continue;
       const ev = JSON.parse(line);
       if (ev.type === "step") { steps.push(ev); stream.onstep && stream.onstep(steps); }
-      if (ev.type === "reply") { ev.steps = steps; ev.asked = text; final = ev; }
+      if (ev.type === "reply") {
+        ev.steps = steps; ev.asked = text; final = ev;
+        if (ev.concept && ev.concept.id) activeConcept = ev.concept.id;
+        if (ev.concept && ev.concept.chapter) {
+          const ch = ev.concept.chapter;
+          activeChapter = ch.includes("Light") ? "9" : ch.includes("Eye") ? "10" : ch.includes("Electricity") ? "11" : activeChapter;
+        }
+      }
     }
   }
   lastTurn = final; renderHood();
@@ -300,7 +319,11 @@ function writeAnswer() { const i = document.getElementById("msg"); if (!i.value.
 let quizIds = null;
 function hasQuiz(conceptId) { return (quizIds || new Set()).has(conceptId); }
 fetch("/api/quiz/questions").then(r => r.json()).then(d => quizIds = new Set((d.items || []).map(q => q.concept_id))).catch(() => {});
-function startWith(i, j) { if (!busy) { go("learn"); guarded(() => ask(CHAPTERS[i].ask[j])); } }
+function startWith(i, j) {
+  activeChapter = i === 0 ? "9" : i === 1 ? "10" : "11";
+  activeConcept = null;
+  if (!busy) { go("learn"); guarded(() => ask(CHAPTERS[i].ask[j])); }
+}
 
 // ---------- quiz ----------
 async function loadQuiz(focus) {
@@ -367,7 +390,17 @@ async function refreshNextUp() {
     <button class="primary" onclick="practise('${esc(n.concept_id)}')">Practise it</button><button onclick="go('plan')">See my plan</button></div>` : "";
 }
 function conceptTitle(id) { const all = [...((planCache || {}).suggested || []), ...(((planCache || {}).assigned || {}).items || []), ...cards.map(c => ({ concept_id: c.concept_id, title: c.concept }))]; return (all.find(i => i.concept_id === id) || {}).title || id; }
-function practise(id) { if (busy) return; go("learn"); guarded(() => ask(`Can you help me practise ${conceptTitle(id)}? Ask me a question to start.`)); }
+function practise(id) {
+  if (busy) return;
+  activeConcept = id;
+  const all = [...((planCache || {}).suggested || []), ...(((planCache || {}).assigned || {}).items || [])];
+  const item = all.find(i => i.concept_id === id);
+  if (item && item.chapter) {
+    activeChapter = item.chapter.includes("Light") ? "9" : item.chapter.includes("Eye") ? "10" : item.chapter.includes("Electricity") ? "11" : null;
+  }
+  go("learn");
+  guarded(() => ask(`Can you help me practise ${conceptTitle(id)}? Ask me a question to start.`));
+}
 function quizOn(id) { quizFocus = id; go("quiz"); }
 
 // ---------- points, levels and badges (worked out on the server from real records) ----------

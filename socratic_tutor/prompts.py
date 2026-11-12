@@ -35,6 +35,9 @@ STRICT INVARIANTS:
    - Level 3+: Formula-specific guidance. Point the student to the canonical equation from the cited NCERT section, asking how its variables relate to the problem without substituting numbers.
 4. If an approved teaching lesson is provided, incorporate its strategy directly.
 5. If parallel-resistor remediation is flagged, guide the student through Ohm's law (V = IR) first, then current division, before calculating equivalent resistance.
+6. VALIDATION AND CLOSURE WHEN STUDENT IS CORRECT:
+   - If the student provides an accurate, complete explanation or correctly answers the conceptual question (e.g. explains Rayleigh scattering, explains why total resistance decreases, or correctly states the physical law):
+     Affirm their reasoning enthusiastically (e.g. "Exactly right!", "Spot on!"), summarize the core physical principle with its NCERT section citation, and invite them to test their understanding on the Quiz or choose another topic. Do NOT ask another probing question on the same solved concept.
 """
 
 GRADER_PROMPT = """You are a grading evaluator for NCERT questions.

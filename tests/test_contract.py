@@ -581,6 +581,60 @@ def test_node_tutor_passes_resolved_chapter_to_search_textbook(monkeypatch):
     assert search_calls[-1]["chapter"] == "10"
 
 
+def test_supervisor_selects_chapter_concept_when_unbound():
+    """Verify starting in Chapter 10 without concept_id selects a Chapter 10 concept instead of Chapter 9 root."""
+    from socratic_tutor import graph
+
+    state = {
+        "mode": "practice",
+        "chapter": "10",
+        "query": "Why is the sky blue?",
+    }
+    res = graph.node_supervisor(state)
+    assert res["current_concept_id"] is not None
+    cg = graph.ConceptGraph()
+    assert cg.concepts[res["current_concept_id"]]["chapter"] == "Human Eye and the Colourful World"
+    assert res["chapter"] == "10"
+
+
+def test_diagnostician_misconception_routes_chapter_and_citations(monkeypatch):
+    """Verify an identified Chapter 10 misconception routes chapter resolution and citations to Chapter 10."""
+    from socratic_tutor import graph
+
+    state = {
+        "mode": "practice",
+        "query": "Why is the sky blue?",
+        "turn_steps": ["input_guardrail", "supervisor", "diagnostician"],
+        "plan": ["diagnose", "hint", "verify"],
+        "identified_misconception": {
+            "id": "MISCON_EYE_10",
+            "name": "The sky is blue because the atmosphere is blue",
+            "chapter": "Human Eye and the Colourful World",
+        },
+    }
+    sup_res = graph.node_supervisor(state)
+    assert sup_res["current_concept_id"] == "concept_scattering"
+
+    searched = []
+
+    def mock_search(query, chapter=None, top_k=4):
+        searched.append({"query": query, "chapter": chapter})
+        return [{"section_id": "10.6.2", "title": "Why is the colour of the clear sky blue?", "content": "Fine particles scatter blue light."}]
+
+    monkeypatch.setattr(graph.textbook_kb, "search_textbook", mock_search)
+    tutor_state = {
+        "session_id": "ses_test",
+        "student_id": "stu_test",
+        "mode": "practice",
+        "query": "Why is the sky blue?",
+        "current_concept_id": sup_res["current_concept_id"],
+        "identified_misconception": state["identified_misconception"],
+    }
+    tut_res = graph.node_tutor(tutor_state)
+    assert searched[-1]["chapter"] == "10"
+    assert any("10." in c for c in tut_res["citations"])
+
+
 
 def test_learner_store_records_mastery_misconceptions_lessons_and_quizzes(tmp_path):
     store = LearnerStore(tmp_path / "learner.sqlite")

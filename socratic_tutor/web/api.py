@@ -157,6 +157,8 @@ class ChatIn(BaseModel):
     session_id: str
     message: str = Field(min_length=1, max_length=4000)
     current_question_id: str | None = None
+    chapter: str | None = None
+    concept_id: str | None = None
 
 
 def _sse(event: dict[str, Any]) -> str:
@@ -173,7 +175,7 @@ def chat(body: ChatIn) -> StreamingResponse:
     if session is None:
         raise HTTPException(404, "Unknown session; start one with POST /api/session")
     return StreamingResponse(
-        _run_turn(session, body.message, body.current_question_id),
+        _run_turn(session, body.message, body.current_question_id, body.chapter, body.concept_id),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
@@ -283,7 +285,13 @@ def next_quiz_question(session_id: str, previous_id: str | None = None) -> dict[
     }
 
 
-def _run_turn(session: dict[str, Any], message: str, current_question_id: str | None = None) -> Iterator[str]:
+def _run_turn(
+    session: dict[str, Any],
+    message: str,
+    current_question_id: str | None = None,
+    chapter: str | None = None,
+    concept_id: str | None = None,
+) -> Iterator[str]:
     session_id, student_id, mode = session["session_id"], session["student_id"], session["mode"]
     meter = trace.CostMeter()
     cfg = {
@@ -308,6 +316,10 @@ def _run_turn(session: dict[str, Any], message: str, current_question_id: str | 
         "teacher_alert_triggered": False,
         "answer_leak_flag": False,
     }
+    if chapter:
+        state_in["chapter"] = chapter
+    if concept_id:
+        state_in["current_concept_id"] = concept_id
     if session["turns"] == 0:
         state_in["mastery_map"] = before
     yield _sse({"type": "start", "session_id": session_id, "mode": mode})
