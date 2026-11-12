@@ -364,3 +364,8 @@ table.class td .meter { width: 90px; display: inline-block; vertical-align: midd
 .fcard .face { transform: none !important; transition: none; backface-visibility: visible; }
 .fcard.flip .front, .fcard:not(.flip) .back { visibility: hidden; }
 .fcard:not(.flip) .front { cursor: pointer; }
+
+/* Care replies (stress, frustration): soft and calm, never red */
+.msg.tutor.care .bubble { background: var(--ok-soft); }
+.chip.calm { background: var(--ok-soft); color: var(--ok); border-color: transparent; }
+.quick.calm button { color: var(--ok); border-color: var(--ok-soft); }
