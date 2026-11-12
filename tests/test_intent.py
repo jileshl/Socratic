@@ -238,3 +238,33 @@ def test_tutor_prompt_asks_for_short_replies_without_guessing_feelings() -> None
     from socratic_tutor import prompts
     assert "at most three short sentences" in prompts.TUTOR_PROMPT
     assert "It sounds like you're feeling" in prompts.TUTOR_PROMPT  # named as the thing NOT to do
+
+
+# --------------------------------------------------------------------------- changing topic from the chat
+
+
+@pytest.mark.parametrize("message,expected", [
+    ("what is the power of a lens of focal length 50 cm?", "concept_lens_power"),
+    ("why is the sky blue", "concept_scattering"),
+    ("How does a concave lens correct short-sightedness?", "concept_myopia"),
+    ("What about a concave mirror?", "concept_concave_ray_diagrams"),
+    ("huh", None),
+    ("I think I have got it", None),
+])
+def test_topic_of_finds_only_clearly_named_topics(message: str, expected: Any) -> None:
+    from socratic_tutor import topics
+    assert topics.topic_of(message) == expected
+
+
+def test_a_clear_question_moves_the_tutor_out_of_a_lesson(monkeypatch: pytest.MonkeyPatch) -> None:
+    """In a Laws of Reflection lesson (chapter 9), "why is the sky blue?" moves to scattering in chapter 10."""
+    _fakes(monkeypatch, ["Which line do we measure both angles from? [NCERT Sec 9.1]"])
+    app_graph: Any = graph.build_graph(checkpointer=InMemorySaver())
+    first = _lesson_turn(app_graph, "Ask me one simple question to check I understood.", "move")
+    assert first["current_concept_id"] == "concept_reflection_laws"
+    out = _lesson_turn(app_graph, "why is the sky blue?", "move")
+    assert out["current_concept_id"] == "concept_scattering"
+    assert str(out["chapter"]) == "10"
+    # ... and "huh" in the lesson still stays put
+    again = _lesson_turn(app_graph, "huh", "move2")
+    assert again["current_concept_id"] == "concept_reflection_laws"
