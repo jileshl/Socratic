@@ -359,3 +359,8 @@ table.class td .meter { width: 90px; display: inline-block; vertical-align: midd
 .topnav { flex-wrap: wrap; }
 .fcard.flip .front, .fcard:not(.flip) .back { pointer-events: none; }
 @media (max-width: 560px) { header { position: static; } .lvl { font-size: 13px; } }
+
+/* Flashcards show one face at a time (no 3D flip, which some browsers draw wrongly) */
+.fcard .face { transform: none !important; transition: none; backface-visibility: visible; }
+.fcard.flip .front, .fcard:not(.flip) .back { visibility: hidden; }
+.fcard:not(.flip) .front { cursor: pointer; }
