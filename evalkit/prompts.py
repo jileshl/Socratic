@@ -6,7 +6,7 @@ bump PROMPT_VERSION, and the next eval run records the new version with its
 results. Model IDs for these prompts are in socratic_tutor/config.py.
 """
 
-PROMPT_VERSION = "2026-11-06"
+PROMPT_VERSION = "2026-11-09"
 
 # The judge rubric is the one our Class 10 teacher agreed to use in the
 # consultation questionnaire (section 4.1): three dimensions, each 1-5.

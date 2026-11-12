@@ -125,6 +125,7 @@ SEVERE_DISTRESS_PATTERNS: dict[str, str] = {
     "pills": r"\b(took|take|taking|swallowed) (too many|a lot of|all (the|my)) (pills|tablets)\b|\boverdose\b",
     "unalive": r"\bunalive\b",
     "depressed": r"\bdepress(ed|ion)\b",
+    "giving_up_on_everything": r"\bgiving up on (everything|life)\b",
 }
 # Academic: stress about study. The gentle reply, plus a quiet alert to the teacher.
 ACADEMIC_DISTRESS_PATTERNS: dict[str, str] = {

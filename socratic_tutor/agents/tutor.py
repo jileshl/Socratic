@@ -48,12 +48,17 @@ def generate_hint(
         if recent:
             extra_instructions.append("Recent Dialogue Context:\n" + "\n".join(recent))
 
+    closing = (
+        "Respond directly to the user's request."
+        if "NEVER provide the final numerical answer" not in TUTOR_PROMPT
+        else "Draft exactly ONE concise, encouraging Socratic hint that cites the NCERT section ID."
+    )
     user_prompt = (
         f"Student Query: {student_query}\n"
         f"Hint Level: {hint_level} - {strategy_desc}\n"
         + ("\n".join(extra_instructions) + "\n" if extra_instructions else "")
         + f"\nRetrieved NCERT Context:\n{passages_text}\n\n"
-        "Draft exactly ONE concise, encouraging Socratic hint that cites the NCERT section ID."
+        f"{closing}"
     )
 
     try:

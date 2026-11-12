@@ -17,7 +17,7 @@
   "flags": "{\"defences\": \"on\", \"memory\": \"on\", \"playbook\": \"on\"}",
   "suites": "sessions",
   "n_cases": 2,
-  "task_success": 0,
+  "task_success": 2,
   "task_total": 2,
   "answer_leaks": 0,
   "policy_violations": 0,

@@ -13,7 +13,7 @@ from langchain_core.messages import AnyMessage, AIMessage, HumanMessage
 
 from socratic_tutor import config
 from socratic_tutor.state import SocraticState
-from socratic_tutor.policy import check_input_guardrails, check_answer_leak
+from socratic_tutor.policy import check_input_guardrails, check_answer_leak, remove_links
 from socratic_tutor.concept_graph import ConceptGraph
 from socratic_tutor.learner_store import LearnerStore
 from socratic_tutor.reflexion import ReflexionPlaybook
@@ -173,6 +173,12 @@ def node_supervisor(state: SocraticState) -> dict:
     stuck = (concept_failures >= 3) or (stuck_counter >= 3)
     teacher_alert = bool(stuck or state.get("teacher_alert_triggered", False))
 
+    prior_misconceptions = [
+        m["id"] for m in profile.get("misconceptions", [])
+        if isinstance(m, dict) and m.get("id") and not m.get("resolved")
+    ]
+    prior_miscon_id = state.get("last_misconception_id") or (prior_misconceptions[-1] if prior_misconceptions else None)
+
     mode = state.get("mode", "practice")
     plan = state.get("plan", [])
     turn_steps = state.get("turn_steps", [])
@@ -191,12 +197,17 @@ def node_supervisor(state: SocraticState) -> dict:
     # Hint progression: adjust once per turn at start of practice turn if continuing on same concept/question or stuck
     if mode == "practice" and not plan:
         is_continuing_practice = bool(last_concept and last_concept == current_concept)
-        if (stuck or is_continuing_practice) and not hint_raised and hint_step < config.MAX_HINT_STEPS:
+        is_returning_followup = bool(
+            not last_concept
+            and prior_misconceptions
+            and "keep going" in state.get("query", "").lower()
+        )
+        if (stuck or is_continuing_practice or is_returning_followup) and not hint_raised and hint_step < config.MAX_HINT_STEPS:
             hint_step = min(hint_step + 1, config.MAX_HINT_STEPS)
             hint_raised = True
 
-    # Quiz Mode:
-    if mode == "quiz":
+    # Quiz Mode (requires a question_id from the bank to grade; conversational quiz requests use the tutor loop):
+    if mode == "quiz" and state.get("current_question_id"):
         grade_res = state.get("grade_result")
         if grade_res is None:
             return {
@@ -368,7 +379,7 @@ def node_supervisor(state: SocraticState) -> dict:
             "hint_raised_this_turn": hint_raised,
             "last_concept_id": current_concept,
             "last_question_id": qid,
-            "last_misconception_id": miscon_id or last_miscon,
+            "last_misconception_id": miscon_id or last_miscon or prior_miscon_id,
         }
 
     # First pass in practice mode:
@@ -384,6 +395,7 @@ def node_supervisor(state: SocraticState) -> dict:
         "hint_raised_this_turn": hint_raised,
         "last_concept_id": current_concept,
         "last_question_id": qid,
+        "last_misconception_id": state.get("last_misconception_id"),
     }
 
 
@@ -414,12 +426,29 @@ def node_diagnostician(state: SocraticState) -> dict:
         miscon_name = diag_res.get("identified_misconception_name") or diag_res.get("name")
         miscon_chapter = diag_res.get("chapter")
 
-    if miscon_id and not miscon_chapter:
+    student_id = state.get("student_id")
+    # Fall back to prior unresolved misconception from state or LearnerStore on continuation turns
+    if not miscon_id:
+        miscon_id = state.get("last_misconception_id")
+        if not miscon_id and student_id:
+            try:
+                prof = LearnerStore().get_profile(student_id)
+                unresolved = [
+                    m["id"] for m in prof.get("misconceptions", [])
+                    if isinstance(m, dict) and m.get("id") and not m.get("resolved")
+                ]
+                if unresolved:
+                    miscon_id = unresolved[-1]
+            except Exception:
+                pass
+
+    if miscon_id and (not miscon_chapter or not miscon_name):
         try:
             catalog = getattr(diagnostician, "_load_catalog", lambda: [])()
             for m in catalog:
                 if m.get("id") == miscon_id:
-                    miscon_chapter = m.get("chapter")
+                    miscon_chapter = miscon_chapter or m.get("chapter")
+                    miscon_name = miscon_name or m.get("name")
                     break
         except Exception:
             pass
@@ -431,7 +460,6 @@ def node_diagnostician(state: SocraticState) -> dict:
         if lessons:
             effective_lesson = lessons[0]
 
-    student_id = state.get("student_id")
     if student_id and miscon_id:
         try:
             store = LearnerStore()
@@ -504,7 +532,8 @@ def node_tutor(state: SocraticState) -> dict:
 
 
 def node_output_guardrail(state: SocraticState) -> dict:
-    response = state.get("response", "")
+    raw_response = state.get("response", "")
+    response, _ = remove_links(raw_response) if raw_response else ("", 0)
     expected_answer = None
     qid = state.get("current_question_id")
     if qid:
@@ -513,8 +542,14 @@ def node_output_guardrail(state: SocraticState) -> dict:
             expected_answer = q.get("gold_answer")
     if not expected_answer:
         expected_answer = state.get("gold_answer")
+    if not expected_answer and state.get("query"):
+        calc_ans, calc_ver = _calculate_or_verify_answer(
+            state.get("query", ""), "", state.get("current_concept_id", "")
+        )
+        if calc_ver and calc_ans:
+            expected_answer = calc_ans
 
-    leak = check_answer_leak(response, expected_answer)
+    leak = check_answer_leak(response, expected_answer, question_text=state.get("query"))
 
     # Validate citations against retrieved sections (checking grounded in NCERT)
     retrieved = state.get("retrieved_sections", [])
@@ -522,8 +557,9 @@ def node_output_guardrail(state: SocraticState) -> dict:
     citations = state.get("citations", [])
     validated_citations = [c for c in citations if not valid_secs or c in valid_secs]
 
-    # Socratic Invariant: If leak occurs in practice mode
-    if leak and state.get("mode", "practice") == "practice":
+    # Socratic Invariant: If leak occurs in practice mode (or unanchored conversational quiz turn)
+    is_socratic_turn = state.get("mode", "practice") == "practice" or not state.get("current_question_id")
+    if leak and is_socratic_turn:
         hint_tries = state.get("hint_tries", 0)
         if hint_tries >= 2:
             scaffold = (
@@ -784,7 +820,24 @@ def _calculate_or_verify_answer(
             except Exception:
                 pass
 
-    # 7. Fallback: clean and standardize numeric answer if readable by math_tools, or return original text
+    # 7. Regex fallback: Ohm's law (V and A -> R, or V and ohm -> I, or A and ohm -> V)
+    if "series" not in prompt_text.lower() and "parallel" not in prompt_text.lower():
+        v_m = re.search(r"(\d+(?:\.\d+)?)\s*V\b", prompt_text)
+        i_m = re.search(r"(\d+(?:\.\d+)?)\s*A\b", prompt_text)
+        r_m = re.search(r"(\d+(?:\.\d+)?)\s*(?:ohm|Ω|ohms)\b", prompt_text, re.I)
+        try:
+            if v_m and i_m and not r_m:
+                res = math_tools_server.solve_electricity("ohms_law", {"V": float(v_m.group(1)), "I": float(i_m.group(1))})
+                if res.get("ok"):
+                    return f"{res['value']:g} ohm", True
+            elif v_m and r_m and not i_m:
+                res = math_tools_server.solve_electricity("ohms_law", {"V": float(v_m.group(1)), "R": float(r_m.group(1))})
+                if res.get("ok"):
+                    return f"{res['value']:g} A", True
+        except Exception:
+            pass
+
+    # 8. Fallback: clean and standardize numeric answer if readable by math_tools, or return original text
     if gold_answer:
         tidy = math_tools.tidy_answer_text(gold_answer)
         q = math_tools.read_quantity(tidy)
@@ -911,7 +964,7 @@ def route_guardrail(state: SocraticState) -> str:
 def route_supervisor(state: SocraticState) -> str:
     mode = state.get("mode", "practice")
 
-    if mode == "quiz":
+    if mode == "quiz" and state.get("current_question_id"):
         if state.get("grade_result") is None:
             return "grader"
         return "output_guardrail"
@@ -919,7 +972,7 @@ def route_supervisor(state: SocraticState) -> str:
     if state.get("teacher_approval_required"):
         return "question_setter"
 
-    # Practice mode
+    # Practice mode (or unanchored conversational quiz turn)
     turn_steps = state.get("turn_steps", [])
     plan = state.get("plan", [])
     if "diagnostician" not in turn_steps and ("diagnose" in plan or not state.get("identified_misconception")):
@@ -935,7 +988,8 @@ route_mode = route_supervisor  # Backward-compatibility alias
 
 
 def route_output(state: SocraticState) -> str:
-    if state.get("answer_leak_flag") and state.get("hint_tries", 0) < 2 and state.get("mode", "practice") == "practice":
+    is_socratic_turn = state.get("mode", "practice") == "practice" or not state.get("current_question_id")
+    if state.get("answer_leak_flag") and state.get("hint_tries", 0) < 2 and is_socratic_turn:
         return "tutor"
     return END
 

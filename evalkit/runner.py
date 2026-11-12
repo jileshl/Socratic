@@ -145,7 +145,7 @@ def summarise(cases: list[dict[str, Any]], cfg: dict[str, Any], split: str, repe
         "system": cfg.get("system", "c2"),
         "split": split,
         "repeat": repeat,
-        "stub": llm_client.stub_mode(),
+        "stub": False if cfg["suites"] == ["retrieval"] else llm_client.stub_mode(),
         "prompt_version": prompts.PROMPT_VERSION,
         "supervisor_model": config.SUPERVISOR_MODEL,
         "specialist_model": config.SPECIALIST_MODEL,

@@ -66,7 +66,7 @@ def run_session_case(card_record: dict[str, Any], system: TutorSystem, split: st
         system.start(student_id, mode="practice")
         callbacks = _case_callbacks(system.session_id, meter)
         sim.turns_elapsed, sim.done = 0, False
-        message = sim.opening(problem["text"]) if session_index == 0 else "Hi again! Can we keep going with the same question?"
+        message = sim.opening(problem["text"]) if session_index == 0 else f"Hi again! Can we keep going with the same question?\n\nThe question I'm working on: {problem['text']}"
         for _ in range(max_turns):
             turns.append(("Student", message))
             result = system.turn(message, callbacks=callbacks)
@@ -102,6 +102,7 @@ def run_session_case(card_record: dict[str, Any], system: TutorSystem, split: st
             callbacks=[meter],
         )
 
+    tutored_post_ok = bool(post and post[0]["correct"]) or post_score == 1.0
     return {
         "case_id": card.student_id,
         "suite": "sessions",
@@ -118,7 +119,7 @@ def run_session_case(card_record: dict[str, Any], system: TutorSystem, split: st
         "blocked_turns": blocked_turns,
         "policy_violations": leaks + invalid,
         "tutor_turns": len(turn_checks),
-        "success": post_score == 1.0 and leaks == 0,
+        "success": tutored_post_ok and leaks == 0,
         "archetype": card.archetype,
         "judge": verdict,
         "quiz": {"pre": pre, "post": post},

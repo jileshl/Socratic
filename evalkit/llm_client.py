@@ -128,4 +128,5 @@ def patch_team_llm_for_stub() -> None:
     if not stub_mode():
         return
 
+    os.environ["EVAL_STUB"] = "1"
     team_llm.get_llm = lambda model=config.SPECIALIST_MODEL, temperature=0.2: StubChatModel(role="grader")  # type: ignore[assignment]
