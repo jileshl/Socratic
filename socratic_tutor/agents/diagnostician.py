@@ -73,15 +73,27 @@ def match_misconception_by_keywords(query: str, catalog: list[dict[str, Any]]) -
 def diagnose_response(query: str, chapter_misconceptions: list[dict] | None = None) -> dict[str, Any]:
     """Analyze student input against catalogued misconceptions."""
     catalog = chapter_misconceptions or _load_catalog()
+    catalog_by_id = {m["id"]: m for m in catalog if isinstance(m, dict) and "id" in m}
     summarized = [
         {"id": m["id"], "name": m["name"], "concept": m.get("concept_id", "")}
         for m in catalog
     ]
     prompt = f"Student input: {query}\nKnown catalogued misconceptions:\n{json.dumps(summarized, indent=1)}\n"
     res = llm.chat_json(prompt=prompt, system_prompt=DIAGNOSTICIAN_PROMPT)
-    if isinstance(res, dict) and res.get("identified_misconception_id"):
-        return res
+    if isinstance(res, dict):
+        raw_id = res.get("identified_misconception_id") or res.get("id")
+        if isinstance(raw_id, str):
+            clean_id = raw_id.strip()
+            if clean_id.lower() not in ("null", "none", "nil", "n/a", "undefined", "") and clean_id in catalog_by_id:
+                cat = catalog_by_id[clean_id]
+                return {
+                    "identified_misconception_id": clean_id,
+                    "identified_misconception_name": cat.get("name") or clean_id,
+                    "chapter": cat.get("chapter") or res.get("chapter"),
+                    "confidence": float(res.get("confidence") or 0.7),
+                    "probing_question": res.get("probing_question") or cat.get("diagnostic_probe", "Can you explain your reasoning step by step?"),
+                }
     keyword_match = match_misconception_by_keywords(query, catalog)
     if keyword_match:
         return keyword_match
-    return res if isinstance(res, dict) else {"identified_misconception_id": None, "identified_misconception_name": None}
+    return {"identified_misconception_id": None, "identified_misconception_name": None}

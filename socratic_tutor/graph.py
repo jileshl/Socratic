@@ -469,7 +469,8 @@ def node_supervisor(state: SocraticState) -> dict:
     # 2. Has diagnostician produced a result?
     if "diagnostician" in turn_steps or "diagnose" in plan:
         diag = state.get("identified_misconception")
-        miscon_id = diag.get("id") if (diag and isinstance(diag, dict)) else None
+        raw_mid = diag.get("id") if (diag and isinstance(diag, dict)) else None
+        miscon_id = raw_mid if (raw_mid and isinstance(raw_mid, str) and raw_mid.strip().lower() not in ("null", "none", "nil", "n/a", "")) else None
         last_miscon = state.get("last_misconception_id")
 
         if not pinned and diag and isinstance(diag, dict) and miscon_id:
@@ -556,23 +557,27 @@ def node_diagnostician(state: SocraticState) -> dict:
             contextual_query = "\n".join(history_lines)
 
     diag_res = diagnostician.diagnose_response(contextual_query)
-    if not isinstance(diag_res, dict) or not (diag_res.get("identified_misconception_id") or diag_res.get("id")):
+    raw_diag_id = (diag_res.get("identified_misconception_id") or diag_res.get("id")) if isinstance(diag_res, dict) else None
+    if not isinstance(diag_res, dict) or not raw_diag_id or (isinstance(raw_diag_id, str) and raw_diag_id.strip().lower() in ("null", "none", "nil", "n/a", "")):
         diag_res = diagnostician.diagnose_response(query)
 
     miscon_id = None
     miscon_name = None
     miscon_chapter = None
     if isinstance(diag_res, dict):
-        miscon_id = diag_res.get("identified_misconception_id") or diag_res.get("id")
-        miscon_name = diag_res.get("identified_misconception_name") or diag_res.get("name")
-        miscon_chapter = diag_res.get("chapter")
+        raw_id = diag_res.get("identified_misconception_id") or diag_res.get("id")
+        if isinstance(raw_id, str) and raw_id.strip().lower() not in ("null", "none", "nil", "n/a", ""):
+            miscon_id = raw_id.strip()
+            miscon_name = diag_res.get("identified_misconception_name") or diag_res.get("name")
+            miscon_chapter = diag_res.get("chapter")
 
-    if miscon_id and not miscon_chapter:
+    if miscon_id:
         try:
             catalog = getattr(diagnostician, "_load_catalog", lambda: [])()
             for m in catalog:
                 if m.get("id") == miscon_id:
-                    miscon_chapter = m.get("chapter")
+                    miscon_name = m.get("name") or miscon_name
+                    miscon_chapter = m.get("chapter") or miscon_chapter
                     break
         except Exception:
             pass

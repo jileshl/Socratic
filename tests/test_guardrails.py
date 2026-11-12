@@ -47,3 +47,44 @@ def test_study_frustration_is_not_read_as_self_harm(monkeypatch):
     # A real self-harm phrase still gets the severe path, even with frustration words around it.
     for text in ("I'm done with life", "I'm done. I want to die", "I don't understand anything, I want to hurt myself"):
         assert policy.check_input_guardrails(text)["distress_level"] == "severe", text
+
+
+def test_academic_distress_flunk():
+    res = check_input_guardrails("I am going flunk but I want my friends to fail too")
+    assert res["distress_level"] == "academic"
+    assert res["is_distress"] is True
+
+
+def test_diagnostician_sanitizes_null_and_unknown_misconceptions(monkeypatch):
+    from socratic_tutor.agents import diagnostician
+    from socratic_tutor.web.api import _misconception_brief
+    from socratic_tutor.learner_store import LearnerStore
+
+    # 1. LLM returning literal string "null" on a query without keyword matches
+    monkeypatch.setattr(diagnostician.llm, "chat_json", lambda *a, **k: {
+        "identified_misconception_id": "null",
+        "identified_misconception_name": "null",
+    })
+    res = diagnostician.diagnose_response("Hello how are you doing today?")
+    assert res["identified_misconception_id"] is None
+    assert res["identified_misconception_name"] is None
+
+    # 2. LLM returning an uncatalogued ID
+    monkeypatch.setattr(diagnostician.llm, "chat_json", lambda *a, **k: {
+        "identified_misconception_id": "UNKNOWN_ID",
+        "identified_misconception_name": "Unknown",
+    })
+    res2 = diagnostician.diagnose_response("some generic question")
+    assert res2["identified_misconception_id"] is None
+
+    # 3. Web API brief rejects "null" and uncatalogued IDs
+    assert _misconception_brief("null") is None
+    assert _misconception_brief("none") is None
+    assert _misconception_brief(None) is None
+    assert _misconception_brief("FAKE_ID") is None
+
+    # 4. LearnerStore ignores "null"
+    store = LearnerStore()
+    store.record_misconception("stu_test_clean", "null")
+    prof = store.get_profile("stu_test_clean")
+    assert not any(m.get("id") == "null" for m in prof.get("misconceptions", []))
