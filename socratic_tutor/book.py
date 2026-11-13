@@ -333,15 +333,22 @@ def pick_figure(query: str, concept_id: str | None, section_ids: list[str], pref
     words, idf = _figure_index()
     if not words:
         return None
-    # Stay in the topic's chapter: "an object in front of a concave mirror" must not pick the eye chapter's
-    # concave-lens figure just because both say "object", "concave" and "in front of".
-    chapter = (CONCEPT_SECTIONS.get(concept_id or "") or section_ids or [""])[0].split(".")[0]
+    # Stay in the topic's chapter: the section being shown takes priority over concept_id
+    # (a card showing Section 11.8 must never pick a Figure from Chapter 9 just because concept_id lagged behind).
+    target_sections = [s for s in section_ids if "." in s]
+    if target_sections:
+        chapter = target_sections[0].split(".")[0]
+    else:
+        concept_secs = CONCEPT_SECTIONS.get(concept_id or "") or []
+        chapter = concept_secs[0].split(".")[0] if concept_secs else ""
     if chapter:
         words = {n: w for n, w in words.items() if str(_figures()[n].get("chapter", "")) == chapter}
         if not words:
             return None
     q = _stems(query)
-    own = set(CONCEPT_FIGURES.get(concept_id or "", []))
+    # Only use topic's own figures if the topic belongs to the same chapter being viewed
+    concept_chapter = (CONCEPT_SECTIONS.get(concept_id or "") or [""])[0].split(".")[0]
+    own = set(CONCEPT_FIGURES.get(concept_id or "", [])) if (not chapter or chapter == concept_chapter) else set()
     cited = {n for sid in section_ids[:2] for n in figures_in_section(sid)}
 
     def overlap(n: str) -> float:
@@ -361,18 +368,36 @@ def pick_figure(query: str, concept_id: str | None, section_ids: list[str], pref
     return figure(best) if overlap(best) >= bar else None
 
 
+def concept_for_section(section_id: str | None) -> str | None:
+    """Return the concept ID for a given NCERT section ID."""
+    if not section_id:
+        return None
+    sid = str(section_id).strip()
+    for cid, secs in CONCEPT_SECTIONS.items():
+        if sid in secs:
+            return cid
+    parts = sid.split(".")
+    for length in range(len(parts) - 1, 1, -1):
+        prefix = ".".join(parts[:length])
+        for cid, secs in CONCEPT_SECTIONS.items():
+            if prefix in secs:
+                return cid
+    return None
+
+
 def book_card(section_ids: list[str], query: str = "", concept_id: str | None = None) -> dict[str, Any] | None:
     """The "From your NCERT book" card for a tutor reply: the first cited section that the index has,
     the part of it closest to the question, its formulas, and the figure that fits the question (if any)."""
     sid = next((s for s in section_ids if s in _chunks()), None)
     if sid is None:
         return None
+    valid_sections = [sid] + [s for s in section_ids if s in _chunks() and s != sid]
     return {
         "section_id": sid,
         "title": section_title(sid),
         "excerpt": excerpt(sid, query),
         "formulas": _formulas().get(sid, [])[:2],
-        "figure": pick_figure(query, concept_id, [s for s in section_ids if s in _chunks()]),
+        "figure": pick_figure(query, concept_id, valid_sections),
         "source": "NCERT Class 10 Science",
     }
 

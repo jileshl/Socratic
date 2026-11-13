@@ -51,14 +51,45 @@ _PATTERNS: list[tuple[str, str, re.Pattern[str]]] = [
     for phrase in phrases
 ]
 
+FOLLOW_UP_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"\b(another\s+hint|give\s+me\s+a\s+hint|more\s+hint|next\s+hint)\b", re.IGNORECASE),
+    re.compile(r"\b(what\s+next|continue|explain\s+again|tell\s+me\s+more|still\s+confused)\b", re.IGNORECASE),
+    re.compile(r"^(ok|okay|yes|yeah|no|thanks|thank\s+you|got\s+it|i\s+see|huh\??|why\??|what\??)$", re.IGNORECASE),
+)
 
-def topic_of(text: str) -> str | None:
-    """The topic the message clearly names (the longest phrase wins), or None."""
+
+def topic_of(text: str, fallback_semantic: bool = True) -> str | None:
+    """The topic the message clearly names (longest phrase wins), with semantic dense fallback."""
+    t = (text or "").strip()
+    if not t:
+        return None
+
     best_len, best = 0, set()
     for concept, phrase, pattern in _PATTERNS:
-        if pattern.search(text or ""):
+        if pattern.search(t):
             if len(phrase) > best_len:
                 best_len, best = len(phrase), {concept}
             elif len(phrase) == best_len:
                 best.add(concept)
-    return next(iter(best)) if len(best) == 1 else None
+    if len(best) == 1:
+        return next(iter(best))
+
+    # Semantic Embedding / Dense Retrieval Fallback:
+    # When keyword terminology leaks (formulas, varied wording, units like Ω or V),
+    # query Chroma's local dense vector space to map the query to an NCERT concept.
+    if fallback_semantic and not any(p.search(t) for p in FOLLOW_UP_PATTERNS):
+        try:
+            from socratic_tutor.retrieval import HybridRetriever
+            from socratic_tutor.book import concept_for_section
+            r = HybridRetriever()
+            hits = r.search_dense(t, top_k=1)
+            if hits:
+                top = hits[0]
+                if float(top.get("dense_score", 0.0)) >= 0.28:
+                    cid = concept_for_section(top.get("section_id"))
+                    if cid:
+                        return cid
+        except Exception:
+            pass
+
+    return None

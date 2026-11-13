@@ -510,16 +510,30 @@ def _safe_figure(text: str, concept_id: str | None, prefer_own: bool = False) ->
 
 def _book_for(values: dict[str, Any], message: str, concept_id: str | None) -> dict[str, Any] | None:
     # A follow-up ("another hint") says little on its own, so the student's last questions help pick the figure.
-    # A message that names its own topic ("why is the sky blue?") stands alone: the earlier questions may be about
+    # A message that names its own topic stands alone: the earlier questions may be about
     # the old topic (a reflection lesson once gave the sky question a long-sightedness figure).
     asked = [str(getattr(m, "content", "")) for m in (values.get("messages") or []) if getattr(m, "type", "") == "human"]
-    query = message if topics.topic_of(message) else " ".join([message] + asked[-3:-1])
-    # Which page to open: the section the reply itself names ("[NCERT Sec 11.4]") first, then the topic's own
-    # sections, then the rest of the search results.
-    cited = list(values.get("citations") or [])
     named = re.findall(r"\b((?:9|10|11)\.\d+(?:\.\d+)?)\b", str(values.get("response") or ""))
+    named_ch = named[0].split(".")[0] if named else None
+
+    # Sync concept_id if the reply explicitly cited a section mapped to another concept
+    if named:
+        mapped_cid = book.concept_for_section(named[0])
+        if mapped_cid:
+            concept_id = mapped_cid
+
+    stands_alone = bool(topics.topic_of(message))
+    if not stands_alone and asked and len(asked) > 1 and named_ch:
+        prev_topic = topics.topic_of(asked[-2])
+        if prev_topic:
+            prev_secs = book.CONCEPT_SECTIONS.get(prev_topic, [])
+            if prev_secs and prev_secs[0].split(".")[0] != named_ch:
+                stands_alone = True
+
+    query = message if stands_alone else " ".join([message] + asked[-3:-1])
+    cited = list(values.get("citations") or [])
     own = book.CONCEPT_SECTIONS.get(concept_id or "", [])
-    order = list(dict.fromkeys([s for s in named if s in cited or s in own] + [s for s in own if s in cited] + cited))
+    order = list(dict.fromkeys(named + [s for s in own if s in cited] + cited))
     try:
         return book.book_card(order, query, concept_id)
     except Exception:  # the book card is extra help; a reply never fails because of it
