@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Teacher view</title>
 <link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/katex/katex.min.css">
+<script defer src="/static/katex/katex.min.js"></script>
+<script defer src="/static/katex/contrib/auto-render.min.js"></script>
 <script>
 try { if (localStorage.getItem("theme") === "dark") document.documentElement.setAttribute("data-theme", "dark"); } catch(e) {}
 </script>
@@ -116,6 +119,50 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": 
 const nice = id => { const t = String(id || "").replace("concept_", "").replaceAll("_", " "); return t.charAt(0).toUpperCase() + t.slice(1); };
 let liveTimer = null, opsDemo = false;
 
+function insertSymbol(sym, targetId) {
+  const el = (targetId && document.getElementById(targetId)) || document.activeElement;
+  if (!el || (el.tagName !== "TEXTAREA" && el.tagName !== "INPUT")) return;
+  const start = el.selectionStart ?? el.value.length;
+  const end = el.selectionEnd ?? el.value.length;
+  const val = el.value;
+  el.value = val.substring(0, start) + sym + val.substring(end);
+  const newPos = start + sym.length;
+  el.selectionStart = el.selectionEnd = newPos;
+  el.focus();
+}
+
+function renderMath(root) {
+  const target = root || document.body;
+  if (window.renderMathInElement) {
+    try {
+      renderMathInElement(target, {
+        delimiters: [
+          { left: "$$", right: "$$", display: true },
+          { left: "\\[", right: "\\]", display: true },
+          { left: "\\(", right: "\\)", display: false },
+          { left: "$", right: "$", display: false }
+        ],
+        throwOnError: false
+      });
+      return;
+    } catch(e) {}
+  }
+  const targets = target.querySelectorAll ? target.querySelectorAll(".transcript, .panel, td") : [];
+  targets.forEach(el => {
+    if (el.dataset && el.dataset.mathParsed) return;
+    if (el.tagName === "TEXTAREA" || el.tagName === "INPUT") return;
+    let html = el.innerHTML;
+    if (html.includes("\\(") || html.includes("\\[") || html.includes("\\frac")) {
+      html = html.replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, '<span class="math-frac"><sup>$1</sup>&frasl;<sub>$2</sub></span>');
+      html = html.replace(/\\\((\s*)/g, '<span class="math-inline">').replace(/(\s*)\\\)/g, '</span>');
+      html = html.replace(/\\\[(\s*)/g, '<div class="math-display">').replace(/(\s*)\\\]/g, '</div>');
+      el.innerHTML = html;
+      if (el.dataset) el.dataset.mathParsed = "1";
+    }
+  });
+}
+document.addEventListener("DOMContentLoaded", () => { setTimeout(() => renderMath(), 200); });
+
 async function api(path, opts = {}) {
   const r = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
   if (r.status === 401) { show(false); throw new Error("login"); }
@@ -223,6 +270,7 @@ async function loadApprovals() {
     html = "<div class='panel muted'>Nothing to review. Propose a set above, or the Demo guide can add [DEMO] questions.</div>";
   }
   document.getElementById("apprList").innerHTML = html;
+  renderMath(document.getElementById("apprList"));
   document.getElementById("apprLog").innerHTML = "<tr><th>When</th><th>Question set</th><th>Decision</th><th>Result</th></tr>" + (body.recent_decisions.length ? body.recent_decisions.map(r => `<tr><td>${esc(new Date(r.at).toLocaleTimeString())}</td><td class="hash">${esc(r.item_id)}</td><td>${esc(r.action)}</td><td class="${r.outcome === "ok" ? "okay" : "error"}">${r.outcome === "ok" ? "Done" : esc(r.outcome)}</td></tr>`).join("") : "<tr><td class='muted' colspan='4'>No decisions yet.</td></tr>");
 }
 function setPanel(item) {
@@ -243,6 +291,20 @@ function setPanel(item) {
     const fieldId = setId + "-" + index;
     questions += `<div style="margin-top:12px" data-qid="${esc(q.id)}">
       <div class="row"><b>${esc(nice(q.concept_id))}</b> <span class="chip">${esc(q.difficulty)}</span> <span class="hash">${esc(q.id)}</span></div>
+      <div class="sh-items" style="margin:4px 0">
+        <span class="sh-title" style="font-size:11px">Insert:</span>
+        <button type="button" class="sh-btn" onclick="insertSymbol('Ω', 'a-${fieldId}')" title="Ohm">Ω</button>
+        <button type="button" class="sh-btn" onclick="insertSymbol('λ', 'a-${fieldId}')" title="Wavelength">λ</button>
+        <button type="button" class="sh-btn" onclick="insertSymbol('θ', 'a-${fieldId}')" title="Theta">θ</button>
+        <button type="button" class="sh-btn" onclick="insertSymbol('μ', 'a-${fieldId}')" title="Mu">μ</button>
+        <button type="button" class="sh-btn" onclick="insertSymbol('²', 'a-${fieldId}')" title="Squared">²</button>
+        <button type="button" class="sh-btn" onclick="insertSymbol('³', 'a-${fieldId}')" title="Cubed">³</button>
+        <button type="button" class="sh-btn" onclick="insertSymbol('°', 'a-${fieldId}')" title="Degree">°</button>
+        <button type="button" class="sh-btn" onclick="insertSymbol('√', 'a-${fieldId}')" title="Square root">√</button>
+        <button type="button" class="sh-btn" onclick="insertSymbol('±', 'a-${fieldId}')" title="Plus-minus">±</button>
+        <button type="button" class="sh-btn" onclick="insertSymbol('≈', 'a-${fieldId}')" title="Approx">≈</button>
+        <button type="button" class="sh-btn" onclick="insertSymbol('Δ', 'a-${fieldId}')" title="Delta">Δ</button>
+      </div>
       <label class="muted" for="q-${fieldId}">Question</label><textarea id="q-${fieldId}" rows="2" data-k="prompt">${esc(q.prompt)}</textarea>
       <label class="muted" for="a-${fieldId}">${esc(keyLabel)}</label><textarea id="a-${fieldId}" rows="1" data-k="gold_answer">${esc(q.gold_answer)}</textarea>
     </div>`;
@@ -483,6 +545,7 @@ function nextLabel() {
   document.getElementById("labelItem").innerHTML = item ? `<div class="panel"><div class="hash">${esc(item.item_id)}</div><p class="muted">The simulated student's hidden misconception: ${esc(item.misconception)}</p><pre class="transcript">${esc(item.transcript)}</pre>
     ${Object.entries(CRITERIA).map(([k, q]) => `<div class="row" style="justify-content:space-between;margin:8px 0"><span style="max-width:60ch">${esc(q)}</span><span class="seg score">${[1,2,3,4,5].map(v => `<button type="button" data-c="${k}" data-v="${v}" onclick="pick(this)">${v}</button>`).join("")}</span></div>`).join("")}
     <button class="primary" onclick="saveLabel()">Save and show the next one</button></div>` : "<div class='panel muted'>Nothing left to score.</div>";
+  renderMath(document.getElementById("labelItem"));
 }
 function pick(btn) { btn.parentElement.querySelectorAll("button").forEach(b => b.classList.toggle("on", b === btn)); }
 async function saveLabel() {

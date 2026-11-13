@@ -406,3 +406,28 @@ def test_book_card_for_a_new_topic_ignores_the_old_lessons_questions():
               "citations": ["10.6.2"], "response": "Which colour do the tiny particles in air scatter most? [NCERT Sec 10.6.2]"}
     card = api._book_for(values, "why is the sky blue?", "concept_scattering")
     assert card is None or not card.get("figure") or card["figure"]["figure"] != "10.3"
+
+
+def test_static_katex_assets_served_locally(client):
+    r_css = client.get("/static/katex/katex.min.css")
+    assert r_css.status_code == 200
+    assert "font-face" in r_css.text
+
+    r_js = client.get("/static/katex/katex.min.js")
+    assert r_js.status_code == 200
+
+    r_contrib = client.get("/static/katex/contrib/auto-render.min.js")
+    assert r_contrib.status_code == 200
+
+    r_font = client.get("/static/fonts/atkinson-hyperlegible-regular.woff2")
+    assert r_font.status_code == 200
+    assert len(r_font.content) > 1000
+
+    r_style = client.get("/static/style.css")
+    assert r_style.status_code == 200
+    assert "fonts.googleapis.com" not in r_style.text
+    assert "/static/fonts/atkinson-hyperlegible" in r_style.text
+
+    r_traversal = client.get("/static/../server.py")
+    assert r_traversal.status_code in (404, 400)
+
