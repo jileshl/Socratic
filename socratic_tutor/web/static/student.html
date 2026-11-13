@@ -959,11 +959,13 @@ function renderHood() {
   if (!t.blocked && ran.has("supervisor")) add("Supervisor", by("supervisor"), "ok", [
     t.concept ? `Topic: <b>${esc(t.concept.title)}</b>${b.concept_pinned ? " (the student picked it)" : ""}` : null,
     (t.plan || []).length ? `Plan: ${esc(t.plan.join(" → "))}` : null,
+    b.replanned ? `<b>Replanned</b> after the quiz answer: mastery updated, study plan revised` : null,
     `<span class="model">No model: routing rules in code (mode, mastery, mix-ups)</span>`]);
   if (ran.has("diagnostician")) add("Diagnostician", by("diagnostician"), t.misconception ? "warn" : "ok", [
     t.misconception ? `Mix-up spotted: <b>${esc(t.misconception.name)}</b> <span class="hash">${esc(t.misconception.id)}</span>` : "No mix-up spotted in this message",
     `<span class="model">Keyword match against the mix-up catalogue, then the model: ${esc(M.agents || "")}</span>`]);
   if (ran.has("tutor")) add("Tutor", by("tutor"), "ok", [
+    b.tutor_mode === "react" ? `<b>ReAct agent</b>: chose its own look-ups, each a call to the textbook-kb <b>MCP server</b> through the tool hooks` : null,
     (b.sources || []).length ? `Searched the NCERT book; found ${b.sources.map(x => `<b>${esc(x.section_id)}</b> ${esc(x.title)}`).join(", ")}` : "Searched the NCERT book",
     t.hint_step ? `Hint level <b>${t.hint_step} of ${t.max_hints || 3}</b>. It only rises when the student asks for more help or repeats a mix-up` : null,
     b.lesson_used ? `Used a teaching lesson the teacher approved` : null,

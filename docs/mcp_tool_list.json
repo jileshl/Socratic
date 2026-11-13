@@ -874,5 +874,124 @@
       "title": "ExemplarResult",
       "type": "object"
     }
+  },
+  {
+    "server": "learner-store",
+    "tool": "get_learner_profile",
+    "access": "read",
+    "description": "Read one student's learner record: mastery per topic (0 to 1), misconceptions seen (with whether they are sorted), teaching lessons that worked, and failure streaks per topic. The ID is pseudonymous (stu_...).",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "student_id": {
+          "title": "Student Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "student_id"
+      ],
+      "title": "get_learner_profileArguments"
+    },
+    "output_schema": {
+      "properties": {
+        "ok": {
+          "title": "Ok",
+          "type": "boolean"
+        },
+        "student_id": {
+          "title": "Student Id",
+          "type": "string"
+        },
+        "mastery": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Mastery",
+          "type": "object"
+        },
+        "misconceptions": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Misconceptions",
+          "type": "array"
+        },
+        "lessons": {
+          "items": {},
+          "title": "Lessons",
+          "type": "array"
+        },
+        "failure_streaks": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Failure Streaks",
+          "type": "object"
+        },
+        "error": {
+          "title": "Error",
+          "type": "string"
+        }
+      },
+      "title": "ProfileResult",
+      "type": "object"
+    }
+  },
+  {
+    "server": "learner-store",
+    "tool": "update_mastery",
+    "access": "write",
+    "description": "Set one topic's mastery (0 to 1) for one student, from a quiz the grader's code has marked. WRITE tool: it changes only this student's own record and is reversible, so it needs no teacher approval.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "student_id": {
+          "title": "Student Id",
+          "type": "string"
+        },
+        "concept_id": {
+          "title": "Concept Id",
+          "type": "string"
+        },
+        "score": {
+          "title": "Score",
+          "type": "number"
+        }
+      },
+      "required": [
+        "student_id",
+        "concept_id",
+        "score"
+      ],
+      "title": "update_masteryArguments"
+    },
+    "output_schema": {
+      "properties": {
+        "ok": {
+          "title": "Ok",
+          "type": "boolean"
+        },
+        "student_id": {
+          "title": "Student Id",
+          "type": "string"
+        },
+        "concept_id": {
+          "title": "Concept Id",
+          "type": "string"
+        },
+        "mastery": {
+          "title": "Mastery",
+          "type": "number"
+        },
+        "error": {
+          "title": "Error",
+          "type": "string"
+        }
+      },
+      "title": "UpdateResult",
+      "type": "object"
+    }
   }
 ]

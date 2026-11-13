@@ -173,9 +173,9 @@ class SingleAgentSystem(TutorSystem):
         self._agent = None if llm_client.stub_mode() else self._build()
         self._fallback = RetrievalPromptSystem("baseline_c0", "c1-stub")
 
-    def start(self, student_id: str, mode: str) -> None:
-        super().start(student_id, mode)
-        self._fallback.start(student_id, mode)
+    def start(self, student_id: str, mode: str, current_question_id: str | None = None) -> None:
+        super().start(student_id, mode, current_question_id)
+        self._fallback.start(student_id, mode, current_question_id)
 
     def _build(self):  # noqa: ANN202
         @tool

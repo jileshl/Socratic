@@ -102,5 +102,10 @@ def test_team_rows_were_only_appended_to(tmp_path):
             base = subprocess.run(["git", "show", f"origin/main:{name}"], capture_output=True, text=True, cwd=ROOT, check=True).stdout
         except (subprocess.CalledProcessError, FileNotFoundError):
             pytest.skip("origin/main not available")
+        # Since 13 Nov the held-out rows live in evalkit/held_out/ (a folder the agent cannot read): every row
+        # on main must still exist, unchanged, in one of the two files.
         current = (ROOT / name).read_text(encoding="utf-8")
-        assert current.startswith(base), f"{name}: an existing row was changed"
+        held = ROOT / "evalkit" / "held_out" / name.split("/")[-1]
+        rows = set(current.splitlines()) | (set(held.read_text(encoding="utf-8").splitlines()) if held.exists() else set())
+        missing = [line for line in base.splitlines() if line.strip() and line not in rows]
+        assert not missing, f"{name}: {len(missing)} existing row(s) were changed or lost"

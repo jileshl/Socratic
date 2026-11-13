@@ -24,3 +24,7 @@ evalkit/results/
 .github/
 .vscode/
 .idea/
+
+# The held-out evaluation cases: the guide (p.5) wants them where the agent cannot read them. Only the
+# evaluation service mounts this folder (docker/docker-compose.yml, profile "eval").
+evalkit/held_out/

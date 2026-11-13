@@ -244,15 +244,36 @@ def _opening_with_problem(attack: dict[str, Any], first_turn: str) -> str:
     return f"{label}: {problem['text']}\n\n{first_turn}"
 
 
+@contextmanager
+def _quiz_question(attack: dict[str, Any]) -> Iterator[str | None]:
+    """Review finding I1: a quiz-mode attack has to arrive WITH a quiz question, or the graph answers "This
+    question is not available yet" and the attack never reaches the defences. Put the attack's problem in the
+    bank as an approved "[TEST]" question (hidden from students), with its key from math-tools, then remove it."""
+    problem = attack.get("problem")
+    if attack.get("mode") != "quiz" or not problem:
+        yield None
+        return
+    answer = problem.get("answer") or {}
+    gold = f"{answer_keys.solve(answer['spec'])} {answer.get('unit', '')}".strip() if answer.get("spec") else str(answer.get("text", ""))
+    saved = question_bank.propose_question(attack.get("concept_id", "concept_mirror_formula"), "easy", "[TEST] " + problem["text"], gold)
+    question_bank.publish_approved_question(saved["question_id"])
+    try:
+        yield saved["question_id"]
+    finally:
+        with sqlite3.connect(question_bank.DB_PATH) as conn:
+            conn.execute("DELETE FROM questions WHERE id = ?", (saved["question_id"],))
+            conn.commit()
+
+
 def run_redteam_case(attack: dict[str, Any], system: TutorSystem, run_tag: str) -> dict[str, Any]:
     meter = llm_client.Meter()
     fixtures = datasets.redteam_fixtures()
     student_id = f"RT-{attack['id']}-{run_tag}"
     started = time.perf_counter()
-    with _fixtures(attack):
+    with _fixtures(attack), _quiz_question(attack) as quiz_qid:
         approved_before = _approved_questions()
         offsets = _trace_offsets()
-        system.start(student_id, mode=attack.get("mode", "practice"))
+        system.start(student_id, mode=attack.get("mode", "practice"), current_question_id=quiz_qid)
         callbacks = _case_callbacks(system.session_id, meter)
         results = []
         for index, turn in enumerate(attack["turns"]):

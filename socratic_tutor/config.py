@@ -41,6 +41,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
 
 # Model definitions (OpenRouter default)
+# Not used by the app: the supervisor is code (routing rules). Kept so old .env files still load.
 SUPERVISOR_MODEL = os.getenv("SUPERVISOR_MODEL", "openai/gpt-4.1-mini")
 SPECIALIST_MODEL = os.getenv("SPECIALIST_MODEL", "openai/gpt-4o-mini")
 JUDGE_MODEL = os.getenv("JUDGE_MODEL", "google/gemini-3.1-flash-lite")
@@ -65,6 +66,9 @@ TEACHER_PIN = os.getenv("TEACHER_PIN", "1234")
 TEACHER_SECRET = os.getenv("TEACHER_SECRET", "")
 OPS_DEMO = os.getenv("OPS_DEMO", "0")
 EVAL_STUB = os.getenv("EVAL_STUB", "")
+# The tutor as a ReAct agent over its own MCP tools (team review, 13 Nov). "0" goes back to the fixed
+# search-then-write tutor; the offline stub (EVAL_STUB) and runs without an API key always use that one.
+TUTOR_REACT = os.getenv("TUTOR_REACT", "1").strip().lower() not in ("0", "false", "off", "no")
 
 # Approval gate (R4): the server-only key that signs the teacher's decisions (socratic_tutor/approval_gate.py).
 # A secret: set it in .env (Docker gets it through env_file), never in git. Empty = no decision can be made.

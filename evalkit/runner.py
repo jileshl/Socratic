@@ -147,7 +147,9 @@ def summarise(cases: list[dict[str, Any]], cfg: dict[str, Any], split: str, repe
         "repeat": repeat,
         "stub": llm_client.stub_mode(),
         "prompt_version": prompts.PROMPT_VERSION,
-        "supervisor_model": config.SUPERVISOR_MODEL,
+        # The supervisor is code (routing rules), not a model; SUPERVISOR_MODEL is not used by the app (team review,
+        # 13 Nov: the log used to name gpt-4.1-mini here). The tutor's mode is logged with it.
+        "supervisor_model": "code (no model); tutor " + ("ReAct over MCP" if (config.TUTOR_REACT and not llm_client.stub_mode()) else "fixed"),
         "specialist_model": config.SPECIALIST_MODEL,
         "judge_model": config.JUDGE_MODEL,
         "simulated_student_model": config.SIMULATED_STUDENT_MODEL,

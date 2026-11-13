@@ -503,7 +503,10 @@ def search_steps(query: str, chapter: str | None, class_num: str | None, top_k: 
 
     # [T5] the search itself, one call at a time (SEARCH_LOCK). textbook_kb does the filtering (decision TK1).
     with SEARCH_LOCK:
-        found = textbook_kb.search_textbook(tidy_query, chapter=chapter_number, top_k=top_k, class_num=tidy_class)
+        # class_num only when one was asked for (the agents call this server too, and a test may swap in a
+        # search function that takes no class_num).
+        extra = {"class_num": tidy_class} if tidy_class is not None else {}
+        found = textbook_kb.search_textbook(tidy_query, chapter=chapter_number, top_k=top_k, **extra)
 
     # [T6] nothing found: say so, rather than an empty list the model could read as "the textbook doesn't
     # cover this". It happens when the query has no words to match (for example "???").
@@ -707,5 +710,7 @@ def get_exemplar(exemplar_id: str) -> ExemplarResult:
 
 
 if __name__ == "__main__":
-    # stdio transport (development, capstone guide p.5), like the other two servers.
-    mcp.run(transport="stdio")
+    # stdio for development; "--http PORT" for streamable HTTP inside Docker (capstone guide p.5).
+    from socratic_tutor.tools.serve import main
+
+    main(mcp)

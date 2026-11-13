@@ -14,6 +14,7 @@ from socratic_tutor.state import SocraticState
 from socratic_tutor.policy import check_input_guardrails, check_answer_leak, check_reply, keep_retrieved_citations
 from socratic_tutor import intent as intent_check
 from socratic_tutor import topics
+from socratic_tutor import mcp_tools
 from socratic_tutor.concept_graph import ConceptGraph
 from socratic_tutor.learner_store import LearnerStore
 from socratic_tutor.reflexion import ReflexionPlaybook
@@ -325,8 +326,10 @@ def node_supervisor(state: SocraticState) -> dict:
     hint_step = state.get("hint_step", 1)
     hint_raised = state.get("hint_raised_this_turn", False)
     last_concept = state.get("last_concept_id")
-    if last_concept and current_concept and last_concept != current_concept:
-        hint_step = 1
+    # A new topic (or the session's first turn) starts the hint ladder where the learner record says: a student who
+    # has mastered the topic skips the orientation step (signature challenge A).
+    if (last_concept and current_concept and last_concept != current_concept) or (not last_concept and not hint_raised):
+        hint_step = _start_hint(mastery.get(current_concept or ""))
 
     last_qid = state.get("last_question_id")
     qid = state.get("current_question_id")
@@ -641,10 +644,12 @@ def node_diagnostician(state: SocraticState) -> dict:
 def search_textbook(query: str, chapter: str | None = None, top_k: int = 4) -> list[dict[str, Any]]:
     """The tutor's textbook tool, under the name R4's permission map knows ("search_textbook").
 
-    It calls textbook_kb.search_textbook at call time, so a test that swaps that function still works, and
-    the hook still sees the right tool name.
+    It goes through the MCP protocol to the textbook-kb server (HTTP inside Docker, in-memory elsewhere; see
+    mcp_tools.py), so the agents use the same MCP tools the tool list documents. The server calls
+    textbook_kb.search_textbook at call time, so a test that swaps that function still works, and the hook
+    still sees the right tool name.
     """
-    return textbook_kb.search_textbook(query, chapter=chapter, top_k=top_k)
+    return mcp_tools.search_textbook(query, chapter=chapter, top_k=top_k)
 
 
 def _tutor_search(arguments: dict[str, Any], state: SocraticState) -> list[dict[str, Any]]:
@@ -665,6 +670,54 @@ def _tutor_search(arguments: dict[str, Any], state: SocraticState) -> list[dict[
         return []
     # [TS3] The search's own result.
     return result
+
+
+# The tutor's textbook tools, by the names R4's permission map knows; each goes to the textbook-kb MCP server.
+_TEXTBOOK_TOOLS: dict[str, Any] = {
+    "search_textbook": search_textbook,
+    "get_section": mcp_tools.get_section,
+    "get_exemplar": mcp_tools.get_exemplar,
+}
+
+
+def _learner_context(state: SocraticState) -> str | None:
+    """What the learner record says about this student, in a line the tutor can use (signature challenge A).
+    Pseudonymous: mastery numbers, topic titles and misconception names only. With memory off (E4) the record is
+    empty, so every student gets the same help: that is the comparison."""
+    student_id = state.get("student_id")
+    if not student_id:
+        return None
+    try:
+        profile = LearnerStore().get_profile(student_id)
+    except Exception:
+        return None
+    concepts = ConceptGraph().concepts
+    mastery = profile.get("mastery_map") or {}
+    here = state.get("current_concept_id")
+    parts: list[str] = []
+    if here in mastery:
+        parts.append(f"quiz mastery of this topic {round(float(mastery[here]) * 100)}% (passing is {round(config.PASSING_MASTERY_THRESHOLD * 100)}%)")
+    else:
+        parts.append("no quiz on this topic yet")
+    mastered = [concepts[c]["title"] for c, v in mastery.items() if c != here and c in concepts and v >= config.PASSING_MASTERY_THRESHOLD]
+    if mastered:
+        parts.append("has mastered " + ", ".join(mastered[:4]))
+    names = {m.get("id"): m.get("name") for m in getattr(diagnostician, "_load_catalog", lambda: [])()}
+    seen = []
+    for item in profile.get("misconceptions") or []:
+        mid = item.get("id") if isinstance(item, dict) else str(item)
+        if mid in names:
+            seen.append(names[mid] + (" (sorted since)" if isinstance(item, dict) and item.get("resolved") else ""))
+    if seen:
+        parts.append("mix-ups seen before: " + "; ".join(seen[:3]))
+    if profile.get("lessons"):
+        parts.append(f"{len(profile['lessons'])} teaching lesson(s) worked for them before")
+    return "; ".join(parts)
+
+
+def _start_hint(mastery: float | None) -> int:
+    """Where the hint ladder starts on a topic: a student who has mastered it skips the orientation step."""
+    return 2 if (mastery or 0.0) >= config.PASSING_MASTERY_THRESHOLD else 1
 
 
 def _last_tutor_reply(messages: list) -> str:
@@ -698,6 +751,33 @@ def node_tutor(state: SocraticState) -> dict:
     topic_title = ConceptGraph().concepts.get(state.get("current_concept_id") or "", {}).get("title")
     if topic_title and (state.get("intent") == "confused" or (state.get("lesson_concept_id") and not intent_check.PHYSICS_WORDS.search(query))):
         search_query = f"{topic_title}: {query}"
+    hint_step = state.get("hint_step", 1)
+    learner_context = _learner_context(state)
+
+    # Teacher Rule 2: Parallel resistor remediation path
+    remediation = None
+    query_lower = query.lower()
+    if "parallel" in query_lower and any(w in query_lower for w in ("resistor", "resistance", "current")):
+        if state.get("teacher_alert_triggered") or hint_step >= 2:
+            remediation = "parallel_resistors"
+    lesson = state.get("effective_lesson_applied")
+
+    # The tutor as a ReAct agent over its MCP tools, when a real model is configured (team review, 13 Nov). It
+    # decides what to look up; every call goes through the tool hooks and the textbook-kb MCP server.
+    hint: str | None = None
+    tutor_mode = "fixed"
+    if not passages and tutor.react_available():
+        try:
+            hint, found = tutor.react_hint(
+                search_query, chapter, lambda name, args: tool_hooks.run_tool("tutor", _TEXTBOOK_TOOLS[name], args, state),
+                hint_level=hint_step, approved_lesson=lesson, remediation=remediation,
+                misconception=state.get("identified_misconception"), conversation_history=state.get("messages", []),
+                learner_context=learner_context,
+            )
+            passages = found
+            tutor_mode = "react"
+        except Exception:
+            hint = None  # fall back to the fixed tutor below; the reply still goes out
     if not passages:
         # Both searches go through R4's tool hooks (permission, quiz rule, budget, log), as the tutor's tool.
         passages = _tutor_search({"query": search_query, "chapter": chapter, "top_k": 4}, state)
@@ -712,25 +792,17 @@ def node_tutor(state: SocraticState) -> dict:
         if sec and sec not in initial_citations:
             initial_citations.append(sec)
 
-    hint_step = state.get("hint_step", 1)
-
-    # Teacher Rule 2: Parallel resistor remediation path
-    remediation = None
-    query_lower = query.lower()
-    if "parallel" in query_lower and any(w in query_lower for w in ("resistor", "resistance", "current")):
-        if state.get("teacher_alert_triggered") or hint_step >= 2:
-            remediation = "parallel_resistors"
-
-    lesson = state.get("effective_lesson_applied")
-    hint = tutor.generate_hint(
-        student_query=query,
-        ncert_passages=passages,
-        hint_level=hint_step,
-        approved_lesson=lesson,
-        remediation=remediation,
-        misconception=state.get("identified_misconception"),
-        conversation_history=state.get("messages", []),
-    )
+    if hint is None:
+        hint = tutor.generate_hint(
+            student_query=query,
+            ncert_passages=passages,
+            hint_level=hint_step,
+            approved_lesson=lesson,
+            remediation=remediation,
+            misconception=state.get("identified_misconception"),
+            conversation_history=state.get("messages", []),
+            learner_context=learner_context,
+        )
 
     # Repeat guard: a reply almost the same as the tutor's last one helps nobody (team testing, 12 Nov: the same
     # concave-mirror hint, turn after turn). Ask once more for a different approach.
@@ -746,6 +818,7 @@ def node_tutor(state: SocraticState) -> dict:
             remediation=remediation,
             misconception=state.get("identified_misconception"),
             conversation_history=state.get("messages", []),
+            learner_context=learner_context,
         )
         if retry and not _too_similar(retry, previous):
             hint = retry
@@ -760,6 +833,7 @@ def node_tutor(state: SocraticState) -> dict:
         "retrieved_sections": passages,
         "hint_tries": hint_tries,
         "answer_leak_flag": False,
+        "tutor_mode": tutor_mode,
         "messages": [AIMessage(content=hint)],
     }
 

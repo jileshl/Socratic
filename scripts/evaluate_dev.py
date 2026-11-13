@@ -23,6 +23,10 @@ def evaluate_retrieval(
         for line in queries_path.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
+    # The held-out rows live in evalkit/held_out/ (the guide: a folder the agent cannot read).
+    held = Path(__file__).resolve().parent.parent / "evalkit" / "held_out" / queries_path.name
+    if split != "dev" and held.exists() and held.resolve() != queries_path.resolve():
+        records += [json.loads(line) for line in held.read_text(encoding="utf-8").splitlines() if line.strip()]
     records = [record for record in records if split == "all" or record["split"] == split]
     if not records:
         raise RuntimeError(f"No retrieval queries found for split={split!r}")

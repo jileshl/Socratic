@@ -22,6 +22,7 @@ class SocraticState(TypedDict, total=False):
     off_topic: bool                          # the turn ended at the intent check with a fixed reply
     rude_count: int                          # rude or fed-up messages in this session (a gentle teacher alert after 3)
     lesson_concept_id: str | None             # "Learn from the start": the lesson topic the tutor stays on
+    tutor_mode: str                          # "react" (agent over MCP tools) or "fixed" (search, then write)
     concept_pinned: bool                     # True when the student picked this topic for this turn (Practise it)
     
     # --- Dialogue & History ---------------------------------------------------
