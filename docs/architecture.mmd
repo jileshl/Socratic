@@ -1,0 +1,41 @@
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Arial","fontSize":"15px","primaryColor":"#ffffff","primaryBorderColor":"#9aa3c4","lineColor":"#5a6180"}}}%%
+flowchart TB
+  S([Student, Class 10]):::person --> UI
+  T([Teacher]):::person --> TV
+  UI["1 · Student app + FastAPI<br/>streaming · sessions · sign-in codes<br/><i>L16</i>"]
+  TV["Teacher app<br/>dashboard · approvals · alerts · plans<br/><i>L14 · L16</i>"]
+  UI --> IG["2 · Input guardrails<br/>mask personal details · injection · distress · content guard<br/><i>L15 · code + guard model</i>"]:::control
+  IG --> IC["3 · Intent check<br/>physics · huh? · off-topic · fed up · others' data<br/><i>code</i>"]:::code
+  IC --> SUP["4 · Supervisor + study planner (LangGraph)<br/>typed state · routes practice/quiz · hint level · replans after a quiz · SQLite checkpointer<br/><i>L8 · L10 · code</i>"]:::code
+  SUP <--> MEM[("Learner memory<br/>mastery · mix-ups · lessons<br/><i>L9</i>")]
+  SUP --> D["5 · Diagnostician<br/>names the mix-up<br/><i>L11 · model</i>"]:::model
+  SUP --> TU["6 · Tutor: ReAct agent<br/>chooses its look-ups, cited hint<br/><i>L10 · L11 · model</i>"]:::model
+  SUP --> G["7 · Grader<br/>calculator + rubric<br/><i>L11 · code</i>"]:::code
+  SUP --> QS["Question setter<br/>keys by the solver<br/><i>L11</i>"]:::model
+  TU --> H{{"Tool hooks: permission · mode · budget · log<br/><i>L14</i>"}}:::control
+  G --> H
+  QS --> H
+  H --> K["textbook-kb<br/>search · section · exemplar"]:::mcp
+  H --> M["math-tools<br/>solve · check"]:::mcp
+  H --> L["learner-store<br/>read · update mastery"]:::mcp
+  H --> Q["question-bank<br/>propose (write)"]:::mcp
+  K --- IDX[("Hybrid index<br/>BM25 + vectors + reranker<br/><i>L4–L6</i>")]
+  Q --> AG{{"Approval gate<br/>interrupt() on the exact set hash<br/><i>L14</i>"}}:::control
+  AG <--> TV
+  TU --> OG["8 · Output guardrails<br/>answer-leak check · citations · content<br/><i>L15 · code</i>"]:::control
+  G --> OG
+  OG --> R(["Reply streamed, with the NCERT page, formula and figure"])
+  subgraph OPS["9 · Alongside every request  (L12 · L13 · L16)"]
+    direction LR
+    TR[Traces] ~~~ PG[Prometheus + Grafana<br/>alerts] ~~~ EV[Eval harness<br/>gold · simulated students · judge] ~~~ RX[Reflexion playbook<br/>reviewed lessons] ~~~ CI[CI eval gate<br/>Docker Compose]
+  end
+  R ~~~ OPS
+  subgraph KEY["Key"]
+    direction LR
+    k1["decided by code"]:::code ~~~ k2["a model"]:::model ~~~ k3["control: guardrail, hook, gate"]:::control ~~~ k4["MCP server"]:::mcp
+  end
+  classDef person fill:#eef0ff,stroke:#5b4fd1,color:#1c2140
+  classDef code fill:#e7f1fb,stroke:#2a6fdb,color:#1c2140
+  classDef model fill:#f3ecfc,stroke:#7446c4,color:#1c2140
+  classDef control fill:#fdebe8,stroke:#e04a3b,color:#1c2140
+  classDef mcp fill:#e9f6ee,stroke:#23845a,color:#1c2140
