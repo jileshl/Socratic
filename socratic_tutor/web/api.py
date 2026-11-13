@@ -439,7 +439,7 @@ def _run_turn(
     if _update_stuck_alerts(student_id, session_id, concept_id, delta, values.get("grade_result") if error is None else None):
         alert_filed = True
     # Rude three times in one session: often frustration, so a gentle heads-up for the teacher (once per session).
-    if values.get("off_topic") and values.get("intent") in ("rude", "fed_up") and int(values.get("rude_count") or 0) >= 3 \
+    if values.get("off_topic") and values.get("intent") in ("rude", "fed_up", "conduct") and int(values.get("rude_count") or 0) >= 3 \
             and not ops.has_open_alert(student_id, "conduct"):
         ops.add_alert(student_id, session_id, "conduct", "Rude or fed-up messages three times in one session; they may be frustrated. A quick check-in could help.")
         alert_filed = True

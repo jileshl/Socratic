@@ -369,3 +369,12 @@ def test_personal_mischief_and_conduct_classification(monkeypatch: pytest.Monkey
     assert verdict == "conduct"
     assert "respectful" in intent.reply_for(verdict, rule)
 
+    # 3. Small talk with LLM classifier
+    monkeypatch.setattr(llm, "get_llm", mock_intent("small_talk"))
+    verdict, rule = intent.classify(
+        "yo what's good my bot friend",
+        config_runnable={"callbacks": []}
+    )
+    assert verdict == "small_talk"
+    assert "science tutor" in intent.reply_for(verdict, rule)
+

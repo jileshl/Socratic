@@ -152,7 +152,7 @@ def classify_with_llm(text: str, config_runnable: Any = None) -> IntentVerdict |
         intent = str(data.get("intent", "")).lower().strip()
         cid = data.get("concept_id")
         concept_id = str(cid).strip() if (cid and isinstance(cid, str) and cid.strip().lower() not in ("null", "none", "")) else None
-        if intent in ("personal", "conduct", "request_quiz", "off_syllabus", "opt_out", "confused", "physics"):
+        if intent in ("personal", "conduct", "request_quiz", "off_syllabus", "opt_out", "confused", "physics", "small_talk"):
             return IntentVerdict(intent, "llm_classifier", concept_id)
     except Exception:
         pass
@@ -173,12 +173,19 @@ def classify(text: str, in_conversation: bool = False, config_runnable: Any = No
         return "role_claim", "role_claim"
     if OTHERS_NAMED.search(t) or OTHERS_DATA.search(t):
         return "others_data", "others_data"
+    physics = bool(PHYSICS_WORDS.search(t) or re.search(r"\d|=", t))
     if RUDE.search(t):
         return "rude", "rude"
+    if FED_UP.search(t) and not physics:
+        return "fed_up", "fed_up"
     if CONFUSED.match(t) or DONT_KNOW.search(t):
         return "confused", "dont_know" if DONT_KNOW.search(t) else "confused"
     if REQUEST_QUIZ.search(t):
         return "request_quiz", "request_quiz"
+    if GREETING.match(t):
+        return "small_talk", "greeting"
+    if SMALL_TALK.match(t):
+        return "small_talk", "ack"
 
     # Numerical answers or formula equations ("v = -60 cm", "2/3", "1/f = 1/v - 1/u") are clear physics answers
     is_calc = bool(re.search(r"\d+\s*(cm|m|mm|d|ohm|v|a|w|j)\b", t, re.IGNORECASE) or re.search(r"[uvfRIVP]\s*=", t))
@@ -193,19 +200,12 @@ def classify(text: str, in_conversation: bool = False, config_runnable: Any = No
         if llm_verdict:
             return llm_verdict
 
-    physics = bool(PHYSICS_WORDS.search(t) or re.search(r"\d|=", t))
     if not physics and _looks_like_gibberish(t):
         return "gibberish", "gibberish"
     if OFF_SYLLABUS.search(t) and not physics:
         return "off_syllabus", "off_syllabus"
-    if FED_UP.search(t) and not physics:
-        return "fed_up", "fed_up"
     if OPT_OUT.search(t) and not physics:
         return "opt_out", "opt_out"
-    if GREETING.match(t):
-        return "small_talk", "greeting"
-    if SMALL_TALK.match(t):
-        return "small_talk", "ack"
     if not physics and not in_conversation and len(t.split()) >= 3 and not re.search(r"\?|\b(why|how|what|explain|help|hint|answer|question|i think|because|so)\b", t, re.IGNORECASE):
         return "small_talk", "no_topic"
 

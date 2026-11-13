@@ -385,6 +385,60 @@ def test_three_rude_messages_raise_a_fed_up_alert(client):
     assert sum(1 for a in alerts if a["student_id"] == session["student_id"] and a["kind"] == "conduct") == 1
 
 
+def test_three_fed_up_messages_with_model_on_raise_alert(client, monkeypatch):
+    from socratic_tutor import llm, guard_models
+    from langchain_core.outputs import ChatResult, ChatGeneration
+    from langchain_core.messages import AIMessage
+
+    monkeypatch.setattr("socratic_tutor.guard_models.guard_models_on", lambda: True)
+    monkeypatch.setattr(guard_models, "ask_content_guard", lambda *a, **k: {"ok": True, "safe": True, "categories": []})
+
+    real_get = llm.get_llm
+    def mock_get(*args: Any, **kw: Any) -> Any:
+        c = real_get(*args, **kw)
+        c._generate = lambda msgs, **k: ChatResult(generations=[ChatGeneration(message=AIMessage(
+            content='{"intent": "off_syllabus", "reason": "model should not override fed_up"}',
+            response_metadata={"token_usage": {"prompt_tokens": 30, "completion_tokens": 10, "cost": 0.00001}}
+        ))])
+        return c
+
+    monkeypatch.setattr(llm, "get_llm", mock_get)
+
+    client.post("/api/teacher/login", json={"pin": "test-pin"})
+    session = client.post("/api/session", json={"mode": "practice", "consent": True}).json()
+    for _ in range(3):
+        client.post("/api/chat", json={"session_id": session["session_id"], "message": "this is so boring"})
+    alerts = client.get("/api/teacher/dashboard").json()["open_alerts"]
+    assert sum(1 for a in alerts if a["student_id"] == session["student_id"] and a["kind"] == "conduct") == 1
+
+
+def test_three_conduct_messages_from_model_raise_alert(client, monkeypatch):
+    from socratic_tutor import llm, guard_models
+    from langchain_core.outputs import ChatResult, ChatGeneration
+    from langchain_core.messages import AIMessage
+
+    monkeypatch.setattr("socratic_tutor.guard_models.guard_models_on", lambda: True)
+    monkeypatch.setattr(guard_models, "ask_content_guard", lambda *a, **k: {"ok": True, "safe": True, "categories": []})
+
+    real_get = llm.get_llm
+    def mock_get(*args: Any, **kw: Any) -> Any:
+        c = real_get(*args, **kw)
+        c._generate = lambda msgs, **k: ChatResult(generations=[ChatGeneration(message=AIMessage(
+            content='{"intent": "conduct", "reason": "insults to staff"}',
+            response_metadata={"token_usage": {"prompt_tokens": 30, "completion_tokens": 10, "cost": 0.00001}}
+        ))])
+        return c
+
+    monkeypatch.setattr(llm, "get_llm", mock_get)
+
+    client.post("/api/teacher/login", json={"pin": "test-pin"})
+    session = client.post("/api/session", json={"mode": "practice", "consent": True}).json()
+    for _ in range(3):
+        client.post("/api/chat", json={"session_id": session["session_id"], "message": "our teacher is so annoying and unfair"})
+    alerts = client.get("/api/teacher/dashboard").json()["open_alerts"]
+    assert sum(1 for a in alerts if a["student_id"] == session["student_id"] and a["kind"] == "conduct") == 1
+
+
 def test_reply_chips_only_show_sections_the_reply_cites():
     """A Laws of Reflection reply used to show "NCERT 9.3", "9.3.1", "9.3.8" (refraction) from the search."""
     assert api._cited_in("Measure both angles from the normal [NCERT Sec 9.1].", ["9.1", "9.3", "9.3.1", "9.3.8"]) == ["9.1"]

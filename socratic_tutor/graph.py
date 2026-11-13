@@ -232,7 +232,7 @@ def node_input_guardrail(state: SocraticState, config: RunnableConfig) -> dict:
             reset_state["off_topic"] = True
             reset_state["response"] = intent_check.reply_for(kind, rule)
             reset_state["messages"] = [AIMessage(content=reset_state["response"])]
-            if kind in ("rude", "fed_up"):
+            if kind in ("rude", "fed_up", "conduct"):
                 reset_state["rude_count"] = int(state.get("rude_count") or 0) + 1
     return reset_state
 

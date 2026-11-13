@@ -130,6 +130,7 @@ Classify the student's message into exactly one category:
 - "opt_out": The student explicitly wants to stop, exit, leave, or take a break.
 - "confused": The student is confused about the physics lesson or asking to explain differently ("huh?", "what?", "I don't get it", "explain another way").
 - "physics": The student is genuinely asking a question about Class 10 NCERT Physics, explaining a physics concept, or attempting to solve a curriculum problem.
+- "small_talk": Greetings, pleasantries, conversational acknowledgments, or light casual chatter (e.g. "hi", "hello", "hey", "sup", "how are you", "ok", "cool", "got it", "thanks", "lol", "nice") with no specific physics problem or question.
 
 If intent is "physics", identify which Class 10 NCERT concept applies from the syllabus (or null if general/unclear):
 - Chapter 9 (Light): concept_reflection_laws, concept_spherical_mirrors, concept_concave_ray_diagrams, concept_convex_ray_diagrams, concept_sign_convention, concept_mirror_formula, concept_refraction_laws, concept_refractive_index, concept_lens_image_formation, concept_lens_formula, concept_lens_power
@@ -138,7 +139,7 @@ If intent is "physics", identify which Class 10 NCERT concept applies from the s
 
 Output JSON only with keys:
 {
-  "intent": "personal" | "conduct" | "request_quiz" | "off_syllabus" | "opt_out" | "confused" | "physics",
+  "intent": "personal" | "conduct" | "request_quiz" | "off_syllabus" | "opt_out" | "confused" | "physics" | "small_talk",
   "concept_id": "<concept_id_from_above>" | null,
   "reason": "short explanation of the true underlying intent"
 }
