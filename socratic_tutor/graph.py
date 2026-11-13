@@ -946,7 +946,7 @@ def node_output_guardrail(state: SocraticState) -> dict:
     if state.get("mode", "practice") != "quiz":
         checked = check_reply(response, citations, retrieved_ids, student_text)
 
-    guard_out = {
+    return {
         "steps": ["output_guardrail"],
         "turn_steps": state.get("turn_steps", []) + ["output_guardrail"],
         # The cleaned reply (or the safe fallback, if the reply check replaced it).
@@ -957,20 +957,6 @@ def node_output_guardrail(state: SocraticState) -> dict:
         # None when the reply passed; otherwise which check replaced it (for the web app's labels).
         "output_blocked_by": checked["blocked_by"],
     }
-    # Citation-driven concept synchronization:
-    # If the tutor cited a section belonging to a different chapter, update current_concept_id
-    if state.get("mode", "practice") == "practice" and checked["citations"] and not state.get("lesson_concept_id"):
-        from socratic_tutor import book as book_module
-        primary_sec = checked["citations"][0]
-        mapped = book_module.concept_for_section(primary_sec)
-        cg = ConceptGraph()
-        if mapped and mapped in cg.concepts and mapped != state.get("current_concept_id"):
-            curr_ch = CHAPTER_TITLE_TO_NUM.get(cg.concepts.get(state.get("current_concept_id") or "", {}).get("chapter", ""))
-            sec_ch = primary_sec.split(".")[0]
-            if curr_ch and sec_ch and curr_ch != sec_ch:
-                guard_out["current_concept_id"] = mapped
-                guard_out["chapter"] = sec_ch
-    return guard_out
 
 
 def node_grader(state: SocraticState) -> dict:
