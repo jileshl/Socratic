@@ -144,6 +144,7 @@ def node_input_guardrail(state: SocraticState, config: RunnableConfig) -> dict:
         "teacher_alert_triggered": False,
         "intent": "physics",
         "intent_rule": None,
+        "detected_concept_id": None,
         "off_topic": False,
     }
     if state.get("chapter"):
@@ -218,8 +219,12 @@ def node_input_guardrail(state: SocraticState, config: RunnableConfig) -> dict:
     # Only for a student's own message: a teacher's "propose a question set" request runs the same graph.
     if state.get("mode", "practice") == "practice" and not state.get("teacher_approval_required"):
         started = any(getattr(m, "type", "") == "ai" for m in (state.get("messages") or []))
-        kind, rule = intent_check.classify(str(guard_res["sanitized_query"] or ""), in_conversation=started, config_runnable=config)
+        verdict = intent_check.classify(str(guard_res["sanitized_query"] or ""), in_conversation=started, config_runnable=config)
+        kind, rule = verdict
         reset_state["intent"], reset_state["intent_rule"] = kind, rule
+        cid = getattr(verdict, "concept_id", None)
+        if cid:
+            reset_state["detected_concept_id"] = cid
         if kind == "confused":
             # "huh?": the same topic, explained another way (and it counts as asking for more help).
             reset_state["query"] = intent_check.CONFUSED_REWRITE
@@ -297,7 +302,8 @@ def node_supervisor(state: SocraticState) -> dict:
     # the tutor there, also out of a lesson, and its chapter comes along for the book search. A topic the
     # student picked for this turn ("Practise it") still wins.
     chapter_out = state.get("chapter")
-    asked = topics.topic_of(state.get("query", "")) if state.get("mode", "practice") == "practice" else None
+    detected = state.get("detected_concept_id")
+    asked = detected if (detected and detected in cg.concepts) else (topics.topic_of(state.get("query", "")) if state.get("mode", "practice") == "practice" else None)
     if asked and asked in cg.concepts and asked != current_concept and not pinned:
         current_concept = asked
         chapter_out = CHAPTER_TITLE_TO_NUM.get(cg.concepts[asked].get("chapter", ""), chapter_out)

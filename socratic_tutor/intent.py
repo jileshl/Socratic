@@ -120,8 +120,18 @@ def _looks_like_gibberish(t: str) -> bool:
     return sum(odd(w) for w in words) * 2 >= len(words)
 
 
-def classify_with_llm(text: str, config_runnable: Any = None) -> tuple[str, str | None] | None:
-    """Call a fast small LLM to classify student intent when regex rules are inconclusive or ambiguous.
+class IntentVerdict(tuple):
+    """A tuple of (intent, rule) that also exposes concept_id when provided by the LLM classifier."""
+    concept_id: str | None
+
+    def __new__(cls, intent: str, rule: str | None = None, concept_id: str | None = None):
+        obj = super().__new__(cls, (intent, rule))
+        obj.concept_id = concept_id
+        return obj
+
+
+def classify_with_llm(text: str, config_runnable: Any = None) -> IntentVerdict | None:
+    """Call a fast small LLM to classify student intent and detect syllabus concept when regex rules are inconclusive.
     Passes config_runnable so CostMeter and TraceCallback capture token usage, latency, and cost."""
     if not guard_models.guard_models_on():
         return None
@@ -140,8 +150,10 @@ def classify_with_llm(text: str, config_runnable: Any = None) -> tuple[str, str 
             content = content.split("```")[1].split("```")[0].strip()
         data = json.loads(content)
         intent = str(data.get("intent", "")).lower().strip()
+        cid = data.get("concept_id")
+        concept_id = str(cid).strip() if (cid and isinstance(cid, str) and cid.strip().lower() not in ("null", "none", "")) else None
         if intent in ("personal", "conduct", "request_quiz", "off_syllabus", "opt_out", "confused", "physics"):
-            return intent, "llm_classifier"
+            return IntentVerdict(intent, "llm_classifier", concept_id)
     except Exception:
         pass
     return None
