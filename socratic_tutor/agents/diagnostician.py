@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from socratic_tutor import config, llm
-from socratic_tutor.prompts import DIAGNOSTICIAN_PROMPT
+from socratic_tutor.prompts import DIAGNOSTICIAN_PROMPT, sanitize_xml
 
 
 def _load_catalog() -> list[dict[str, Any]]:
@@ -88,7 +88,11 @@ def diagnose_response(query: str, chapter_misconceptions: list[dict] | None = No
         {"id": m["id"], "name": m["name"], "concept": m.get("concept_id", "")}
         for m in catalog
     ]
-    prompt = f"Student input: {query}\nKnown catalogued misconceptions:\n{json.dumps(summarized, indent=1)}\n"
+    clean_query = sanitize_xml(query)
+    prompt = (
+        f"<student_input>\n{clean_query}\n</student_input>\n"
+        f"<known_catalogued_misconceptions>\n{json.dumps(summarized, indent=1)}\n</known_catalogued_misconceptions>\n"
+    )
     res = llm.chat_json(prompt=prompt, system_prompt=DIAGNOSTICIAN_PROMPT)
     if isinstance(res, dict):
         raw_id = res.get("identified_misconception_id") or res.get("id")

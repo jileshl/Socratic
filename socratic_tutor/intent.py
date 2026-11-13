@@ -29,7 +29,7 @@ import re
 from typing import Any
 
 from socratic_tutor import config as app_config, guard_models, llm
-from socratic_tutor.prompts import INTENT_SYSTEM_PROMPT
+from socratic_tutor.prompts import INTENT_SYSTEM_PROMPT, sanitize_xml
 
 # Words that make a message about the syllabus (Light, the Human Eye, Electricity).
 PHYSICS_WORDS = re.compile(
@@ -140,7 +140,7 @@ def classify_with_llm(text: str, config_runnable: Any = None) -> IntentVerdict |
         client = llm.get_llm(model=app_config.INTENT_MODEL, temperature=0.0)
         messages = [
             {"role": "system", "content": INTENT_SYSTEM_PROMPT},
-            {"role": "user", "content": f"Student message: {text}"}
+            {"role": "user", "content": f"<student_message>\n{sanitize_xml(text)}\n</student_message>"}
         ]
         resp = client.invoke(messages, config=config_runnable)
         content = str(resp.content or "").strip()

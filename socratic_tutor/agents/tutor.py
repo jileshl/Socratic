@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any
 from socratic_tutor import config, llm
-from socratic_tutor.prompts import TUTOR_PROMPT
+from socratic_tutor.prompts import TUTOR_PROMPT, sanitize_xml
 
 
 def _instructions(
@@ -69,15 +69,21 @@ def generate_hint(
     strategy_desc, extra_instructions = _instructions(hint_level, approved_lesson, remediation, misconception,
                                                       conversation_history, learner_context)
 
+    clean_query = sanitize_xml(student_query)
     user_prompt = (
-        f"Student Query: {student_query}\n"
-        f"Hint Level: {hint_level} - {strategy_desc}\n"
-        + ("\n".join(extra_instructions) + "\n" if extra_instructions else "")
-        + f"\nRetrieved NCERT Context:\n{passages_text}\n\n"
+        f"<student_query>\n{clean_query}\n</student_query>\n"
+        f"<pedagogical_context>\n"
+        f"  <hint_level>{hint_level}</hint_level>\n"
+        f"  <strategy>{strategy_desc}</strategy>\n"
+        + ("  " + "\n  ".join(extra_instructions) + "\n" if extra_instructions else "")
+        + f"</pedagogical_context>\n"
+        f"<retrieved_ncert_context>\n{passages_text}\n</retrieved_ncert_context>\n\n"
+        "<instruction>\n"
         "Draft exactly ONE concise, encouraging Socratic hint that cites the NCERT section ID. "
         "If the student has already correctly and sufficiently explained the concept or relationship, "
         "confirm it warmly, restate in one sentence what they said with the NCERT citation (adding no new facts or numbers), "
-        "and invite them to take the quiz or try the next topic instead of asking another probing question."
+        "and invite them to take the quiz or try the next topic instead of asking another probing question.\n"
+        "</instruction>"
     )
 
     try:
@@ -181,12 +187,19 @@ def react_hint(
     tools = [StructuredTool.from_function(f) for f in (search_textbook, get_section, get_exemplar)]
     strategy_desc, extra = _instructions(hint_level, approved_lesson, remediation, misconception,
                                          conversation_history, learner_context)
+    clean_query = sanitize_xml(student_query)
     task = (
-        f"Student Query: {student_query}\nHint Level: {hint_level} - {strategy_desc}\n"
-        + ("\n".join(extra) + "\n" if extra else "")
-        + "\nLook up what you need, then draft exactly ONE concise, encouraging Socratic reply that cites the NCERT "
+        f"<student_query>\n{clean_query}\n</student_query>\n"
+        f"<pedagogical_context>\n"
+        f"  <hint_level>{hint_level}</hint_level>\n"
+        f"  <strategy>{strategy_desc}</strategy>\n"
+        + ("  " + "\n  ".join(extra) + "\n" if extra else "")
+        + f"</pedagogical_context>\n\n"
+        "<instruction>\n"
+        "Look up what you need, then draft exactly ONE concise, encouraging Socratic reply that cites the NCERT "
         "section ID. If the student has already explained it correctly, confirm it warmly with the citation and "
-        "invite them to take the quiz or try the next topic."
+        "invite them to take the quiz or try the next topic.\n"
+        "</instruction>"
     )
     model = llm.get_llm(model=config.SPECIALIST_MODEL, temperature=0.3)
     agent = create_react_agent(model, tools, prompt=TUTOR_PROMPT + REACT_INSTRUCTIONS)
