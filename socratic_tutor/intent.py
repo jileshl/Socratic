@@ -24,7 +24,12 @@ handled as distress (calm reply, teacher alerted) before this check sees it.
 
 from __future__ import annotations
 
+import json
 import re
+from typing import Any
+
+from socratic_tutor import config as app_config, guard_models, llm
+from socratic_tutor.prompts import INTENT_SYSTEM_PROMPT
 
 # Words that make a message about the syllabus (Light, the Human Eye, Electricity).
 PHYSICS_WORDS = re.compile(
@@ -75,13 +80,23 @@ FED_UP = re.compile(
     r"|^\s*((this is|it'?s|so|all) )?(useless|stupid|dumb)\s*[.!]*\s*$",
     re.IGNORECASE,
 )
+# Requests to be tested, quizzed, or evaluated
+REQUEST_QUIZ = re.compile(
+    r"\b(test|quiz|quizz|quizza|evaluate)\s+(me|us|please|my\s+knowledge)\b"
+    r"|^\s*(yes\s+)?(test|quiz|quizz)\s*me\b"
+    r"|^\s*(quizza?\s*(ma|me|please)|quiz\s+please)\s*[.?!]*\s*$"
+    r"|\b(give|ask)\s+me\s+a\s+(quiz|test|question)\b"
+    r"|\bcan\s+you\s+(test|quiz)\s+me\b",
+    re.IGNORECASE,
+)
+
 # Another subject: the tutor covers three chapters of Class 10 Science (Light, the Human Eye, Electricity).
 OFF_SYLLABUS = re.compile(
     r"\b(photosynth\w*|chlorophyll|respiration|digestion|heredity|evolution|reproduction|hormones?|nervous system"
     r"|newton\w*|gravit\w*|motion|velocity|accelerat\w*|momentum|friction|magnet\w*|electromagnet\w*"
     r"|acids?|bases?|salts?|metals?|non-?metals?|carbon compounds?|chemical\w*|chemistry|periodic table|biology"
     r"|maths?|mathematics|algebra|geometry|trigonometry|calculus|equations? of motion|history|geography|civics"
-    r"|economics|english|grammar|hindi|tamil|essay|poem)\b",
+    r"|economics|demand\s+(and|&|to)\s+supply|supply\s+(and|&|to)\s+demand|commerce|english|grammar|hindi|tamil|essay|poem)\b",
     re.IGNORECASE,
 )
 # "I don't know" is an answer to the tutor's question: a smaller step, not small talk.
@@ -105,7 +120,34 @@ def _looks_like_gibberish(t: str) -> bool:
     return sum(odd(w) for w in words) * 2 >= len(words)
 
 
-def classify(text: str, in_conversation: bool = False) -> tuple[str, str | None]:
+def classify_with_llm(text: str, config_runnable: Any = None) -> tuple[str, str | None] | None:
+    """Call a fast small LLM to classify student intent when regex rules are inconclusive or ambiguous.
+    Passes config_runnable so CostMeter and TraceCallback capture token usage, latency, and cost."""
+    if not guard_models.guard_models_on():
+        return None
+
+    try:
+        client = llm.get_llm(model=app_config.INTENT_MODEL, temperature=0.0)
+        messages = [
+            {"role": "system", "content": INTENT_SYSTEM_PROMPT},
+            {"role": "user", "content": f"Student message: {text}"}
+        ]
+        resp = client.invoke(messages, config=config_runnable)
+        content = str(resp.content or "").strip()
+        if "```json" in content:
+            content = content.split("```json")[1].split("```")[0].strip()
+        elif "```" in content:
+            content = content.split("```")[1].split("```")[0].strip()
+        data = json.loads(content)
+        intent = str(data.get("intent", "")).lower().strip()
+        if intent in ("request_quiz", "off_syllabus", "opt_out", "confused", "physics"):
+            return intent, "llm_classifier"
+    except Exception:
+        pass
+    return None
+
+
+def classify(text: str, in_conversation: bool = False, config_runnable: Any = None) -> tuple[str, str | None]:
     """(intent, rule). Order matters: privacy and conduct first, then the physics test.
 
     in_conversation: the tutor has already replied in this chat. Then a message the rules can't place ("I
@@ -123,11 +165,25 @@ def classify(text: str, in_conversation: bool = False) -> tuple[str, str | None]
         return "rude", "rude"
     if CONFUSED.match(t) or DONT_KNOW.search(t):
         return "confused", "dont_know" if DONT_KNOW.search(t) else "confused"
-    # Numbers or an equation ("v = -60 cm", "2/3") are an attempt at an answer, so they count as physics too.
+    if REQUEST_QUIZ.search(t):
+        return "request_quiz", "request_quiz"
+
+    # Numerical answers or formula equations ("v = -60 cm", "2/3", "1/f = 1/v - 1/u") are clear physics answers
+    is_calc = bool(re.search(r"\d+\s*(cm|m|mm|d|ohm|v|a|w|j)\b", t, re.IGNORECASE) or re.search(r"[uvfRIVP]\s*=", t))
+    if is_calc:
+        return "physics", None
+
+    # Mixed-domain queries: if off-syllabus topics (e.g. economics, demand & supply) are mentioned alongside physics words,
+    # invoke the fast LLM classifier to disambiguate analogies from true science questions.
+    if OFF_SYLLABUS.search(t) and config_runnable is not None:
+        llm_verdict = classify_with_llm(t, config_runnable=config_runnable)
+        if llm_verdict:
+            return llm_verdict
+
     physics = bool(PHYSICS_WORDS.search(t) or re.search(r"\d|=", t))
     if not physics and _looks_like_gibberish(t):
         return "gibberish", "gibberish"
-    if OFF_SYLLABUS.search(t) and not PHYSICS_WORDS.search(t):
+    if OFF_SYLLABUS.search(t) and not physics:
         return "off_syllabus", "off_syllabus"
     if FED_UP.search(t) and not physics:
         return "fed_up", "fed_up"
@@ -139,11 +195,22 @@ def classify(text: str, in_conversation: bool = False) -> tuple[str, str | None]
         return "small_talk", "ack"
     if not physics and not in_conversation and len(t.split()) >= 3 and not re.search(r"\?|\b(why|how|what|explain|help|hint|answer|question|i think|because|so)\b", t, re.IGNORECASE):
         return "small_talk", "no_topic"
+
+    # If in ongoing conversation and message is not a pure calculation, allow LLM classifier fallback
+    if in_conversation and config_runnable is not None and not is_calc:
+        llm_verdict = classify_with_llm(t, config_runnable=config_runnable)
+        if llm_verdict:
+            return llm_verdict
+
     return "physics", None
 
 
 # The tutor's replies for the turns that end here. Fixed text, so nothing can leak and nothing is made up.
 REPLIES: dict[str, str] = {
+    "request_quiz": (
+        "Ready to test your knowledge? Great! Switch to the Quiz tab above or click 'Take the quiz on this' "
+        "to test your skills with questions checked by the calculator and earn mastery points!"
+    ),
     "others_data": (
         "I can't share anyone else's results or progress, and in this chat I only see the student who is learning here. "
         "Teachers see their class on the teacher page, and parents can ask the teacher. "

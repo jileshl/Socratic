@@ -7,6 +7,7 @@ from typing import Any
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Command
 from langchain_core.messages import AnyMessage, AIMessage, HumanMessage
+from langchain_core.runnables import RunnableConfig
 
 from socratic_tutor import config
 from socratic_tutor import approval_gate, solver_key, tool_hooks
@@ -113,7 +114,7 @@ def asks_for_more_help(query: str) -> bool:
     return bool(_MORE_HELP.search(query or ""))
 
 
-def node_input_guardrail(state: SocraticState) -> dict:
+def node_input_guardrail(state: SocraticState, config: RunnableConfig) -> dict:
     query = state.get("query", "")
     guard_res = check_input_guardrails(query)
 
@@ -217,7 +218,7 @@ def node_input_guardrail(state: SocraticState) -> dict:
     # Only for a student's own message: a teacher's "propose a question set" request runs the same graph.
     if state.get("mode", "practice") == "practice" and not state.get("teacher_approval_required"):
         started = any(getattr(m, "type", "") == "ai" for m in (state.get("messages") or []))
-        kind, rule = intent_check.classify(str(guard_res["sanitized_query"] or ""), in_conversation=started)
+        kind, rule = intent_check.classify(str(guard_res["sanitized_query"] or ""), in_conversation=started, config_runnable=config)
         reset_state["intent"], reset_state["intent_rule"] = kind, rule
         if kind == "confused":
             # "huh?": the same topic, explained another way (and it counts as asking for more help).

@@ -25,7 +25,7 @@ A Class 10 student asks a chatbot for help and gets the answer, so they stop thi
 *Blue boxes are decided by code, purple by a model, red are controls (guardrails, hooks, the approval gate). Every box carries the lecture that teaches it.* "Why is the image in a concave mirror upside down?":
 1. **App + FastAPI** (L16): the login decides the role, never the chat text; replies stream.
 2. **Input guardrails** (L15, code + guard model): personal details masked; injection, distress and unsafe content checked. Distress alerts a teacher at once.
-3. **Intent check** (code): physics, "huh?", off-topic, fed up, another student's data or another subject. Anything but physics gets a fixed reply and stops here, so the tutor never loops on "go away".
+3. **Intent check** (code + intent model): physics, quiz requests, "huh?", off-topic, fed up, another student's data or another subject. Fast regex checks handle common commands at 0ms; ambiguous/slang messages fall back to a small intent classifier model. Anything but physics gets a fixed reply or quiz invite and stops here, so the tutor never loops on "go away".
 4. **Supervisor + study planner** (L8, L10, code): reads the learner record, picks practice or quiz and the hint level (a student who mastered the topic starts at level 2), and replans the study plan after each quiz answer. Typed state; SQLite checkpointer, so a session can stop and resume.
 5. **Diagnostician** (L11, model): names the misconception (`MISCON_LIGHT_03`) from a 36-entry catalogue.
 6. **Tutor** (L10, L11, model): a ReAct agent over three read-only tools of the textbook-kb MCP server (search, section, exemplar). It decides what to look up; every call passes the tool hooks (permission, quiz-mode rule, budget, log). It gets the learner record's summary, never an answer key.
@@ -33,7 +33,7 @@ A Class 10 student asks a chatbot for help and gets the answer, so they stop thi
 8. **Output guardrails** (L15, code): the answer-leak check against the key (a leak is retried, then replaced by a scaffold question), citations must be sections actually retrieved, content check. The reply streams with the NCERT page, formula and figure.
 9. **Alongside** (L12, L13, L16): traces, Prometheus and Grafana with alerts, the evaluation harness, the reviewed Reflexion playbook, CI with an evaluation gate.
 
-**Who decides what.** A model only names misconceptions and words hints (and drafts questions). Code decides routing, hint level, every number and key, grading, leaks, mastery, alerts and intent. People approve every question set, handle alerts, and review every Reflexion lesson.
+**Who decides what.** A model only names misconceptions, words hints (and drafts questions), and classifies ambiguous intents. Code decides routing, hint level, every number and key, grading, leaks, mastery, alerts and fast-path intent rules. People approve every question set, handle alerts, and review every Reflexion lesson.
 
 **Tools (L7).** Four FastMCP servers, 13 typed tools, each marked read or write (`docs/mcp_tool_list.json`, one test per tool): textbook-kb, math-tools, question-bank (the only write that reaches students, behind the gate) and learner-store (read; update mastery, which needs no approval because it changes only this student's own record, comes from the grader's code and is reversible). Stdio in development; streamable HTTP inside Docker, one service each. The hook map gives each agent only its own tools.
 

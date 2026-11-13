@@ -555,14 +555,14 @@ def _behind(values: dict[str, Any], message: str, mode: str, blocked_reason: str
         "intent_rule": values.get("intent_rule"),
         "off_topic": bool(values.get("off_topic")),
         # The models behind the steps (from config / .env), so the side panel can name them.
-        "models": {"guard": config.GUARD_MODEL, "agents": config.SPECIALIST_MODEL, "search": "BM25 keywords + local embeddings (Chroma)"},
+        "models": {"guard": config.GUARD_MODEL, "intent": config.INTENT_MODEL, "agents": config.SPECIALIST_MODEL, "search": "BM25 keywords + local embeddings (Chroma)"},
     }
 
 
 @api_router.get("/api/models")
 def models() -> dict[str, str]:
     """The models behind the steps (from config / .env), for the workflow in the side panel."""
-    return {"guard": config.GUARD_MODEL, "agents": config.SPECIALIST_MODEL, "search": "BM25 keywords + local embeddings (Chroma)"}
+    return {"guard": config.GUARD_MODEL, "intent": config.INTENT_MODEL, "agents": config.SPECIALIST_MODEL, "search": "BM25 keywords + local embeddings (Chroma)"}
 
 
 @api_router.get("/api/lesson/{concept_id}")

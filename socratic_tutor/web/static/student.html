@@ -398,8 +398,9 @@ function reply(ev, holder) {
   if (ev.teacher_alerted) chips.push(`<span class="chip calm">Your teacher knows and will check in with you</span>`);
   if (ev.error) chips.push(`<span class="chip bad">Something went wrong. Please try again.</span>`);
   if (chips.length) body.push(`<div class="chips">${chips.join("")}</div>`);
-  const quizBtn = ev.concept && ev.concept.id && hasQuiz(ev.concept.id) ? `<button type="button" onclick="quizOn('${esc(ev.concept.id)}')">Take the quiz on this</button>` : "";
-  // No stock buttons under every reply: the student just types. Only the quiz, when the topic has one.
+  const isQuizReq = ev.behind && ev.behind.intent === "request_quiz";
+  const quizBtn = (ev.concept && ev.concept.id && hasQuiz(ev.concept.id)) ? `<button type="button" onclick="quizOn('${esc(ev.concept.id)}')">Take the quiz on this</button>` : (isQuizReq ? `<button type="button" onclick="go('quiz')">Open Quiz</button>` : "");
+  // No stock buttons under every reply: the student just types. Only the quiz, when the topic has one or when requested.
   if (!ev.blocked && !ev.error && !ev.teacher_alerted && quizBtn) body.push(`<div class="quick">${quizBtn}</div>`);
   // After study stress or frustration: calm next steps, never a dead end. (Severe distress: no study buttons.)
   if (ev.distress_level === "academic") body.push(`<div class="quick calm"><button type="button" onclick="quick('Can we try one very small step?')">One small step</button><button type="button" onclick="quick('Can you explain it with an everyday example?')">An everyday example</button><button type="button" onclick="takeBreak()">Take a short break</button></div>`);
@@ -1008,7 +1009,7 @@ const FNODES = {
   safe:   [128, 70,  240, "Safety check", "code", "#e04a3b", () => "rules + " + short(MODELS.guard)],
   stop:   [376, 70,  148, "Stopped", "code", "#c0362c", () => "refusal, tutor never sees it"],
   alert:  [376, 136, 148, "Teacher alert", "person", "#c0362c", () => "calm reply + teacher told"],
-  intent: [128, 136, 240, "Intent check", "code", "#d1477a", () => "physics, or chat, rude, others' data"],
+  intent: [128, 136, 240, "Intent check", "code", "#d1477a", () => "rules + " + short(MODELS.intent || "gpt-4o-mini")],
   other:  [376, 202, 148, "Short reply", "code", "#d1477a", () => "no hint, no model"],
   sup:    [128, 202, 240, "Supervisor", "code", "#ec7a1f", () => "routes by rules: practice or quiz"],
   diag:   [128, 268, 240, "Diagnostician", "model", "#e0a100", () => "finds the mix-up · " + short(MODELS.agents)],
@@ -1106,7 +1107,7 @@ function renderHood() {
   const b = t.behind || {}; const sf = b.safety || {}; const ran = new Set((t.steps || []).map(s => s.node));
   const by = node => ((t.steps || []).find(s => s.node === node) || {}).decided_by || (STATIONS.find(x => x[0] === node) || [])[2] || "code";
   const M = b.models || {}; const model = name => name ? `<span class="model">Model: ${esc(name)}</span>` : null;
-  const INTENT = { others_data: "another student's results", role_claim: "a role claim (faculty, parent, ...)", rude: "a rude message", opt_out: "opting out", off_syllabus: "another subject (not Light, the Eye or Electricity)", fed_up: "frustration (\u201cnonsense\u201d, \u201cboring\u201d)", gibberish: "a keyboard mash", small_talk: "small talk", confused: "\u201chuh?\u201d: explain it another way", physics: "a physics question or answer" };
+  const INTENT = { request_quiz: "asking for a quiz or test", others_data: "another student's results", role_claim: "a role claim (faculty, parent, ...)", rude: "a rude message", opt_out: "opting out", off_syllabus: "another subject (not Light, the Eye or Electricity)", fed_up: "frustration (\u201cnonsense\u201d, \u201cboring\u201d)", gibberish: "a keyboard mash", small_talk: "small talk", confused: "\u201chuh?\u201d: explain it another way", physics: "a physics question or answer" };
   kind = t.blocked ? "Stopped by the safety check" : t.distress_level ? "A student who needs care" : t.grade ? "Quiz answer" : b.off_topic ? "Not a physics question" : "Practice question";
   // 1. safety
   add("Safety check", "code + model", t.blocked ? "stop" : (t.distress_level ? "care" : "ok"), [
@@ -1116,10 +1117,11 @@ function renderHood() {
     sf.personal_details_masked ? "Name and phone number <b>masked</b> before any model saw them" : null,
     t.teacher_alerted ? "<b>Teacher alerted</b>: the teacher's Alerts tab shows it straight away" : null,
     `<span class="model">Rules in code, then the content-safety model: ${esc(M.guard || "")}</span>`]);
-  if (!t.blocked && !t.grade && (b.intent || b.off_topic)) add("Intent check", "code", b.off_topic ? "warn" : "ok", [
+  const isLlmIntent = b.intent_rule && b.intent_rule.includes("llm");
+  if (!t.blocked && !t.grade && (b.intent || b.off_topic)) add("Intent check", isLlmIntent ? "model" : "code", b.off_topic ? "warn" : "ok", [
     `This message is <b>${esc(INTENT[b.intent] || b.intent || "a physics question or answer")}</b>`,
-    b.off_topic ? "So a short fixed reply: no diagnosis, no new hint, nothing about other students" : b.intent === "confused" ? "So the tutor explains the same idea another way" : "So it goes on to the tutor",
-    `<span class="model">No model: word rules in code</span>`]);
+    b.intent === "request_quiz" ? "Inviting the student to take the quiz" : b.off_topic ? "So a short fixed reply: no diagnosis, no new hint, nothing about other students" : b.intent === "confused" ? "So the tutor explains the same idea another way" : "So it goes on to the tutor",
+    isLlmIntent ? `<span class="model">Intent classifier model: ${esc(M.intent || M.guard || "")}</span>` : `<span class="model">No model: word rules in code</span>`]);
   if (!t.blocked && ran.has("supervisor")) add("Supervisor", by("supervisor"), "ok", [
     t.concept ? `Topic: <b>${esc(t.concept.title)}</b>${b.concept_pinned ? " (the student picked it)" : ""}` : null,
     (t.plan || []).length ? `Plan: ${esc(t.plan.join(" → "))}` : null,

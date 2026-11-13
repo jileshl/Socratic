@@ -44,6 +44,7 @@ OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/ap
 # Not used by the app: the supervisor is code (routing rules). Kept so old .env files still load.
 SUPERVISOR_MODEL = os.getenv("SUPERVISOR_MODEL", "openai/gpt-4.1-mini")
 SPECIALIST_MODEL = os.getenv("SPECIALIST_MODEL", "openai/gpt-4o-mini")
+INTENT_MODEL = os.getenv("INTENT_MODEL", os.getenv("SPECIALIST_MODEL", "openai/gpt-4o-mini"))
 JUDGE_MODEL = os.getenv("JUDGE_MODEL", "google/gemini-3.1-flash-lite")
 # Guardrails (R4): Content guard checks messages and replies for content unsafe for minors (capstone guide p.5).
 GUARD_MODEL = os.getenv("GUARD_MODEL", "openai/gpt-4o-mini")
