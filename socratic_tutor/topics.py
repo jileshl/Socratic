@@ -20,7 +20,7 @@ TOPIC_PHRASES: dict[str, tuple[str, ...]] = {
     "concept_convex_ray_diagrams": ("convex mirror", "rear view mirror", "rear-view mirror"),
     "concept_sign_convention": ("sign convention",),
     "concept_mirror_formula": ("mirror formula",),
-    "concept_refraction_laws": ("snell", "laws of refraction", "law of refraction", "glass slab"),
+    "concept_refraction_laws": ("snell", "laws of refraction", "law of refraction", "glass slab", "bent in water", "pencil look bent", "pencil appears bent"),
     "concept_refractive_index": ("refractive index", "speed of light"),
     "concept_lens_image_formation": ("convex lens", "concave lens"),
     "concept_lens_formula": ("lens formula",),
@@ -41,7 +41,7 @@ TOPIC_PHRASES: dict[str, tuple[str, ...]] = {
     "concept_factors_resistance": ("resistivity", "length of the wire", "thickness of the wire", "area of cross"),
     "concept_series_combination": ("in series", "series combination"),
     "concept_parallel_combination": ("in parallel", "parallel combination"),
-    "concept_joules_heating": ("heating effect", "joule's law", "joules law", "electric fuse", "electric heater", "electric iron"),
+    "concept_joules_heating": ("heating effect", "joule's law", "joules law", "electric fuse", "electric heater", "electric iron", "heater wire", "wire get hot"),
     "concept_electric_power": ("electric power", "kilowatt", "kwh", "commercial unit"),
 }
 

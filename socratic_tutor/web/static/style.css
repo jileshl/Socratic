@@ -129,8 +129,31 @@ h3 { font-size: 15.5px; margin: 0; }
 .chip.ok { background: var(--ok-soft); color: var(--ok); border-color: transparent; }
 .chip.warn { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
 .chip.bad { background: var(--bad-soft); color: var(--bad); border-color: transparent; }
-.composer { display: flex; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--rule); background: var(--sheet); }
-.composer input { flex: 1; min-width: 0; font-size: 16px; }
+.composer { display: flex; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--rule); background: var(--sheet); align-items: flex-end; }
+.composer textarea, .composer input {
+  flex: 1;
+  min-width: 0;
+  font-size: 16px;
+  font-family: inherit;
+  line-height: 1.4;
+  padding: 8px 12px;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-sm);
+  background: var(--sheet);
+  color: var(--ink);
+  box-sizing: border-box;
+}
+.composer textarea {
+  min-height: 52px;
+  max-height: 96px;
+  resize: vertical;
+  overflow-y: auto;
+}
+.composer textarea:focus, .composer input:focus {
+  outline: none;
+  border-color: var(--royal);
+}
+.composer button { height: 42px; margin-bottom: 2px; }
 .footnote { color: var(--ink-2); font-size: 13.5px; }
 
 /* ---------- side panel ---------- */
