@@ -3,6 +3,7 @@
 @import url("https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap");
 
 :root {
+  color-scheme: light;
   --paper: #f5f7fb; --sheet: #ffffff; --ink: #1c2140; --ink-2: #4a5170; --rule: #dfe3ee; --rule-2: #eef1f7;
   --royal: #2c3fb8; --royal-soft: #e8ebfb;
   --light: #c98a00; --light-soft: #fdf3dc;   /* Light: reflection and refraction */
@@ -13,14 +14,13 @@
   --font: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
   --r-sm: 6px; --r: 10px; --r-lg: 16px;
 }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --paper: #12152a; --sheet: #1a1e36; --ink: #e9ebf5; --ink-2: #a6acc8; --rule: #2c3152; --rule-2: #23284a;
-    --royal: #8f9cff; --royal-soft: #262c5a;
-    --light: #f0b733; --light-soft: #3a2f14; --eye: #b897f5; --eye-soft: #2f2650; --elec: #6fb2f5; --elec-soft: #1c2f4d;
-    --ok: #5cc794; --ok-soft: #173326; --warn: #f0a640; --warn-soft: #3a2b14; --bad: #f2867c; --bad-soft: #3d1f1d;
-    --model: #b897f5; --code: #6fb2f5; --person: #f2867c;
-  }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #12152a; --sheet: #1a1e36; --ink: #e9ebf5; --ink-2: #a6acc8; --rule: #2c3152; --rule-2: #23284a;
+  --royal: #8f9cff; --royal-soft: #262c5a;
+  --light: #f0b733; --light-soft: #3a2f14; --eye: #b897f5; --eye-soft: #2f2650; --elec: #6fb2f5; --elec-soft: #1c2f4d;
+  --ok: #5cc794; --ok-soft: #173326; --warn: #f0a640; --warn-soft: #3a2b14; --bad: #f2867c; --bad-soft: #3d1f1d;
+  --model: #b897f5; --code: #6fb2f5; --person: #f2867c;
 }
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
@@ -50,6 +50,7 @@ button.primary { background: var(--royal); color: #fff; border-color: var(--roya
 button.primary:hover { filter: brightness(1.08); }
 button.danger { color: var(--bad); }
 button.ghost { border-color: transparent; background: none; color: var(--ink-2); }
+button.theme-toggle { width: 34px; height: 34px; padding: 0; justify-content: center; flex: none; font-size: 16px; border-radius: var(--r-sm); }
 button:disabled { opacity: .5; cursor: default; }
 input, textarea, select { font: inherit; color: var(--ink); background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--r-sm); padding: 9px 11px; }
 textarea { width: 100%; resize: vertical; }

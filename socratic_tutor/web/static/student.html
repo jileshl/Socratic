@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Socratic Tutor</title>
 <link rel="stylesheet" href="/static/style.css">
+<script>
+try { if (localStorage.getItem("theme") === "dark") document.documentElement.setAttribute("data-theme", "dark"); } catch(e) {}
+</script>
 </head>
 <body>
 <header>
@@ -17,6 +20,7 @@
     <button data-view="progress" onclick="go('progress')">My progress</button>
   </nav>
   <div class="row">
+    <button type="button" class="theme-toggle" id="themeToggle" onclick="toggleTheme()" aria-label="Toggle dark mode" title="Toggle dark mode">🌙</button>
     <span class="presenter-badge presenter-only">Presenter mode</span>
     <button type="button" class="lvl hidden" id="lvlPill" onclick="go('progress')" title="Your level and streak. Open My progress for badges."></button>
     <label class="picker" id="pickerWrap"><span>Learning as</span><select id="persona" onchange="setPersona(this.value)" aria-label="Who is learning"></select></label>
@@ -1162,7 +1166,27 @@ async function runScenario(gi, si) {
   await guarded(async () => { for (const p of (s.personas || [null])) { if (p !== null) setPersona(p); for (const m of s.msgs) await ask(m); } });
 }
 
+function toggleTheme() {
+  const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+  const next = isDark ? "light" : "dark";
+  if (next === "dark") document.documentElement.setAttribute("data-theme", "dark");
+  else document.documentElement.removeAttribute("data-theme");
+  try { localStorage.setItem("theme", next); } catch(e) {}
+  updateThemeBtn();
+}
+function updateThemeBtn() {
+  const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+  const btn = document.getElementById("themeToggle");
+  if (btn) {
+    btn.textContent = isDark ? "☀️" : "🌙";
+    const label = isDark ? "Switch to light mode" : "Switch to dark mode";
+    btn.setAttribute("title", label);
+    btn.setAttribute("aria-label", label);
+  }
+}
+
 // ---------- start ----------
+updateThemeBtn();
 renderChapterCards();
 consentStrip();
 loadRoster();
