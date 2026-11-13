@@ -1,21 +1,76 @@
-# Socratic
-This is an IIT-Bombay Agentic AI Capstone project.
+# Socratic Tutor: an NCERT tutor that teaches, not tells
 
-## 3. Socratic Tutor: an NCERT tutor that teaches, not tells
+IIT-Bombay Agentic AI capstone, project 3. A Class 10 science tutor (Light; the Human Eye; Electricity) that finds the misconception behind a student's question, shows the NCERT page, formula and figure, and asks the next small question instead of giving the answer; and a teacher view that approves every question set and shows where the class is stuck.
 
-In one line. Build a Class 9–10 tutor that identifies a student’s misunderstanding, gives hints grounded in the NCERT textbook, checks their work, and plans what they should practise next.
+Team: Anurag (R1 domain and product), Aman (R2 knowledge and memory), Jilesh (R3 agents and orchestration), Abhishek (R4 tools, control and security), Vidhya (R6 deployment and operations; R5 evaluation lead).
 
-Who it is for. A student and a teacher who needs to know where the class is struggling. Chatbots often give answers without teaching. Last year’s AI Gurukul team built a strong curriculum-grounded tutor with avatars and an on-device version. This project takes a different approach: a learner model guides the tutor’s next step, and the team measures whether the teaching works.
+![Architecture](docs/architecture.png)
 
-Scope. Cover one subject and three or four chapters, such as Class 10 Science (Light – Reflection and Refraction, Electricity) or Class 10 Maths (Quadratic Equations, Arithmetic Progressions, Introduction to Trigonometry).
+## Start everything with one command
 
-## Project Documentation & Engineering Roadmap
+Needs Docker Desktop and an OpenRouter key.
 
-- 🗺️ **[TODOS.md](TODOS.md)**: Master sequential breakdown of all 10 engineering milestones (L4–L16).
-- 🏫 **[SCHOOL_OUTREACH_AND_QUESTIONNAIRE.md](SCHOOL_OUTREACH_AND_QUESTIONNAIRE.md)**: Formal letter to Principal (Narayana School, Borivali) & comprehensive teacher research protocol.
-- 📊 **[REPORT.md](REPORT.md)**: Capstone report template tracking experiments E1, E2, E3, and E4.
-- 🔒 **[THREAT_MODEL.md](THREAT_MODEL.md)**: Security analysis, minor safety guardrails, and red-team test suite.
-- 🧠 **[MEMORY_POLICY.md](MEMORY_POLICY.md)**: Minor learner privacy policy, data retention, and `/forget_me` procedure.
+```bash
+cp .env.example .env          # then set OPENROUTER_API_KEY, TEACHER_PIN and APPROVAL_SIGNING_KEY in .env
+docker compose -f docker/docker-compose.yml up --build      # or: make up
+```
+
+On first start the app downloads any missing NCERT PDF from ncert.nic.in (`scripts/fetch_ncert.py`) and builds the search index; that takes a few minutes once. Then:
+
+| What | Where |
+| :--- | :--- |
+| Student app | http://localhost:8000 (add `?demo=1` for presenter mode) |
+| Teacher app | http://localhost:8000/teacher (PIN: `TEACHER_PIN` in `.env`) |
+| Grafana | http://localhost:3000 (the "Socratic Tutor" dashboard opens without signing in) |
+| Prometheus alerts | http://localhost:9090/alerts |
+
+Compose also starts the four MCP servers (textbook-kb, math-tools, question-bank, learner-store), each its own service over HTTP inside the Compose network. To load the clearly labelled demo class, set `OPS_DEMO=1` in `.env` and use the teacher view's Demo guide.
+
+## Run the evaluation
+
+```bash
+bash scripts/run_experiments.sh dev        # gold, retrieval, E1, E2, E3 and E4 on the development set
+bash scripts/run_experiments.sh held-out   # held-out, 3 repeats: once, after the code freeze, by someone who did not tune the agent
+bash scripts/run_experiments.sh judge      # Cohen's kappa from the teacher view's "Score conversations" labels
+bash scripts/run_experiments.sh report     # evalkit/results/report_tables.md
+```
+
+Every run is logged in `evalkit/results/experiment_log.csv`. Held-out cases live in `evalkit/held_out/`, which the app's image does not contain.
+
+## Submission documents
+
+| Document | File |
+| :--- | :--- |
+| Evaluation report (architecture, walkthrough, experiments, limits) | [REPORT.md](REPORT.md) |
+| Threat model | [THREAT_MODEL.md](THREAT_MODEL.md) |
+| Memory policy | [MEMORY_POLICY.md](MEMORY_POLICY.md) |
+| Experiment log | [evalkit/results/experiment_log.csv](evalkit/results/experiment_log.csv) |
+| Contribution log and decisions | [CONTRIBUTIONS.md](CONTRIBUTIONS.md) |
+| Roles and separations | [TEAM_ROLES](TEAM_ROLES) |
+| Operations (CI, alerts, failed CI runs explained) | [docs/OPERATIONS.md](docs/OPERATIONS.md) |
+| Evaluation design | [docs/EVALUATION.md](docs/EVALUATION.md) |
+| MCP tool list with schemas | [docs/mcp_tool_list.json](docs/mcp_tool_list.json) |
+
+## Repository map
+
+| Folder | What is in it |
+| :--- | :--- |
+| `socratic_tutor/graph.py` | the LangGraph graph: guardrails, intent check, supervisor, agents, output checks |
+| `socratic_tutor/agents/` | diagnostician, tutor (ReAct over MCP), grader, question setter |
+| `socratic_tutor/tools/` | the four MCP servers (`*_server.py`) and the code behind them |
+| `socratic_tutor/mcp_tools.py` | how the agents call the MCP servers (HTTP in Docker, in-memory elsewhere) |
+| `socratic_tutor/tool_hooks.py`, `approval_gate.py`, `policy.py`, `intent.py` | hooks, the approval gate, guardrails, the intent check |
+| `socratic_tutor/web/` | FastAPI service, student and teacher apps, metrics |
+| `evalkit/` | evaluation harness, simulated students, judge, calibration; `held_out/` |
+| `data/` | concept graph, misconception catalogue, development cases, red-team suite, NCERT figures |
+| `docker/` | Dockerfile, Compose file (app, MCP servers, Prometheus, Grafana, eval), Grafana dashboard |
+| `tests/` | about 950 tests; `pytest` runs offline |
+
+NCERT textbooks and exemplars are © NCERT and are used within the project only; the app downloads them from ncert.nic.in.
+
+---
+
+# Developer notes
 
 ## Curriculum Data and Retrieval Baseline
 

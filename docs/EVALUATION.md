@@ -6,7 +6,7 @@ Follows the capstone's evaluation protocol: a gold set split into dev and held-o
 
 | What | Where |
 |---|---|
-| Datasets (all in the team's `data/` folder, `split` field = `dev` / `held_out`) | `data/gold_questions.jsonl` (64: 24 dev, 40 held-out), `data/gold_question_checks.jsonl`, `data/simulated_students.jsonl` (40: 20 / 20), `data/practice_problems.jsonl`, `data/quiz_bank.jsonl`, `data/retrieval_queries.jsonl` (R2), `data/redteam/` |
+| Datasets (`split` field = `dev` / `held_out`; since 13 Nov the held-out rows live in `evalkit/held_out/`, a folder the app's image does not contain, mounted read-only only in the eval service) | `gold_questions.jsonl` (64: 24 dev in `data/`, 40 held-out), `data/gold_question_checks.jsonl`, `simulated_students.jsonl` (40: 20 / 20), `data/practice_problems.jsonl`, `data/quiz_bank.jsonl`, `retrieval_queries.jsonl` (30 / 12, R2), `data/redteam/` |
 | Evaluation code | `evalkit/` |
 | Experiment definitions (E1–E4, retrieval, gold, smoke) | `evalkit/experiments.py` (one file) |
 | Evaluation prompts, versioned | `evalkit/prompts.py` |
@@ -68,6 +68,7 @@ Rely on the judge for a dimension only when weighted kappa ≥ 0.6 on 20+ labels
 ## Before held-out runs
 
 - R1 checks the 28 new held-out questions and the 36 new student cards against the policy and misconception catalogue.
+- Run them with `bash scripts/run_experiments.sh held-out`, once, by someone who did not tune the agent (Aman).
 - Freeze prompts, code and the playbook (commit) first. If anything changes after seeing held-out results, those cases become dev cases; say so in the report.
 
 ## Limits to state in the report

@@ -1,54 +1,41 @@
-# Socratic Tutor — Learner Memory & Privacy Policy
+# Socratic Tutor: memory and privacy policy
 
-## 1. Purpose & Guiding Principles
-Socratic Tutor is an AI-assisted learning platform designed for minor students (Class 9 and 10, typically ages 14–16). 
-Our memory architecture adheres to the **Principle of Data Minimization**: we retain only what is strictly necessary to model a student's conceptual mastery and tailor educational scaffolding.
+*One page, as the guide asks (p.3, L9): what is stored about a minor, why, when, who can read it, and how it is corrected or deleted. Checked against `main` at #76 on 13 Nov 2026.*
 
-The core policy holds:
-> **The system remembers the student's learning progress, never their personal identity.**
+**The rule:** the tutor remembers a student's learning, never their identity. Models, traces and the learner store only ever see a random ID (`stu_…`).
 
----
+## 1. What is stored, and why
 
-## 2. What Is Stored
-Data stored in the persistent `learner-store` is partitioned under a **Pseudonymous Identifier**. The production session layer should generate UUIDv4 identifiers; the current store accepts a caller-provided ID and does not validate UUID format.
+| Kept | Where | Why | When it is written |
+| :--- | :--- | :--- | :--- |
+| Mastery per topic, 0 to 1: the average of the last three quiz scores | learner store (`learner_store.py`, SQLite) | Plans the next topic on the concept graph; the tutor starts further up the hint ladder on a mastered topic | After each graded quiz answer, by the supervisor (code) |
+| Misconceptions seen, first and last seen, sorted or not | learner store | The tutor addresses a repeated mix-up head-on; flashcards put the student's own mix-ups first | When the diagnostician names one |
+| Teaching lessons that worked | learner store | Reuses explanations that helped this student | When a mix-up is sorted |
+| Recent quiz attempts and failure streaks per topic | learner store | The teacher's rule: alert after 3 misses in a row on one topic | After each quiz answer |
+| The conversation of a session | LangGraph checkpointer (`.index/checkpoints.sqlite`) | Short-term memory: the tutor reads the last few turns; a session can stop and resume; the page shows the chat again after a reload | Each turn |
+| A first name or nickname, and a 4-digit sign-in code | teacher's class list (`ops.db`, `roster`) | The teacher sees names; a student picks theirs on a shared device and types the code once | When the teacher adds the student |
+| Study plan from the teacher (topics, note, due date) | `ops.db`, `study_plans` | "My plan" | When the teacher assigns it |
+| Turn records: time, cost, latency, topic, misconception ID, mastery change, outcome; alerts | `ops.db` | Dashboard, metrics, alerts | Each turn |
+| Flashcard progress | the student's own browser (`localStorage`) | Missed cards come back sooner | On the device only; never sent anywhere |
 
-| Category | Specific Attributes Stored | Purpose & Justification |
-| :--- | :--- | :--- |
-| **Concept Mastery** | Float score $[0.0, 1.0]$ per concept ID (e.g., `concept_mirror_formula: 0.75`). Quiz-derived mastery is the arithmetic mean of up to the latest three quiz scores; `update_mastery()` explicitly sets a supplied score. | Required by the Study Planner to navigate the concept prerequisite graph. |
-| **Misconception Log** | Catalogued misconception ID, first/last-seen timestamps, resolution status | Prevents repeating failed teaching tactics; informs diagnostician. |
-| **Scaffolding Lessons** | IDs of Reflexion lessons that successfully resolved a misconception | Adapts future hints to teaching strategies known to work for this student. |
-| **Quiz Performance** | Score, concept ID, duration, and timestamp for recent attempts | Measures progression and computes per-concept failure streaks and stuck thresholds. |
-| **Failure Streaks** | Consecutive below-threshold quiz results per concept; a passing result resets the streak. This counts quiz results, not distinct sessions. | Supports the teacher-validated three-consecutive-failures stuck-learner rule. |
-| **Class-list name (teacher side, not learner memory)** | A first name or nickname the teacher types for a student's random ID (`roster` table in the ops store, `socratic_tutor/web/ops_store.py`). | Lets the teacher see names instead of IDs and lets a student pick their name on a shared class device. It is shown only in the teacher view and in the student page's "Learning as" list. It is never passed to a model, a trace or a log: the graph, the agents and the traces only ever see the random ID. |
-| **Flashcard progress (student's browser only)** | For each card, how many times in a row the student said "I had it" (`localStorage`, keyed by the random ID). | Puts missed cards first. It never leaves the device, is not sent to the server or a model, and is cleared with the browser's site data. Points, levels and badges are not stored at all: they are worked out from the learner record on each request (`socratic_tutor/web/game.py`). |
-| **Assigned study plan (teacher side)** | Ordered topic IDs, the teacher's note and an optional due date (`study_plans` table in the ops store). | The student's "My plan" view. The suggested part of the plan is not stored: code works it out from mastery and open misconceptions on every request (`socratic_tutor/web/study_plan.py`). |
+**Short-term context** is trimmed: the tutor sees only the last four turns of the conversation, plus a one-line summary of the learner record (mastery, mastered topics, mix-ups seen), with no name.
 
----
+## 2. Never stored
+- Real names in the learner store, traces or prompts; phone numbers, e-mail addresses, school names, locations, photos. Phone numbers and e-mail addresses typed in chat are masked before any model or trace sees them (`policy.mask_personal_details`).
+- Age, gender, family or money details, disciplinary remarks.
+- **Distress:** no distress label or message is written to the learner record. A distress message raises a teacher alert (in `ops.db`, with a fixed wording, not the message) and gets a calm fixed reply. The conversation turn itself is in the session's checkpoint like any other turn and is deleted with it.
 
-## 3. What Is Strictly Forbidden / Never Stored
-1. **Personally Identifiable Information (PII)**: Real names, email addresses, phone numbers, school names, geographic location, or photos. The one exception is the teacher's class list above: a first name or nickname the teacher chooses, kept outside learner memory, never sent to a model, and deleted with "Delete my data". Teachers should use first names or nicknames, not full names.
-2. **Raw Chat Transcripts in Learner Profiles**: `LearnerStore` does not store raw student messages. The graph state can contain dialogue, however, and a caller-supplied LangGraph checkpointer may persist that state. The app currently does not configure a checkpointer, but checkpoint transcript expiry, PII scrubbing, and deletion are not generally enforced; do not claim those controls until implemented.
-3. **Sensitive Minor Attributes**: Age, gender, socioeconomic indicators, or disciplinary remarks.
+## 3. Who can read it
+- **The student:** their own record, under "My progress". A named student needs their sign-in code once per device, so a classmate on the same device can't open their record.
+- **The teacher** (PIN sign-in): each student's record, class summaries, alerts, plans and the sign-in codes.
+- **The agents:** the supervisor (code) reads and writes the learner record (also exposed as the learner-store MCP server, whose tools only the supervisor may use); the tutor gets the one-line summary above; no agent sees names.
+- **Nobody else:** the data stays on the school's machine. It is never sold or used to train models. Model calls go to OpenRouter with the random ID only.
 
-### Academic Distress Signals
+## 4. Retention, correction and deletion
+- **Expiry:** a learner record unused for 90 days is deleted automatically when the app starts (`purge_expired_profiles`).
+- **Correction:** mastery is recomputed from the last three quiz scores, so a wrong score washes out; the teacher can rename a student or change a plan; misconceptions are marked "sorted" when the student shows they've fixed them.
+- **Deletion:** "Delete my data" (My progress) deletes a device's own record: the learner record, quiz attempts, session checkpoints and ops rows, with a signed erasure receipt. For a **named** student, the teacher deletes it from the teacher page ("Delete <name>'s data", two clicks), which also removes them from the class list; the student page can't, so a classmate can't wipe someone else's record.
+- **Memory off:** experiment E4 runs the same students with the learner record emptied, to measure what memory adds.
 
-An academic-distress indicator is sensitive learner data and is **not part of persistent learner memory**. The learner store has no distress field and must not store the triggering message or a distress label. Because the current graph places `teacher_alert_triggered` in its state, callers must not attach a persistent LangGraph checkpointer to student distress turns until checkpoint redaction is implemented and tested. This restriction is a policy requirement; the current code does not enforce it automatically.
-
-The current input guardrail recognizes only a small set of phrases. It does not provide the required supportive micro-step, continued low-difficulty tutoring, or teacher-dashboard alert. No teacher currently receives a distress notification. If this feature is implemented, the proposed visibility is limited to the assigned safeguarding teacher; no agent, peer, or unrelated teacher should access an individual flag. No retention period for a stored flag is approved: do not persist one until the school/team approves an explicit expiry and deletion rule. Under the current no-persistence rule, the in-memory signal should be discarded with the request and must not be copied to traces, profiles, or checkpoints.
-
----
-
-## 4. Who Can Access the Memory Store
-1. **The Orchestration Agent (`Supervisor`)**: Intended to read pseudonymous learning progress to route between Practice Mode and Quiz Mode; it must not receive persistent distress data under the current policy.
-2. **The Diagnostician & Tutor Agents**: Intended to read prior misconceptions and effective explanations, not raw distress messages or persistent distress labels.
-3. **The Authenticated Classroom Teacher**: Intended to see aggregated, anonymized cohort analytics. Authentication, role-based access, and cohort aggregation are not implemented in the current app scaffold.
-4. **Third-Party / Commercial Exclusion**: Learner data is never sold, shared with ad networks, or used to train external commercial foundation models.
-
----
-
-## 5. Retention, Expiry, and Deletion ("Right to be Forgotten")
-* **Default Retention Window**: `LearnerStore.purge_expired_profiles()` can purge profiles after **90 days of inactivity**. Session registration creates the learner row even before a quiz/mastery record exists, so session-only learners are included in expiry. A scheduled or application-level caller is still required; automatic expiry is not currently running.
-* **Immediate Deletion API (`forget_me`)**:
-  * `LearnerStore.forget_me(student_id, checkpointer)` removes learner-store profile, quiz-attempt, and session-link rows and calls `delete_thread()` for registered LangGraph thread IDs.
-  * Callers must register each learner/thread association and pass the active checkpointer. The graph/app does not currently register sessions or expose a `/forget_me` command or UI route, so user-facing deletion and checkpoint cascade are not wired into the product yet.
-  * No cryptographic erasure receipt is implemented. Confirmation must report only the deletion work the caller actually completed.
+## 5. Open points before real students
+A school would need to confirm: consent from parents, a real helpline number (it is a placeholder today), per-student logins instead of four-digit codes, and who at the school is responsible for alerts.

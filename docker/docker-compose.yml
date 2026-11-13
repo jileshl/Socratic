@@ -34,6 +34,7 @@ services:
     volumes:
       - app-index:/app/.index      # NCERT index, vector store, learner store, checkpoints, ops records
       - app-cache:/app/.cache      # scrubbed traces
+      - ../evalkit/results/labels:/app/evalkit/results/labels   # "Score conversations": the scores are saved on your machine
     restart: unless-stopped
 
   # The MCP servers: the same image, one server each, HTTP inside the Compose network only (no ports published).
