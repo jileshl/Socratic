@@ -140,7 +140,7 @@ def classify_with_llm(text: str, config_runnable: Any = None) -> tuple[str, str 
             content = content.split("```")[1].split("```")[0].strip()
         data = json.loads(content)
         intent = str(data.get("intent", "")).lower().strip()
-        if intent in ("request_quiz", "off_syllabus", "opt_out", "confused", "physics"):
+        if intent in ("personal", "conduct", "request_quiz", "off_syllabus", "opt_out", "confused", "physics"):
             return intent, "llm_classifier"
     except Exception:
         pass
@@ -173,9 +173,10 @@ def classify(text: str, in_conversation: bool = False, config_runnable: Any = No
     if is_calc:
         return "physics", None
 
-    # Mixed-domain queries: if off-syllabus topics (e.g. economics, demand & supply) are mentioned alongside physics words,
-    # invoke the fast LLM classifier to disambiguate analogies from true science questions.
-    if OFF_SYLLABUS.search(t) and config_runnable is not None:
+    # For all natural language messages (when LLM guard is on or config is passed),
+    # invoke the fast LLM intent classifier to semantically analyze the student's true intent,
+    # catching personal remarks, classroom mischief, teacher comments, off-syllabus topics, or slang.
+    if config_runnable is not None or guard_models.guard_models_on():
         llm_verdict = classify_with_llm(t, config_runnable=config_runnable)
         if llm_verdict:
             return llm_verdict
@@ -196,17 +197,19 @@ def classify(text: str, in_conversation: bool = False, config_runnable: Any = No
     if not physics and not in_conversation and len(t.split()) >= 3 and not re.search(r"\?|\b(why|how|what|explain|help|hint|answer|question|i think|because|so)\b", t, re.IGNORECASE):
         return "small_talk", "no_topic"
 
-    # If in ongoing conversation and message is not a pure calculation, allow LLM classifier fallback
-    if in_conversation and config_runnable is not None and not is_calc:
-        llm_verdict = classify_with_llm(t, config_runnable=config_runnable)
-        if llm_verdict:
-            return llm_verdict
-
     return "physics", None
 
 
 # The tutor's replies for the turns that end here. Fixed text, so nothing can leak and nothing is made up.
 REPLIES: dict[str, str] = {
+    "personal": (
+        "Let's keep our focus on science concepts and textbook practice. "
+        "If you'd like to explore how concave mirrors, lenses, or light refraction work in NCERT Science, I'm here to help!"
+    ),
+    "conduct": (
+        "Let's keep our conversation respectful and focused on Class 10 Science learning. "
+        "How can I help you with your physics practice today?"
+    ),
     "request_quiz": (
         "Ready to test your knowledge? Great! Switch to the Quiz tab above or click 'Take the quiz on this' "
         "to test your skills with questions checked by the calculator and earn mastery points!"

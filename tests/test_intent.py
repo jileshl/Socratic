@@ -332,3 +332,40 @@ def test_llm_intent_classifier_observability(monkeypatch: pytest.MonkeyPatch) ->
     assert snap["cost_usd"] == 0.00003
     assert snap["models"].get("gpt-4o-mini") == 1
 
+
+def test_personal_mischief_and_conduct_classification(monkeypatch: pytest.MonkeyPatch) -> None:
+    from socratic_tutor import llm
+    from langchain_core.outputs import ChatResult, ChatGeneration
+    from langchain_core.messages import AIMessage
+
+    monkeypatch.setattr("socratic_tutor.guard_models.guard_models_on", lambda: True)
+
+    def mock_intent(intent_val: str):
+        real_get = llm.get_llm
+        def mock_get(*args: Any, **kw: Any) -> Any:
+            c = real_get(*args, **kw)
+            c._generate = lambda msgs, **k: ChatResult(generations=[ChatGeneration(message=AIMessage(
+                content=f'{{"intent": "{intent_val}", "reason": "test"}}',
+                response_metadata={"token_usage": {"prompt_tokens": 30, "completion_tokens": 10, "cost": 0.00001}}
+            ))])
+            return c
+        return mock_get
+
+    # 1. Personal / voyeurism scenario with concave mirror
+    monkeypatch.setattr(llm, "get_llm", mock_intent("personal"))
+    verdict, rule = intent.classify(
+        "When I see into Diya's eyes the lights refracts and I just see red. at what angle should I keep my concave mirror that I can see her face throughout the class",
+        config_runnable={"callbacks": []}
+    )
+    assert verdict == "personal"
+    assert "concave mirrors" in intent.reply_for(verdict, rule)
+
+    # 2. Conduct / remarks about teachers
+    monkeypatch.setattr(llm, "get_llm", mock_intent("conduct"))
+    verdict, rule = intent.classify(
+        "Our physics teacher gives too much homework, he is so annoying and unfair",
+        config_runnable={"callbacks": []}
+    )
+    assert verdict == "conduct"
+    assert "respectful" in intent.reply_for(verdict, rule)
+
