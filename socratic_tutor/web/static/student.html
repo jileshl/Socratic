@@ -1107,7 +1107,7 @@ function renderHood() {
   const b = t.behind || {}; const sf = b.safety || {}; const ran = new Set((t.steps || []).map(s => s.node));
   const by = node => ((t.steps || []).find(s => s.node === node) || {}).decided_by || (STATIONS.find(x => x[0] === node) || [])[2] || "code";
   const M = b.models || {}; const model = name => name ? `<span class="model">Model: ${esc(name)}</span>` : null;
-  const INTENT = { request_quiz: "asking for a quiz or test", others_data: "another student's results", role_claim: "a role claim (faculty, parent, ...)", rude: "a rude message", opt_out: "opting out", off_syllabus: "another subject (not Light, the Eye or Electricity)", fed_up: "frustration (\u201cnonsense\u201d, \u201cboring\u201d)", gibberish: "a keyboard mash", small_talk: "small talk", confused: "\u201chuh?\u201d: explain it another way", physics: "a physics question or answer" };
+  const INTENT = { personal: "personal / classroom mischief", conduct: "conduct or teacher remarks", request_quiz: "asking for a quiz or test", others_data: "another student's results", role_claim: "a role claim (faculty, parent, ...)", rude: "a rude message", opt_out: "opting out", off_syllabus: "another subject (not Light, the Eye or Electricity)", fed_up: "frustration (\u201cnonsense\u201d, \u201cboring\u201d)", gibberish: "a keyboard mash", small_talk: "small talk", confused: "\u201chuh?\u201d: explain it another way", physics: "a physics question or answer" };
   kind = t.blocked ? "Stopped by the safety check" : t.distress_level ? "A student who needs care" : t.grade ? "Quiz answer" : b.off_topic ? "Not a physics question" : "Practice question";
   // 1. safety
   add("Safety check", "code + model", t.blocked ? "stop" : (t.distress_level ? "care" : "ok"), [
