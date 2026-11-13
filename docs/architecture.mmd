@@ -5,7 +5,7 @@ flowchart TB
   UI["1 · Student app + FastAPI<br/>streaming · sessions · sign-in codes<br/><i>L16</i>"]
   TV["Teacher app<br/>dashboard · approvals · alerts · plans<br/><i>L14 · L16</i>"]
   UI --> IG["2 · Input guardrails<br/>mask personal details · injection · distress · content guard<br/><i>L15 · code + guard model</i>"]:::control
-  IG --> IC["3 · Intent check<br/>physics · quiz · huh? · off-topic · fed up · others' data<br/><i>code + intent model</i>"]:::control
+  IG --> IC["3 · Intent check<br/>physics · quiz · huh? · off-topic · fed up · personal · others' data · topic<br/><i>code rules + intent model</i>"]:::control
   IC --> SUP["4 · Supervisor + study planner (LangGraph)<br/>typed state · routes practice/quiz · hint level · replans after a quiz · SQLite checkpointer<br/><i>L8 · L10 · code</i>"]:::code
   SUP <--> MEM[("Learner memory<br/>mastery · mix-ups · lessons<br/><i>L9</i>")]
   SUP --> D["5 · Diagnostician<br/>names the mix-up<br/><i>L11 · model</i>"]:::model
