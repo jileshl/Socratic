@@ -53,8 +53,9 @@ from socratic_tutor import config
 # names from docs/mcp_tool_list.json). The keys are the node names in Jilesh's graph. An agent or a tool that
 # isn't here is blocked.
 AGENT_TOOLS: dict[str, frozenset[str]] = {
-    # The supervisor routes and plans; it calls no tools.
-    "supervisor": frozenset(),
+    # The supervisor (code, no model) routes and plans. It is the only one that may read or write the learner model
+    # (the learner-store server, added 13 Nov); no model-driven agent can change a student's mastery.
+    "supervisor": frozenset({"get_learner_profile", "update_mastery"}),
     # The diagnostician asks a probing question; it may read the textbook.
     "diagnostician": frozenset({"search_textbook", "get_section", "get_exemplar"}),
     # The tutor gives cited hints from the textbook. It never gets the solvers, so it can't hand over a

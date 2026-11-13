@@ -22,4 +22,6 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=4)"
 # Build the NCERT index from the PDFs in data/ on first start, then serve.
-CMD ["sh", "-c", "[ -s .index/chunks.json ] || python scripts/build_index.py --force; exec python -m socratic_tutor.app"]
+# First start: download any NCERT PDF that isn't here (they are not redistributed in the repository, guide p.12),
+# then build the index once.
+CMD ["sh", "-c", "python scripts/fetch_ncert.py || true; [ -s .index/chunks.json ] || python scripts/build_index.py --force; exec python -m socratic_tutor.app"]

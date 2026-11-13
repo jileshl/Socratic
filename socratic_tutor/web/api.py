@@ -545,6 +545,12 @@ def _behind(values: dict[str, Any], message: str, mode: str, blocked_reason: str
         "concept_pinned": bool(values.get("concept_pinned")),
         "sources": sources[:4],
         "lesson_used": values.get("effective_lesson_applied"),
+        # The turn's plan as the supervisor set it, and whether it replanned (after a quiz answer), for the
+        # side panel (L10: "show the user a plan object"; "a trace showing a replan").
+        "plan": list(values.get("plan") or []),
+        "replanned": "replanned" in (values.get("plan") or []),
+        "tutor_mode": values.get("tutor_mode"),
+        "hint_level": values.get("hint_step"),
         "intent": values.get("intent") or "physics",
         "intent_rule": values.get("intent_rule"),
         "off_topic": bool(values.get("off_topic")),

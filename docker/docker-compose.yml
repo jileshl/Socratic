@@ -11,21 +11,73 @@
 #
 # Prometheus and Grafana settings are written inline below (configs:), so this
 # file is the only Docker configuration. App settings live in socratic_tutor/config.py.
-# The MCP tool servers (R4) use stdio and run inside the app container.
+# The four MCP tool servers run as their own services over streamable HTTP (guide p.5: "stdio during development
+# and HTTP inside Docker"); the app reaches them by service name (MCP_*_URL below). If one is down, the app uses the
+# same server in-process and counts it (socratic_errors_total{where="mcp_http_fallback"}).
 
 services:
   app:
     build:
       context: ..
       dockerfile: docker/Dockerfile
+    image: socratic-tutor:local   # the MCP services below run this same image
     env_file:
       - path: ../.env
         required: false
     ports:
       - "${APP_PORT:-8000}:8000"   # set APP_PORT to use another port on your computer
+    environment:
+      MCP_TEXTBOOK_KB_URL: http://mcp-textbook:8101/mcp
+      MCP_MATH_TOOLS_URL: http://mcp-math:8102/mcp
+      MCP_QUESTION_BANK_URL: http://mcp-question-bank:8103/mcp
+      MCP_LEARNER_STORE_URL: http://mcp-learner-store:8104/mcp
     volumes:
       - app-index:/app/.index      # NCERT index, vector store, learner store, checkpoints, ops records
       - app-cache:/app/.cache      # scrubbed traces
+    restart: unless-stopped
+
+  # The MCP servers: the same image, one server each, HTTP inside the Compose network only (no ports published).
+  # textbook-kb, question-bank and learner-store read the index volume the app builds, so they start once the app
+  # is healthy.
+  mcp-textbook:
+    image: socratic-tutor:local
+    pull_policy: never
+    command: ["python", "-m", "socratic_tutor.tools.textbook_kb_server", "--http", "8101"]
+    environment: {MCP_ALLOWED_HOSTS: "mcp-textbook,localhost,127.0.0.1"}
+    env_file: [{path: ../.env, required: false}]
+    volumes: [app-index:/app/.index]
+    depends_on: {app: {condition: service_healthy}}
+    healthcheck: {disable: true}
+    restart: unless-stopped
+
+  mcp-math:
+    image: socratic-tutor:local
+    pull_policy: never
+    command: ["python", "-m", "socratic_tutor.tools.math_tools_server", "--http", "8102"]
+    environment: {MCP_ALLOWED_HOSTS: "mcp-math,localhost,127.0.0.1"}
+    depends_on: [app]
+    healthcheck: {disable: true}
+    restart: unless-stopped
+
+  mcp-question-bank:
+    image: socratic-tutor:local
+    pull_policy: never
+    command: ["python", "-m", "socratic_tutor.tools.question_bank_server", "--http", "8103"]
+    environment: {MCP_ALLOWED_HOSTS: "mcp-question-bank,localhost,127.0.0.1"}
+    env_file: [{path: ../.env, required: false}]
+    volumes: [app-index:/app/.index]
+    depends_on: {app: {condition: service_healthy}}
+    healthcheck: {disable: true}
+    restart: unless-stopped
+
+  mcp-learner-store:
+    image: socratic-tutor:local
+    pull_policy: never
+    command: ["python", "-m", "socratic_tutor.tools.learner_store_server", "--http", "8104"]
+    environment: {MCP_ALLOWED_HOSTS: "mcp-learner-store,localhost,127.0.0.1"}
+    volumes: [app-index:/app/.index]
+    depends_on: {app: {condition: service_healthy}}
+    healthcheck: {disable: true}
     restart: unless-stopped
 
   prometheus:
@@ -75,6 +127,7 @@ services:
         required: false
     volumes:
       - ../evalkit/results:/app/evalkit/results   # run logs and transcripts stay on your machine
+      - ../evalkit/held_out:/app/evalkit/held_out:ro   # held-out cases: only this service can read them
       - eval-index:/app/.index
 
 configs:

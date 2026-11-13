@@ -1,4 +1,7 @@
-"""Loaders for every evaluation dataset. All of them live in data/.
+"""Loaders for every evaluation dataset. Development rows live in data/; held-out rows in evalkit/held_out/.
+
+The guide (p.5) asks for the held-out cases "in a folder the agent cannot read": the app's image does not
+contain evalkit/held_out/ (.dockerignore), and only the evaluation service mounts it (HELD_OUT_DIR).
 
 One source per thing, no copies:
     data/gold_questions.jsonl         the team's gold set (split: dev / held_out)
@@ -41,6 +44,18 @@ def _data(name: str) -> Path:
     return config.DATA_DIR / name
 
 
+HELD_OUT_DIR = Path(__import__("os").getenv("HELD_OUT_DIR", str(Path(__file__).resolve().parent / "held_out")))
+
+
+def split_rows(name: str) -> list[dict[str, Any]]:
+    """The rows of a split dataset: data/<name> (dev) plus evalkit/held_out/<name> (held-out), if mounted."""
+    rows = _read_jsonl(_data(name))
+    held = HELD_OUT_DIR / name
+    if held.exists():
+        rows += _read_jsonl(held)
+    return rows
+
+
 def _check_split(split: str) -> str:
     if split not in SPLITS:
         raise ValueError(f"split must be one of {SPLITS}, not {split!r}")
@@ -75,7 +90,7 @@ def _gold_checks() -> dict[str, dict[str, Any]]:
 def gold_questions(split: str) -> list[dict[str, Any]]:
     """Gold questions of one split, with derived fields added (the file is not changed)."""
     out = []
-    for q in _read_jsonl(_data("gold_questions.jsonl")):
+    for q in split_rows("gold_questions.jsonl"):
         if q.get("split") != _check_split(split):
             continue
         q = dict(q)
@@ -119,7 +134,7 @@ def _quiz_items(misconception_ids: list[str], form: str) -> list[str]:
 def simulated_students(split: str) -> list[dict[str, Any]]:
     """Student cards of one split, completed with fields derived from the misconception catalogue."""
     cards = []
-    for card in _read_jsonl(_data("simulated_students.jsonl")):
+    for card in split_rows("simulated_students.jsonl"):
         if card.get("split") != _check_split(split):
             continue
         card = dict(card)
@@ -143,7 +158,7 @@ def simulated_students(split: str) -> list[dict[str, Any]]:
 
 
 def retrieval_queries(split: str) -> list[dict[str, Any]]:
-    return [row for row in _read_jsonl(_data("retrieval_queries.jsonl")) if row.get("split") == _check_split(split)]
+    return [row for row in split_rows("retrieval_queries.jsonl") if row.get("split") == _check_split(split)]
 
 
 def redteam_attacks() -> list[dict[str, Any]]:

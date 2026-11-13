@@ -457,5 +457,7 @@ def propose_question(concept_id: str, difficulty: Difficulty, prompt: str, gold_
 
 
 if __name__ == "__main__":
-    # stdio transport (development, capstone guide p.5), like math_tools_server.py.
-    mcp.run(transport="stdio")
+    # stdio for development; "--http PORT" for streamable HTTP inside Docker (capstone guide p.5).
+    from socratic_tutor.tools.serve import main
+
+    main(mcp)

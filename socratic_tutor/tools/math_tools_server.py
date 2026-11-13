@@ -333,5 +333,7 @@ def check_equivalence(student_text: str, gold_text: str) -> ToolResult:
 
 
 if __name__ == "__main__":
-    # stdio transport (development, capstone guide p.5). HTTP for Docker comes later.
-    mcp.run(transport="stdio")
+    # stdio for development; "--http PORT" for streamable HTTP inside Docker (capstone guide p.5).
+    from socratic_tutor.tools.serve import main
+
+    main(mcp)

@@ -145,7 +145,7 @@ def test_the_map_names_exactly_the_tools_in_the_tool_list() -> None:
     for tools in tool_hooks.AGENT_TOOLS.values():
         mapped_names.update(tools)
     assert mapped_names == listed_names
-    assert len(listed_names) == 11
+    assert len(listed_names) == 13  # 11, plus learner-store's two (13 Nov)
 
 
 def test_the_quiz_table_only_narrows_an_agents_own_list() -> None:
@@ -163,8 +163,10 @@ def test_only_the_question_setter_may_propose_questions() -> None:
             assert "propose_question" not in tools
 
 
-def test_the_supervisor_has_no_tools_and_the_tutor_and_diagnostician_have_no_solvers() -> None:
-    assert tool_hooks.AGENT_TOOLS["supervisor"] == frozenset()
+def test_the_supervisor_has_only_the_learner_model_and_the_tutor_and_diagnostician_have_no_solvers() -> None:
+    # Since 13 Nov the supervisor (code) owns the learner-store tools; it still has nothing that writes outside.
+    assert tool_hooks.AGENT_TOOLS["supervisor"] == frozenset({"get_learner_profile", "update_mastery"})
+    assert all("update_mastery" not in tools for name, tools in tool_hooks.AGENT_TOOLS.items() if name != "supervisor")
     # No solver for the agents that talk to the student while they work: no complete worked solutions (p.11 step 2).
     for agent_name in ("tutor", "diagnostician"):
         assert tool_hooks.AGENT_TOOLS[agent_name] == frozenset({"search_textbook", "get_section", "get_exemplar"})

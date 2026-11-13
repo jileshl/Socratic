@@ -118,14 +118,12 @@ def benchmark_retrieval(split: str = "dev", top_k: int = 5) -> str:
     from evalkit.metrics import compute_recall_at_k
     from socratic_tutor.retrieval import HybridRetriever
 
-    queries_path = config.DATA_DIR / "retrieval_queries.jsonl"
-    if not queries_path.exists():
+    from evalkit import datasets
+
+    try:
+        records = datasets.split_rows("retrieval_queries.jsonl")
+    except FileNotFoundError:
         return ""
-    records = [
-        json.loads(line)
-        for line in queries_path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
     records = [r for r in records if split == "all" or r.get("split") == split]
     if not records:
         return ""

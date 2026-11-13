@@ -289,3 +289,14 @@ def test_grader_handles_labelled_and_multi_part_numeric_answers_without_llm(monk
     res7 = grader.grade_answer("v = +37.5 cm", "v = -37.5 cm", is_numeric=True)
     assert res7["is_correct"] is False
     assert res7["score"] == 0.0
+
+
+def test_a_two_part_key_needs_both_parts_and_labels_are_read() -> None:
+    """Gold run GQ_029 (12 Nov) and the team review (13 Nov)."""
+    key = "Equivalent resistance = 24 ohms; current = 0.25 A."
+    assert grader.grade_answer("R = 24 ohm; I = 6 x 24 = 144 A", key, is_numeric=True)["is_correct"] is False
+    assert grader.grade_answer("24 ohm", key, is_numeric=True)["is_correct"] is False
+    assert grader.grade_answer("24 ohm and 0.25 A", key, is_numeric=True)["is_correct"] is True
+    assert grader.grade_answer("R = 24 ohm, I = 6/24 = 0.25 A", key, is_numeric=True)["is_correct"] is True
+    assert grader.grade_answer("v = -60 cm (real)", "-60 cm", is_numeric=True)["is_correct"] is True
+    assert grader.grade_answer("v = 60 cm", "-60 cm", is_numeric=True)["is_correct"] is False

@@ -46,7 +46,8 @@ def extract_numeric_quantities(text: str) -> list[str]:
 
     results = []
     # Split by clause separators
-    clauses = re.split(r"[;,()\n]", text)
+    # Split by clause separators ("and" too: "24 ohm and 0.25 A")
+    clauses = re.split(r"[;,()\n]|\band\b", text)
     for clause in clauses:
         clause = clause.strip()
         if not clause:
@@ -129,9 +130,40 @@ def check_numeric_answer(student_text: str, gold_text: str) -> dict[str, Any]:
     #        each pair checked ONCE: the first match -> right; else the first readable pair -> wrong
     #   [N3] nothing readable -> {"ok": False}: the grader then uses the rubric
 
+    # [N0] A key with two or more parts ("24 ohm; 0.25 A"): right only if EVERY part has a matching number in
+    # the answer. (Gold run GQ_029, 12 Nov: "R = 24 ohm; I = 6 x 24 = 144 A" was marked right because the first
+    # number matched, and "24 ohm and 0.25 A" was marked wrong because the parts weren't read.)
+    # Only parts with a unit, of different kinds, count as separate answers: in "v = -37.5 cm; m = -1.5 (real)"
+    # the magnification is extra information, and "-37.5 cm" alone is right (test_grader).
+    gold_parts: list[str] = []
+    kinds: set[str] = set()
+    for part in extract_numeric_quantities(gold_text):
+        read = math_tools.read_quantity(part)
+        if read.get("ok") and read.get("read_unit") != "none" and read.get("solved_for") not in kinds:
+            kinds.add(str(read.get("solved_for")))
+            gold_parts.append(part)
+    if len(gold_parts) >= 2:
+        student_parts: list[str] = extract_numeric_quantities(student_text)
+        if student_parts:
+            missing: list[str] = []
+            for gold_number in gold_parts:
+                matched = False
+                for student_number in student_parts:
+                    one_part: dict[str, Any] = math_tools.check_numeric_answer(student_number, gold_number)
+                    if one_part["ok"] and one_part["value"]:
+                        matched = True
+                        break
+                if not matched:
+                    missing.append(gold_number)
+            if not missing:
+                return {"ok": True, "value": True, "detail": f"All {len(gold_parts)} parts match the key."}
+            return {"ok": True, "value": False,
+                    "detail": f"{len(gold_parts) - len(missing)} of {len(gold_parts)} parts match the key."}
     # [N1] The whole answer against the whole key.
     whole: dict[str, Any] = math_tools.check_numeric_answer(student_text, gold_text)
-    if whole["ok"]:
+    # Right as a whole: done. "Wrong" as a whole may only mean the label stopped it reading the answer ("v = -60 cm
+    # (real)" was marked wrong, team review 13 Nov), so the parts are tried before saying so.
+    if whole["ok"] and whole["value"]:
         return whole
     # [N2] Pairs of numbers, when labels stopped [N1] from reading them.
     gold_candidates: list[str] = extract_numeric_quantities(gold_text)
@@ -155,7 +187,7 @@ def check_numeric_answer(student_text: str, gold_text: str) -> dict[str, Any]:
                     first_readable = one
     if first_readable is not None:
         return first_readable
-    # [N3] Nothing could be read.
+    # [N3] Nothing matched: the whole answer's own verdict (wrong, or nothing could be read).
     return whole
 
 
