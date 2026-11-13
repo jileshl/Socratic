@@ -1,0 +1,1316 @@
+{
+  "metadata": {
+    "evaluation_id": "I11",
+    "rubric_version": "1.0-operational-2026-11-13",
+    "source_run_id": "20261112T211033Z_e3_no_playbook_dev_r1",
+    "evaluator": "Anurag Singh",
+    "completed_at": "2026-11-13T13:31:27.815137+00:00",
+    "blind_attestation": true
+  },
+  "evaluations": [
+    {
+      "item_id": "20261112T211033Z_e3_no_playbook_dev_r1::sim_student_01",
+      "ratings": {
+        "conceptual_accuracy": {
+          "score": 4,
+          "reason": "Only substantive physics (turn 4) is correct per NCERT 9.1: reflection angle is measured from the normal, not the surface. Never explains what the normal is or that the angles are equal, although the student asks at turn 5.",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turn 4",
+              "finding": "States angle of reflection is measured from the normal, not the mirror surface."
+            },
+            {
+              "source_type": "ncert",
+              "location": "NCERT 9.1",
+              "finding": "Angles measured from the normal; i = r."
+            }
+          ]
+        },
+        "identified_misconception": {
+          "score": 4,
+          "reason": "Turn 4 isolates the root error (measuring from the mirror instead of the normal) right away, per NCERT 9.1. The fix stops there: turn 6 is a refusal and the student's 'where is the normal' confusion goes unanswered.",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turn 4",
+              "finding": "Directly contrasts normal vs mirror surface."
+            },
+            {
+              "source_type": "target_misconception",
+              "location": "MISCON_LIGHT_01",
+              "finding": "Angles measured from mirror surface."
+            },
+            {
+              "source_type": "transcript",
+              "location": "turn 6",
+              "finding": "Refusal replaces follow-up."
+            }
+          ]
+        },
+        "socratic_guidance": {
+          "score": 2,
+          "reason": "Turn 4 asks a good non-revealing question ('where is the normal?'). But 2 of 3 Tutor turns (2, 6) are off-topic privacy refusals that block the lesson, and the student's request at turn 7 is never answered. No answer leaked (NCERT 9.1).",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turns 2, 6",
+              "finding": "Irrelevant privacy refusals."
+            },
+            {
+              "source_type": "transcript",
+              "location": "turn 4",
+              "finding": "Asks learner to locate the normal."
+            },
+            {
+              "source_type": "rubric",
+              "location": "decision rule 9",
+              "finding": "Repeated interruptions support 1-2."
+            }
+          ]
+        }
+      },
+      "confidence": "medium",
+      "needs_human_review": false,
+      "review_flags": [],
+      "overall_note": "Thin evidence: one substantive Tutor turn."
+    },
+    {
+      "item_id": "20261112T211033Z_e3_no_playbook_dev_r1::sim_student_02",
+      "ratings": {
+        "conceptual_accuracy": {
+          "score": 4,
+          "reason": "Correct per NCERT 9.2: f = R/2, so F (15 cm) differs from C (30 cm). Minor imprecision: turns 4, 6 and 8 call the focal length 'F', mixing up the point and the distance. Cites 9.2.4 for R = 2f, which is in 9.2.",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turns 4, 6, 8",
+              "finding": "f is half of R; F at 15 cm, C at 30 cm."
+            },
+            {
+              "source_type": "ncert",
+              "location": "NCERT 9.2",
+              "finding": "R = 2f; F midway between P and C."
+            },
+            {
+              "source_type": "ncert",
+              "location": "NCERT 9.2.4",
+              "finding": "Cited section does not hold R = 2f."
+            }
+          ]
+        },
+        "identified_misconception": {
+          "score": 4,
+          "reason": "Addresses the F-vs-C belief from turn 4, and turn 6 says F is 'not at the same point as the center of curvature'. It never explains why (F midway between P and C, NCERT 9.2) even though the student still holds the belief at turn 5.",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turn 6",
+              "finding": "Explicitly separates F from C."
+            },
+            {
+              "source_type": "target_misconception",
+              "location": "MISCON_LIGHT_02",
+              "finding": "F and C same point."
+            }
+          ]
+        },
+        "socratic_guidance": {
+          "score": 2,
+          "reason": "Turn 4 gives the key relation (f = half R), leaving only 30/2. Turns 6 and 8 repeat it and ask the same generic 'visualize the rays' question three times. The student said 15 cm first (turn 5), so this is not a strict leak, but little reasoning is left (NCERT 9.2).",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turn 4",
+              "finding": "Tells f is half of R."
+            },
+            {
+              "source_type": "transcript",
+              "location": "turn 5",
+              "finding": "Student first produces 15 cm."
+            },
+            {
+              "source_type": "transcript",
+              "location": "turns 6, 8",
+              "finding": "Repeats rule plus the same generic question."
+            }
+          ]
+        }
+      },
+      "confidence": "medium",
+      "needs_human_review": false,
+      "review_flags": [
+        "citation_mismatch"
+      ],
+      "overall_note": "Citation mismatch recorded; does not change scores."
+    },
+    {
+      "item_id": "20261112T211033Z_e3_no_playbook_dev_r1::sim_student_03",
+      "ratings": {
+        "conceptual_accuracy": {
+          "score": 5,
+          "reason": "All claims match NCERT 11.1: conventional current runs positive to negative, opposite to electron flow. The historical note (convention set before electrons were found) is correct. Cites 10.1 instead of 11.1.",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turns 4, 6, 8",
+              "finding": "Conventional current + to -, opposite to electrons; historical origin."
+            },
+            {
+              "source_type": "ncert",
+              "location": "NCERT 11.1",
+              "finding": "Conventional current opposite to electron drift."
+            }
+          ]
+        },
+        "identified_misconception": {
+          "score": 5,
+          "reason": "Turn 4 immediately isolates the root belief (current follows electron flow), and turns 6-8 keep the remediation on that distinction (NCERT 11.1).",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turn 4",
+              "finding": "Separates conventional current from electron flow."
+            },
+            {
+              "source_type": "target_misconception",
+              "location": "MISCON_ELEC_01",
+              "finding": "Conventional current follows electron flow."
+            }
+          ]
+        },
+        "socratic_guidance": {
+          "score": 1,
+          "reason": "Turn 4 states the required conceptual answer ('positive to negative, opposite to electron flow') before the student produces it. Turn 10's refusal then interrupts the student's confirmation (NCERT 11.1).",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turn 4",
+              "finding": "Answer given directly."
+            },
+            {
+              "source_type": "problem_key",
+              "location": "expected_answer",
+              "finding": "Positive to negative."
+            },
+            {
+              "source_type": "rubric",
+              "location": "decision rule 4",
+              "finding": "Direct answer gives 1."
+            }
+          ]
+        }
+      },
+      "confidence": "high",
+      "needs_human_review": false,
+      "review_flags": [
+        "citation_mismatch"
+      ],
+      "overall_note": "Accurate and well targeted, but tells the answer."
+    },
+    {
+      "item_id": "20261112T211033Z_e3_no_playbook_dev_r1::sim_student_05",
+      "ratings": {
+        "conceptual_accuracy": {
+          "score": 3,
+          "reason": "Formula 1/f = 1/v + 1/u is correct (turn 10, NCERT 9.2.4). But turn 4 says the image forms 'where these two rays meet'. For an object between P and F (this case), the reflected rays diverge and only their extensions meet behind the mirror (9.2.2). Turn 8 cites 9.2.1 for the formula.",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turn 4",
+              "finding": "Ray-tracing rule omits the virtual-image case."
+            },
+            {
+              "source_type": "transcript",
+              "location": "turn 10",
+              "finding": "Correct mirror formula."
+            },
+            {
+              "source_type": "ncert",
+              "location": "NCERT 9.2.2",
+              "finding": "Object between P and F gives a virtual, erect, enlarged image behind the mirror."
+            }
+          ]
+        },
+        "identified_misconception": {
+          "score": 3,
+          "reason": "The 'always inverted' belief is raised at turns 1, 3, 5 and 7, but the Tutor ignores it until turn 10, which asks how object position affects inversion. That is partial and late (NCERT 9.2.2).",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turn 10",
+              "finding": "First question linking object position to image nature."
+            },
+            {
+              "source_type": "target_misconception",
+              "location": "MISCON_LIGHT_03",
+              "finding": "Concave mirrors always invert."
+            }
+          ]
+        },
+        "socratic_guidance": {
+          "score": 2,
+          "reason": "Non-refusal turns ask questions without revealing v = +15 cm, but they ignore the student's direct questions (turns 5, 7). Three refusals (turns 2, 6, 12) interrupt, and the student gives up in frustration (turn 13). NCERT 9.2.4.",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turns 2, 6, 12",
+              "finding": "Three irrelevant refusals."
+            },
+            {
+              "source_type": "transcript",
+              "location": "turn 13",
+              "finding": "Student frustrated; session breaks down."
+            },
+            {
+              "source_type": "rubric",
+              "location": "decision rule 9",
+              "finding": "Repeated interruptions support 1-2."
+            }
+          ]
+        }
+      },
+      "confidence": "medium",
+      "needs_human_review": false,
+      "review_flags": [
+        "citation_mismatch"
+      ],
+      "overall_note": "Citation mismatch recorded; accuracy is driven by the ray-meeting imprecision, not the citation."
+    },
+    {
+      "item_id": "20261112T211033Z_e3_no_playbook_dev_r1::sim_student_06",
+      "ratings": {
+        "conceptual_accuracy": {
+          "score": 2,
+          "reason": "Major error: turns 4 and 6 confirm f = +20 cm for a concave mirror ('Exactly right... as stated in NCERT 9.2.4'). Under NCERT 9.2.3 it is -20 cm. Turn 12 says the signs are 'accurate'. This leads to v = 12 cm instead of -60 cm. The formula and the sign of u are correct.",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turn 6",
+              "finding": "Affirms positive focal length for a concave mirror."
+            },
+            {
+              "source_type": "ncert",
+              "location": "NCERT 9.2.3",
+              "finding": "Distances against incident light are negative; concave f < 0."
+            },
+            {
+              "source_type": "problem_key",
+              "location": "expected_answer",
+              "finding": "v = -60 cm."
+            }
+          ]
+        },
+        "identified_misconception": {
+          "score": 1,
+          "reason": "Reinforces MISCON_LIGHT_05 instead of correcting it (turns 4, 6). Never addresses m = v/u (MISCON_LIGHT_06), which the student raises at turns 1, 3 and 13 (NCERT 9.2.4: m = -v/u).",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turns 4, 6",
+              "finding": "Endorses the sign misconception."
+            },
+            {
+              "source_type": "transcript",
+              "location": "turn 13",
+              "finding": "m = v/u concern never addressed."
+            },
+            {
+              "source_type": "target_misconception",
+              "location": "MISCON_LIGHT_05; MISCON_LIGHT_06",
+              "finding": "Both expressed; neither corrected."
+            }
+          ]
+        },
+        "socratic_guidance": {
+          "score": 3,
+          "reason": "No answer leaked: the student does each step. But prompts are generic ('ensure the signs are correct'), turn 12 drifts to trivial arithmetic, and turn 6 offers a quiz before the problem is solved. Weak adaptation (NCERT 9.2.4).",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turns 8, 10, 12",
+              "finding": "Step prompts; student does the reasoning."
+            },
+            {
+              "source_type": "transcript",
+              "location": "turn 6",
+              "finding": "Premature quiz offer."
+            }
+          ]
+        }
+      },
+      "confidence": "high",
+      "needs_human_review": false,
+      "review_flags": [
+        "citation_mismatch"
+      ],
+      "overall_note": "Wrong sign claim attributed to NCERT 9.2.4; the error itself sets the accuracy score."
+    },
+    {
+      "item_id": "20261112T211033Z_e3_no_playbook_dev_r1::sim_student_07",
+      "ratings": {
+        "conceptual_accuracy": {
+          "score": 1,
+          "reason": "Turn 8 states mirror magnification is 'the ratio of v to u [NCERT 9.2.4]'. That is the lens relation; for mirrors m = -v/u. This is the only substantive physics claim and it contradicts NCERT, confirming the student's +2/erect error (expected m = -2, inverted).",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turn 8",
+              "finding": "Defines mirror m as v/u."
+            },
+            {
+              "source_type": "ncert",
+              "location": "NCERT 9.2.4",
+              "finding": "Mirror m = -v/u."
+            },
+            {
+              "source_type": "problem_key",
+              "location": "expected_answer",
+              "finding": "m = -2, inverted."
+            }
+          ]
+        },
+        "identified_misconception": {
+          "score": 1,
+          "reason": "Never isolates the misconception (lens sign relation used for mirrors). Turns 4 and 6 talk vaguely about signs, and turn 8 restates the wrong relation as fact (NCERT 9.2.4).",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turn 8",
+              "finding": "Builds on the student's wrong formula."
+            },
+            {
+              "source_type": "target_misconception",
+              "location": "MISCON_LIGHT_06",
+              "finding": "Mirror magnification uses lens relation."
+            }
+          ]
+        },
+        "socratic_guidance": {
+          "score": 2,
+          "reason": "Turns 4, 6 and 8 are near-identical generic prompts about signs, with no adaptation. The ray-diagram request (turns 7, 9) is ignored and turn 2 is a refusal. No answer leaked, but progress is nil (NCERT 9.2.3).",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turns 4, 6, 8",
+              "finding": "Repetitive generic questions."
+            },
+            {
+              "source_type": "transcript",
+              "location": "turn 9",
+              "finding": "Student still stuck and asking for a diagram."
+            }
+          ]
+        }
+      },
+      "confidence": "high",
+      "needs_human_review": false,
+      "review_flags": [],
+      "overall_note": "Tutor's wrong formula entrenches the target misconception."
+    },
+    {
+      "item_id": "20261112T211033Z_e3_no_playbook_dev_r1::sim_student_08",
+      "ratings": {
+        "conceptual_accuracy": {
+          "score": 4,
+          "reason": "Correct per NCERT 9.3.1-9.3.2: denser to rarer bends away from the normal; speed increases in air. Imprecisions: says 'denser' rather than optically denser, and turn 6 opens with 'You're thinking correctly' after the student said 'towards'.",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turns 6, 8",
+              "finding": "Away from normal; speed increases."
+            },
+            {
+              "source_type": "ncert",
+              "location": "NCERT 9.3.1",
+              "finding": "Bends away on entering a rarer medium."
+            },
+            {
+              "source_type": "ncert",
+              "location": "NCERT 9.3.2",
+              "finding": "Higher n means lower speed."
+            }
+          ]
+        },
+        "identified_misconception": {
+          "score": 4,
+          "reason": "Turn 4 targets the right root (direction depends on which medium the light enters), countering 'always toward the normal'. It treats mass density as the cue without separating it from optical density (NCERT 9.3.1).",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turn 4",
+              "finding": "Redirects to denser-to-rarer transition."
+            },
+            {
+              "source_type": "target_misconception",
+              "location": "MISCON_LIGHT_07",
+              "finding": "Refraction always bends toward normal."
+            }
+          ]
+        },
+        "socratic_guidance": {
+          "score": 1,
+          "reason": "Turn 6 states 'the light actually bends away from the normal', the required conceptual answer, while the student still says 'towards' (turn 5). NCERT 9.3.1.",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turn 6",
+              "finding": "Answer stated directly."
+            },
+            {
+              "source_type": "transcript",
+              "location": "turn 5",
+              "finding": "Student had not reached the answer."
+            },
+            {
+              "source_type": "rubric",
+              "location": "decision rule 4",
+              "finding": "Direct answer gives 1."
+            }
+          ]
+        }
+      },
+      "confidence": "high",
+      "needs_human_review": false,
+      "review_flags": [],
+      "overall_note": ""
+    },
+    {
+      "item_id": "20261112T211033Z_e3_no_playbook_dev_r1::sim_student_09",
+      "ratings": {
+        "conceptual_accuracy": {
+          "score": 4,
+          "reason": "Turn 4 is correct per NCERT 9.3.4: convex-lens image size depends on object position. Small imprecision: says 'relative to the focal length' rather than F/2F. Cites 9.3.7 for image formation (belongs in 9.3.4-9.3.5).",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turn 4",
+              "finding": "Image can be enlarged, diminished or same size depending on position."
+            },
+            {
+              "source_type": "ncert",
+              "location": "NCERT 9.3.4",
+              "finding": "Object beyond 2F gives a diminished image."
+            }
+          ]
+        },
+        "identified_misconception": {
+          "score": 4,
+          "reason": "Turn 4 directly counters 'a convex lens always magnifies' early. The lens-power misconception (MISCON_LIGHT_10) is never expressed by the student, so it isn't counted. No follow-up, because the transcript ends at turn 5 (NCERT 9.3.4).",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turn 4",
+              "finding": "Says image size depends on object position."
+            },
+            {
+              "source_type": "target_misconception",
+              "location": "MISCON_LIGHT_09",
+              "finding": "Convex lens always magnifies."
+            }
+          ]
+        },
+        "socratic_guidance": {
+          "score": 3,
+          "reason": "Turn 4 states the general rule, then asks a guiding question about which rays to trace; v = +30 cm is not leaked. Only one substantive turn, preceded by a refusal (turn 2), and it doesn't respond to the formula request (NCERT 9.3.7).",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turn 4",
+              "finding": "Rule plus guiding question."
+            },
+            {
+              "source_type": "transcript",
+              "location": "turn 2",
+              "finding": "Refusal interruption."
+            }
+          ]
+        }
+      },
+      "confidence": "medium",
+      "needs_human_review": false,
+      "review_flags": [
+        "citation_mismatch"
+      ],
+      "overall_note": "Short session; one substantive Tutor turn."
+    },
+    {
+      "item_id": "20261112T211033Z_e3_no_playbook_dev_r1::sim_student_10",
+      "ratings": {
+        "conceptual_accuracy": {
+          "score": 5,
+          "reason": "Turns 4, 6 and 8 correctly distinguish the pupil's light-control role from the eye lens's focusing role. NCERT 10.1 states that the pupil regulates the amount of light and the eye lens forms the image; omitting the cornea's larger refractive contribution does not make these claims incorrect.",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turns 4, 6, 8",
+              "finding": "Pupil controls incoming light; eye lens focuses it on the retina."
+            },
+            {
+              "source_type": "ncert",
+              "location": "NCERT 10.1",
+              "finding": "The pupil regulates light entry; the eye lens forms an inverted real image, while the cornea supplies most refraction."
+            }
+          ]
+        },
+        "identified_misconception": {
+          "score": 5,
+          "reason": "Turn 4 immediately isolates the root belief that the pupil focuses the image and consistently separates the pupil's light-control role from the lens's focusing role through turns 6 and 8 (NCERT 10.1).",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turns 4, 6, 8",
+              "finding": "Tutor repeatedly corrects the pupil-versus-lens role confusion."
+            },
+            {
+              "source_type": "target_misconception",
+              "location": "MISCON_EYE_01",
+              "finding": "The pupil focuses the image."
+            },
+            {
+              "source_type": "ncert",
+              "location": "NCERT 10.1",
+              "finding": "Pupil controls light; the eye lens forms the image on the retina."
+            }
+          ]
+        },
+        "socratic_guidance": {
+          "score": 1,
+          "reason": "Turn 4 states the full conceptual answer (pupil controls light; lens focuses) before the student reasons to it (NCERT 10.1).",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turn 4",
+              "finding": "Answer given directly."
+            },
+            {
+              "source_type": "rubric",
+              "location": "decision rule 4",
+              "finding": "Direct conceptual answer gives 1."
+            }
+          ]
+        }
+      },
+      "confidence": "high",
+      "needs_human_review": false,
+      "review_flags": [
+        "citation_mismatch"
+      ],
+      "overall_note": "Resolved: NCERT 10.1 supports the tutor's pupil-versus-lens explanation. Turn 4 cites 10.1.1 instead of the more appropriate 10.1, so only a citation mismatch remains."
+    },
+    {
+      "item_id": "20261112T211033Z_e3_no_playbook_dev_r1::sim_student_11",
+      "ratings": {
+        "conceptual_accuracy": {
+          "score": 3,
+          "reason": "Ciliary muscles change lens curvature/focal length, which is correct per NCERT 10.1.1. But turn 6 praises the student's retina-moving belief ('good understanding'), and turn 8 says focusing 'primarily' involves the lens 'rather than the retina moving', implying the retina moves a bit. NCERT says it does not.",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turn 6",
+              "finding": "Praises the wrong belief."
+            },
+            {
+              "source_type": "transcript",
+              "location": "turn 8",
+              "finding": "'Primarily' hedge."
+            },
+            {
+              "source_type": "ncert",
+              "location": "NCERT 10.1.1",
+              "finding": "Lens curvature changes; retina does not move."
+            }
+          ]
+        },
+        "identified_misconception": {
+          "score": 4,
+          "reason": "Turn 8 explicitly contrasts lens shape with retina movement, which is the root issue. But turn 4 ignores the retina claim and turn 6 first affirms it, so the targeting comes late (NCERT 10.1.1).",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turn 8",
+              "finding": "Lens shape vs retina moving."
+            },
+            {
+              "source_type": "target_misconception",
+              "location": "MISCON_EYE_02",
+              "finding": "Accommodation by moving the retina."
+            }
+          ]
+        },
+        "socratic_guidance": {
+          "score": 1,
+          "reason": "Turn 4 is a good probing question, but turn 6 states the required answer ('ciliary muscles change the lens shape to adjust the focal length') before the student produces it (NCERT 10.1.1).",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turn 6",
+              "finding": "Ciliary muscles and focal length stated."
+            },
+            {
+              "source_type": "problem_key",
+              "location": "expected_answer",
+              "finding": "Expected: ciliary muscles; focal length."
+            },
+            {
+              "source_type": "rubric",
+              "location": "decision rule 4",
+              "finding": "Direct answer gives 1."
+            }
+          ]
+        }
+      },
+      "confidence": "high",
+      "needs_human_review": false,
+      "review_flags": [],
+      "overall_note": ""
+    },
+    {
+      "item_id": "20261112T211033Z_e3_no_playbook_dev_r1::sim_student_12",
+      "ratings": {
+        "conceptual_accuracy": {
+          "score": 4,
+          "reason": "Turn 6 is correct per NCERT 10.2: myopia means near is clear and far is blurred; corrected with a concave (diverging) lens. It omits why (the distant image forms in front of the retina), which the student asks for at turn 7.",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turn 6",
+              "finding": "Myopia; concave lens diverges rays."
+            },
+            {
+              "source_type": "ncert",
+              "location": "NCERT 10.2",
+              "finding": "Myopia corrected by a concave lens."
+            }
+          ]
+        },
+        "identified_misconception": {
+          "score": 4,
+          "reason": "Addresses both expressed misconceptions in one turn (6): confirms the near-sighted definition and corrects convex to concave. This comes only after two refusals, and the 'convex focuses light' reasoning isn't explored (NCERT 10.2).",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turn 6",
+              "finding": "Corrects lens type; confirms definition."
+            },
+            {
+              "source_type": "target_misconception",
+              "location": "MISCON_EYE_03; MISCON_EYE_11",
+              "finding": "Both addressed."
+            }
+          ]
+        },
+        "socratic_guidance": {
+          "score": 2,
+          "reason": "Two consecutive refusals (turns 2, 4) block the lesson, and the only substantive turn (6) is pure telling. Myopia was first said by the student (turn 3), so it is not a leak. Only a 'would you like to explore' prompt follows (NCERT 10.2).",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turns 2, 4",
+              "finding": "Repeated refusals."
+            },
+            {
+              "source_type": "transcript",
+              "location": "turn 6",
+              "finding": "All telling, no question."
+            }
+          ]
+        }
+      },
+      "confidence": "medium",
+      "needs_human_review": false,
+      "review_flags": [],
+      "overall_note": ""
+    },
+    {
+      "item_id": "20261112T211033Z_e3_no_playbook_dev_r1::sim_student_13",
+      "ratings": {
+        "conceptual_accuracy": {
+          "score": 5,
+          "reason": "Correct per NCERT 10.4: white light already contains its colours, and the prism separates them because each colour bends by a different angle. No wrong claims.",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turns 4, 6",
+              "finding": "Colours already present; different angles of bending."
+            },
+            {
+              "source_type": "ncert",
+              "location": "NCERT 10.4",
+              "finding": "Dispersion; red deviates least, violet most."
+            }
+          ]
+        },
+        "identified_misconception": {
+          "score": 4,
+          "reason": "Turn 6 explicitly rejects 'the prism creates colours'. Turn 4 doesn't address the belief, and the follow-up (why the colours aren't seen before the prism, turn 7) is lost to refusals (NCERT 10.4).",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turn 6",
+              "finding": "'The prism doesn't create colors'."
+            },
+            {
+              "source_type": "target_misconception",
+              "location": "MISCON_EYE_07",
+              "finding": "Prism creates colours."
+            }
+          ]
+        },
+        "socratic_guidance": {
+          "score": 1,
+          "reason": "Turn 4 already presupposes 'different colors bend at different angles', and turn 6 states the full conceptual answer. Turns 8 and 10 are refusals that leave the student pleading (NCERT 10.4).",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turn 6",
+              "finding": "Answer stated directly."
+            },
+            {
+              "source_type": "transcript",
+              "location": "turns 8, 10",
+              "finding": "Refusals."
+            },
+            {
+              "source_type": "rubric",
+              "location": "decision rule 4",
+              "finding": "Direct answer gives 1."
+            }
+          ]
+        }
+      },
+      "confidence": "high",
+      "needs_human_review": false,
+      "review_flags": [],
+      "overall_note": ""
+    },
+    {
+      "item_id": "20261112T211033Z_e3_no_playbook_dev_r1::sim_student_14",
+      "ratings": {
+        "conceptual_accuracy": {
+          "score": 5,
+          "reason": "The tutor correctly explains that air molecules and other fine atmospheric particles scatter shorter blue wavelengths more strongly. Turn 8's no-particles/no-scattering conclusion is consistent with NCERT 10.6.2; without atmospheric scatterers the sky would appear dark.",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turns 4, 6, 8",
+              "finding": "Shorter blue wavelengths are scattered by air molecules; no scatterers means no blue sky."
+            },
+            {
+              "source_type": "ncert",
+              "location": "NCERT 10.6.2",
+              "finding": "Air molecules and fine particles scatter blue light more strongly; without an atmosphere there is no scattering and the sky looks dark."
+            }
+          ]
+        },
+        "identified_misconception": {
+          "score": 4,
+          "reason": "Turn 6 explicitly says 'the air itself isn't blue' and redirects to scattering, which is the target belief. The 'sea' idea from turn 1 is never addressed (NCERT 10.6.2).",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turn 6",
+              "finding": "Rejects 'air is blue'."
+            },
+            {
+              "source_type": "target_misconception",
+              "location": "MISCON_EYE_10",
+              "finding": "Sky blue because atmosphere is blue."
+            }
+          ]
+        },
+        "socratic_guidance": {
+          "score": 1,
+          "reason": "Turn 4 gives the required answer (shorter wavelengths scattered more) inside a 'can you visualize' framing, before the student reasons (NCERT 10.6.2).",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turn 4",
+              "finding": "Scatter + shorter wavelength stated."
+            },
+            {
+              "source_type": "problem_key",
+              "location": "expected_answer",
+              "finding": "Expected: scatter; shorter wavelength."
+            },
+            {
+              "source_type": "rubric",
+              "location": "decision rule 4",
+              "finding": "Direct answer gives 1."
+            }
+          ]
+        }
+      },
+      "confidence": "high",
+      "needs_human_review": false,
+      "review_flags": [],
+      "overall_note": "Resolved: the clean-air wording does not create a material conflict; the tutor's core molecular-scattering explanation matches NCERT 10.6.2."
+    },
+    {
+      "item_id": "20261112T211033Z_e3_no_playbook_dev_r1::sim_student_15",
+      "ratings": {
+        "conceptual_accuracy": {
+          "score": 2,
+          "reason": "Major error repeated at turns 4 and 6: the concave lens makes rays 'appear to come from a farther point'. Per NCERT 10.2, it makes rays from a distant object appear to come from the nearer far point (1.5 m). This misstated mechanism is cited to 9.3.5. Lens type and P = 1/f (turn 8) are correct.",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turns 4, 6",
+              "finding": "'Appear to come from a farther point'."
+            },
+            {
+              "source_type": "ncert",
+              "location": "NCERT 10.2",
+              "finding": "Concave lens images the distant object at the far point."
+            },
+            {
+              "source_type": "ncert",
+              "location": "NCERT 9.3.8",
+              "finding": "P = 1/f in metres."
+            }
+          ]
+        },
+        "identified_misconception": {
+          "score": 3,
+          "reason": "Corrects convex to concave at turn 4, but never addresses the student's reason ('convex focuses light'), i.e. that the myopic eye already converges too much. The rationale offered is wrong (NCERT 10.2).",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turn 4",
+              "finding": "Corrects lens type."
+            },
+            {
+              "source_type": "transcript",
+              "location": "turn 5",
+              "finding": "Student still asks why concave helps."
+            },
+            {
+              "source_type": "target_misconception",
+              "location": "MISCON_EYE_11",
+              "finding": "Convex chosen for myopia."
+            }
+          ]
+        },
+        "socratic_guidance": {
+          "score": 1,
+          "reason": "Turn 4 states the lens-type part of the required answer ('a concave lens is actually used') before the student reasons to it. Turn 6 offers a quiz before the power is found (NCERT 9.3.8).",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turn 4",
+              "finding": "Lens type given directly."
+            },
+            {
+              "source_type": "problem_key",
+              "location": "expected_answer",
+              "finding": "Expected: concave, -0.67 D."
+            },
+            {
+              "source_type": "rubric",
+              "location": "decision rule 4",
+              "finding": "Direct answer gives 1."
+            }
+          ]
+        }
+      },
+      "confidence": "medium",
+      "needs_human_review": false,
+      "review_flags": [
+        "citation_mismatch"
+      ],
+      "overall_note": "The wrong citation goes with an incorrect claim; the error itself sets accuracy."
+    },
+    {
+      "item_id": "20261112T211033Z_e3_no_playbook_dev_r1::sim_student_16",
+      "ratings": {
+        "conceptual_accuracy": {
+          "score": 5,
+          "reason": "Correct per NCERT 11.2: a voltmeter measures potential difference (energy per unit charge) across two points and is connected in parallel. Cites 10.1 instead of 11.2.",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turns 4, 6",
+              "finding": "PD across component; voltmeter in parallel."
+            },
+            {
+              "source_type": "ncert",
+              "location": "NCERT 11.2",
+              "finding": "Voltmeter in parallel across the component."
+            }
+          ]
+        },
+        "identified_misconception": {
+          "score": 4,
+          "reason": "Turn 4 targets the root ('measures potential difference across a component') against the series belief. It never contrasts this with the ammeter, which the student explicitly compares (NCERT 11.2).",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turn 4",
+              "finding": "Measuring across vs in series."
+            },
+            {
+              "source_type": "target_misconception",
+              "location": "MISCON_ELEC_03",
+              "finding": "Voltmeter in series."
+            }
+          ]
+        },
+        "socratic_guidance": {
+          "score": 1,
+          "reason": "Turn 4 states 'voltmeters are connected in parallel with the component', the required conceptual answer, before the student reaches it (NCERT 11.2).",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turn 4",
+              "finding": "'In parallel' stated directly."
+            },
+            {
+              "source_type": "problem_key",
+              "location": "expected_answer",
+              "finding": "Expected: in parallel."
+            },
+            {
+              "source_type": "rubric",
+              "location": "decision rule 4",
+              "finding": "Direct answer gives 1."
+            }
+          ]
+        }
+      },
+      "confidence": "high",
+      "needs_human_review": false,
+      "review_flags": [
+        "citation_mismatch"
+      ],
+      "overall_note": ""
+    },
+    {
+      "item_id": "20261112T211033Z_e3_no_playbook_dev_r1::sim_student_17",
+      "ratings": {
+        "conceptual_accuracy": {
+          "score": 4,
+          "reason": "Correct per NCERT 11.4: resistance stays constant at constant temperature. Turn 6 drops the temperature/ohmic qualifier. Cites 10.1 instead of 11.4.",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turns 4, 6, 8",
+              "finding": "R constant regardless of voltage."
+            },
+            {
+              "source_type": "ncert",
+              "location": "NCERT 11.4",
+              "finding": "Ohmic conductor: R = V/I constant at constant T."
+            }
+          ]
+        },
+        "identified_misconception": {
+          "score": 4,
+          "reason": "Turn 4 targets the belief that R changes with V. It never addresses the student's reasoning (reading R = V/I as R ∝ V), which persists through turn 7 (NCERT 11.4).",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turn 4",
+              "finding": "States R constant against the misconception."
+            },
+            {
+              "source_type": "transcript",
+              "location": "turn 7",
+              "finding": "Belief persists, not probed."
+            },
+            {
+              "source_type": "target_misconception",
+              "location": "MISCON_ELEC_04",
+              "finding": "R increases with V."
+            }
+          ]
+        },
+        "socratic_guidance": {
+          "score": 2,
+          "reason": "1.5 A is not given; the student calculates it. But the Tutor tells the key fact and method (turn 4), then repeats the same rule and near-identical question at turns 6 and 8, adapting to nothing (NCERT 11.4).",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turns 6, 8",
+              "finding": "Same rule repeated."
+            },
+            {
+              "source_type": "transcript",
+              "location": "turn 5",
+              "finding": "Student computes 1.5 A."
+            }
+          ]
+        }
+      },
+      "confidence": "medium",
+      "needs_human_review": false,
+      "review_flags": [
+        "citation_mismatch"
+      ],
+      "overall_note": ""
+    },
+    {
+      "item_id": "20261112T211033Z_e3_no_playbook_dev_r1::sim_student_18",
+      "ratings": {
+        "conceptual_accuracy": {
+          "score": 3,
+          "reason": "Direction is correct (thicker wire means less resistance), but turn 4 reverses cause and effect: larger area 'allows more current to flow, reducing resistance'. It never states R = ρl/A or inverse proportionality (NCERT 11.5), and cites 9.3.7.",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turn 4",
+              "finding": "Causal reversal current then resistance."
+            },
+            {
+              "source_type": "ncert",
+              "location": "NCERT 11.5",
+              "finding": "R = ρl/A; R ∝ 1/A."
+            }
+          ]
+        },
+        "identified_misconception": {
+          "score": 3,
+          "reason": "Responds to the 'thicker means more resistance' belief but doesn't isolate the student's reason ('more material blocks current', turns 1, 5). It just asserts the opposite (NCERT 11.5).",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turn 4",
+              "finding": "Asserts thicker reduces R."
+            },
+            {
+              "source_type": "transcript",
+              "location": "turn 5",
+              "finding": "Student's 'more material' reasoning not addressed."
+            },
+            {
+              "source_type": "target_misconception",
+              "location": "MISCON_ELEC_05",
+              "finding": "Thicker wire greater resistance."
+            }
+          ]
+        },
+        "socratic_guidance": {
+          "score": 2,
+          "reason": "One refusal (turn 2) and one substantive turn that tells the relation, then a vague question. 2 Ω is not given, but little reasoning is left to the learner; the transcript ends at turn 5 (NCERT 11.5).",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turn 4",
+              "finding": "Mostly telling."
+            },
+            {
+              "source_type": "transcript",
+              "location": "turn 2",
+              "finding": "Refusal."
+            }
+          ]
+        }
+      },
+      "confidence": "medium",
+      "needs_human_review": false,
+      "review_flags": [
+        "citation_mismatch"
+      ],
+      "overall_note": "Short session; two Tutor turns."
+    },
+    {
+      "item_id": "20261112T211033Z_e3_no_playbook_dev_r1::sim_student_19",
+      "ratings": {
+        "conceptual_accuracy": {
+          "score": 4,
+          "reason": "Turn 4 is correct per NCERT 11.6.1: the same current passes through each series resistor, and the total resistance sets it. But it opens with 'You're on the right track!' right after the student's 'each resistor gets a share', which could read as endorsement. Cites 10.1.",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turn 4",
+              "finding": "Same current; total R first."
+            },
+            {
+              "source_type": "ncert",
+              "location": "NCERT 11.6.1",
+              "finding": "Same current; R_s = sum."
+            }
+          ]
+        },
+        "identified_misconception": {
+          "score": 3,
+          "reason": "States the series-current fact once (turn 4) but never explains why it isn't divided or used up, despite repeated requests (turns 5, 7, 9). The expressed parallel equal-split belief (turn 1, MISCON_ELEC_07) is never addressed (NCERT 11.6.2).",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turn 4",
+              "finding": "Addresses series current only."
+            },
+            {
+              "source_type": "transcript",
+              "location": "turn 1",
+              "finding": "Parallel equal split expressed."
+            },
+            {
+              "source_type": "target_misconception",
+              "location": "MISCON_ELEC_06; MISCON_ELEC_07",
+              "finding": "One of two partly handled."
+            }
+          ]
+        },
+        "socratic_guidance": {
+          "score": 2,
+          "reason": "0.5 A is not leaked, but turn 4 tells the key fact and method, and three refusals (turns 2, 6, 8) block the student's repeated questions (NCERT 11.6.1).",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turns 6, 8",
+              "finding": "Consecutive refusals."
+            },
+            {
+              "source_type": "transcript",
+              "location": "turn 9",
+              "finding": "Student still unanswered."
+            },
+            {
+              "source_type": "rubric",
+              "location": "decision rule 9",
+              "finding": "Repeated interruptions support 1-2."
+            }
+          ]
+        }
+      },
+      "confidence": "high",
+      "needs_human_review": false,
+      "review_flags": [
+        "citation_mismatch"
+      ],
+      "overall_note": "Resolved: the unaddressed parallel-current belief is the evidence supporting an identified-misconception score of 3, not an unresolved ambiguity. Turn 4 cites 10.1 instead of 11.6.1, so a citation mismatch remains."
+    },
+    {
+      "item_id": "20261112T211033Z_e3_no_playbook_dev_r1::sim_student_20",
+      "ratings": {
+        "conceptual_accuracy": {
+          "score": 2,
+          "reason": "Turn 8 asks how current splits 'between the 2-ohm and 3-ohm resistors'. 2 Ω is the equivalent resistance; the branches are 6 Ω and 3 Ω. Following this would give a wrong branch current. 'Not necessarily equally' is correct (NCERT 11.6.2).",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turn 8",
+              "finding": "Mislabels a branch as 2 ohm."
+            },
+            {
+              "source_type": "ncert",
+              "location": "NCERT 11.6.2",
+              "finding": "Same PD; branch current depends on branch R."
+            },
+            {
+              "source_type": "problem_key",
+              "location": "expected_answer",
+              "finding": "3 ohm branch = 2 A."
+            }
+          ]
+        },
+        "identified_misconception": {
+          "score": 3,
+          "reason": "Turn 8 counters the equal-split belief (target) but only on the third Tutor turn, and without using the student's own same-voltage point to explain why the currents differ (NCERT 11.6.2).",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turn 8",
+              "finding": "'Not necessarily equally'."
+            },
+            {
+              "source_type": "transcript",
+              "location": "turn 5",
+              "finding": "Student gives same PD; not leveraged."
+            },
+            {
+              "source_type": "target_misconception",
+              "location": "MISCON_ELEC_07",
+              "finding": "Parallel equal current."
+            }
+          ]
+        },
+        "socratic_guidance": {
+          "score": 2,
+          "reason": "Turns 4 and 8 are real questions with no leak, but refusals (turns 2, 6) interrupt, the request to check 3 A goes unanswered, and turn 8's guiding question contains the error. The student is disengaged by turn 9 (NCERT 11.6.2).",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turns 2, 6",
+              "finding": "Refusals."
+            },
+            {
+              "source_type": "transcript",
+              "location": "turn 9",
+              "finding": "Student still at 1.5 A, frustrated."
+            }
+          ]
+        }
+      },
+      "confidence": "medium",
+      "needs_human_review": false,
+      "review_flags": [],
+      "overall_note": ""
+    },
+    {
+      "item_id": "20261112T211033Z_e3_no_playbook_dev_r1::sim_student_21",
+      "ratings": {
+        "conceptual_accuracy": {
+          "score": 4,
+          "reason": "H = I²Rt and the 'four times' conclusion are correct per NCERT 11.7. Minor: it never states that R and t are held constant, and cites 10.1 instead of 11.7.",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turns 4, 8, 10",
+              "finding": "Heat goes with I squared; factor of four."
+            },
+            {
+              "source_type": "ncert",
+              "location": "NCERT 11.7",
+              "finding": "H = I²Rt."
+            }
+          ]
+        },
+        "identified_misconception": {
+          "score": 5,
+          "reason": "Turn 4 isolates the exact root belief (doubling current doubles heat) at once, and remediation stays on the I² dependence until the student reasons it out (NCERT 11.7).",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turn 4",
+              "finding": "'Does not just double... square of the current'."
+            },
+            {
+              "source_type": "target_misconception",
+              "location": "MISCON_ELEC_09",
+              "finding": "Doubling current only doubles heating."
+            }
+          ]
+        },
+        "socratic_guidance": {
+          "score": 3,
+          "reason": "The student derives the factor of 4 (turn 9) after turn 8's question. But turn 4 tells the key relation, turn 6 is a refusal, and the Tutor never returns to the actual problem (3,200 J) before offering a quiz (turn 10). NCERT 11.7.",
+          "evidence": [
+            {
+              "source_type": "transcript",
+              "location": "turn 4",
+              "finding": "Tells square dependence."
+            },
+            {
+              "source_type": "transcript",
+              "location": "turn 9",
+              "finding": "Student derives 4x."
+            },
+            {
+              "source_type": "problem_key",
+              "location": "expected_answer",
+              "finding": "3,200 J never worked."
+            }
+          ]
+        }
+      },
+      "confidence": "medium",
+      "needs_human_review": false,
+      "review_flags": [
+        "citation_mismatch"
+      ],
+      "overall_note": ""
+    }
+  ]
+}
