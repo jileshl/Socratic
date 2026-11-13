@@ -249,9 +249,11 @@ pre.transcript { white-space: pre-wrap; background: var(--paper); padding: 12px;
 .mixup b { color: var(--warn); }
 .quick { display: flex; gap: 6px; flex-wrap: wrap; }
 .quick button { font-size: 13.5px; padding: 4px 12px; border-radius: 999px; color: var(--royal); border-color: var(--royal-soft); background: var(--sheet); }
-.thinking-steps { font-size: 13.5px; color: var(--ink-2); display: grid; gap: 2px; }
-.thinking-steps span.done::before { content: "✓ "; color: var(--ok); }
-.thinking-steps span.now::before { content: "• "; color: var(--royal); }
+.thinking-steps { font-size: 13px; color: var(--ink-2); display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+.thinking-steps span { display: inline-flex; align-items: center; gap: 6px; line-height: 1.4; text-align: left; padding: 0; }
+.thinking-steps span.done::before { content: "✓"; color: var(--ok); font-weight: 700; display: inline-block; }
+.thinking-steps span.now { color: var(--ink); font-weight: 600; }
+.thinking-steps span.now::before { content: "•"; color: var(--royal); font-weight: 700; display: inline-block; font-size: 15px; }
 .dots { display: inline-flex; gap: 4px; }
 .dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-2); animation: blink 1.2s infinite; }
 .dots i:nth-child(2) { animation-delay: .2s; } .dots i:nth-child(3) { animation-delay: .4s; }
@@ -358,8 +360,8 @@ table.class td .meter { width: 90px; display: inline-block; vertical-align: midd
 .fcard p { margin: 0; }
 @media (prefers-reduced-motion: reduce) { .fcard .face { transition: none; } }
 @media (max-width: 560px) { .fcard .q { font-size: 18px; } }
-.done { text-align: center; padding: 28px 20px; display: grid; gap: 8px; justify-items: center; }
-.done .big { font-size: 46px; font-weight: 700; color: var(--royal); line-height: 1; font-variant-numeric: tabular-nums; }
+.panel.done { text-align: center; padding: 28px 20px; display: grid; gap: 8px; justify-items: center; }
+.panel.done .big { font-size: 46px; font-weight: 700; color: var(--royal); line-height: 1; font-variant-numeric: tabular-nums; }
 
 /* ---------- level, points and badges ---------- */
 .game { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 20px; align-items: center; }
