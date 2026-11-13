@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Socratic Tutor</title>
 <link rel="stylesheet" href="/static/style.css">
+<script>
+try { if (localStorage.getItem("theme") === "dark") document.documentElement.setAttribute("data-theme", "dark"); } catch(e) {}
+</script>
 </head>
 <body>
 <header>
@@ -17,6 +20,7 @@
     <button data-view="progress" onclick="go('progress')">My progress</button>
   </nav>
   <div class="row">
+    <button type="button" class="theme-toggle" id="themeToggle" onclick="toggleTheme()" aria-label="Toggle dark mode" title="Toggle dark mode">🌙</button>
     <span class="presenter-badge presenter-only">Presenter mode</span>
     <button type="button" class="lvl hidden" id="lvlPill" onclick="go('progress')" title="Your level and streak. Open My progress for badges."></button>
     <label class="picker" id="pickerWrap"><span>Learning as</span><select id="persona" onchange="setPersona(this.value)" aria-label="Who is learning"></select></label>
@@ -58,7 +62,7 @@
     <div class="panel chat" style="margin-top:16px">
       <div id="log" aria-live="polite"></div>
       <form class="composer" onsubmit="send(event)">
-        <input id="msg" placeholder="Ask a question, or tell the tutor what you tried" autocomplete="off" maxlength="4000" aria-label="Your message">
+        <textarea id="msg" rows="2" placeholder="Ask a question, or tell the tutor what you tried" maxlength="4000" aria-label="Your message" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();send(event);}"></textarea>
         <button class="primary" id="sendBtn">Send</button>
       </form>
     </div>
@@ -145,6 +149,48 @@ const CHAPTERS = [
     ask: ["Why does adding a resistor in parallel lower the total resistance?", "Why does a heater wire get hot?"] },
 ];
 const CHAPTER_KEY = { "Light - Reflection and Refraction": "light", "Human Eye and the Colourful World": "eye", "Electricity": "elec" };
+const STARTER_CONCEPTS = {
+  light: ["concept_concave_ray_diagrams", "concept_refraction_laws"],
+  eye: ["concept_scattering", "concept_myopia"],
+  elec: ["concept_parallel_combination", "concept_joules_heating"],
+};
+const CONCEPT_QUESTIONS = {
+  // Light - Reflection and Refraction
+  concept_reflection_laws: "Why do the angle of incidence and reflection always match in a plane mirror?",
+  concept_spherical_mirrors: "What are the pole, centre of curvature and principal focus of a spherical mirror?",
+  concept_concave_ray_diagrams: "Why is the image in a concave mirror upside down?",
+  concept_convex_ray_diagrams: "Why do vehicles always use a convex mirror as a rear-view mirror?",
+  concept_sign_convention: "How do I choose positive and negative signs for mirror and lens calculations?",
+  concept_mirror_formula: "How do I calculate image distance and magnification using the mirror formula?",
+  concept_refraction_laws: "Why does a pencil look bent in water?",
+  concept_refractive_index: "Why does light travel slower in glass than in water?",
+  concept_lens_image_formation: "How does a convex lens form both real and virtual images?",
+  concept_lens_formula: "How do I use the lens formula to find the position of an image?",
+  concept_lens_power: "What is the power of a lens and why is a concave lens power negative?",
+
+  // Human Eye and the Colourful World
+  concept_human_eye_structure: "How do the cornea, iris and ciliary muscles focus light on the retina?",
+  concept_accommodation: "What is the power of accommodation and near point of a normal eye?",
+  concept_myopia: "How does a concave lens correct short-sightedness?",
+  concept_hypermetropia: "How does a convex lens correct long-sightedness (hypermetropia)?",
+  concept_presbyopia: "What causes presbyopia and why are bifocal lenses needed?",
+  concept_prism_refraction: "Why does light bend towards the base when passing through a triangular glass prism?",
+  concept_dispersion: "Why does white light split into seven colours when passing through a prism?",
+  concept_rainbow_formation: "How do water droplets in the atmosphere create a rainbow?",
+  concept_atmospheric_refraction: "Why do stars twinkle while planets shine with steady light?",
+  concept_scattering: "Why is the sky blue?",
+
+  // Electricity
+  concept_electric_current: "What is electric current and how do electrons flow in a closed circuit?",
+  concept_potential_difference: "Why is potential difference needed to make current flow in a wire?",
+  concept_ohms_law: "How does Ohm's law relate voltage and current in a circuit?",
+  concept_factors_resistance: "Why does a longer or thinner wire have higher electrical resistance?",
+  concept_series_combination: "Why is total resistance greater when resistors are connected in series?",
+  concept_parallel_combination: "Why does adding a resistor in parallel lower the total resistance?",
+  concept_resistors_combination: "How do I find equivalent resistance in a mixed series-parallel network?",
+  concept_joules_heating: "Why does a heater wire get hot?",
+  concept_electric_power: "How do we calculate electrical power and commercial electricity bills in kWh?",
+};
 const PERSONAS = {
   stu_demo_a: { label: "Aarav", note: "knows the laws of reflection well, but thinks a concave mirror always gives an upside-down image" },
   stu_demo_b: { label: "Diya", note: "is still unsure about the laws of reflection, which mirrors depend on" },
@@ -190,6 +236,7 @@ let activeChapter = null, activeConcept = null;
 function go(view) {
   document.querySelectorAll(".topnav button").forEach(b => b.classList.toggle("on", b.dataset.view === view));
   ["learn", "plan", "cards", "quiz", "progress"].forEach(v => document.getElementById("v-" + v).classList.toggle("hidden", v !== view));
+  if (view === "learn") renderChapterCards();
   if (view === "plan") loadPlan();
   if (view === "cards") loadCards();
   if (view === "quiz") { loadQuiz(quizFocus); quizFocus = null; }
@@ -245,6 +292,7 @@ function applyPersona(p, quiet) {
   consentStrip();
   if (!quiet && PRESENTER) note(p ? `Now learning as ${label(p)}${PERSONAS[p] ? ", who " + PERSONAS[p].note : ""}.` : `Now learning as ${label("")}.`);
   refreshNextUp(); refreshGame();
+  Promise.all([fetchPlan(), fetchGame()]).then(() => renderChapterCards());
   const open = document.querySelector(".topnav button.on").dataset.view;
   if (open === "plan") loadPlan(); if (open === "progress") loadProgress(); if (open === "cards") loadCards(); if (open === "quiz") loadQuiz();
   privacyBox(); restoreChat();
@@ -438,10 +486,30 @@ function writeAnswer() { const i = document.getElementById("msg"); if (!i.value.
 let quizIds = null;
 function hasQuiz(conceptId) { return (quizIds || new Set()).has(conceptId); }
 fetch("/api/quiz/questions").then(r => r.json()).then(d => quizIds = new Set((d.items || []).map(q => q.concept_id))).catch(() => {});
-function startWith(i, j) {
-  activeChapter = i === 0 ? "9" : i === 1 ? "10" : "11";
-  activeConcept = null;
-  if (!busy) { go("learn"); guarded(() => ask(CHAPTERS[i].ask[j])); }
+const starterClicks = {};
+function startWith(arg1, arg2) {
+  let cid = null, q = null;
+  if (typeof arg1 === "number") {
+    const ch = CHAPTERS[arg1];
+    cid = (STARTER_CONCEPTS[ch.key] || [])[arg2] || null;
+    q = (ch && ch.ask && ch.ask[arg2]) || (cid && CONCEPT_QUESTIONS[cid]);
+  } else {
+    cid = arg1;
+    q = arg2 || (cid && CONCEPT_QUESTIONS[cid]);
+  }
+  if (!cid && !q) return;
+  const questionText = q || "Can you explain this topic?";
+  const clickKey = cid || questionText;
+  starterClicks[clickKey] = (starterClicks[clickKey] || 0) + 1;
+  if (starterClicks[clickKey] > 2 && cid) {
+    note(`You've tried this question ${starterClicks[clickKey]} times. Let's learn it step by step from the NCERT book.`, "scenario");
+    learnTopic(cid);
+    return;
+  }
+  const c = concepts.find(x => x.concept_id === cid) || {};
+  activeConcept = cid;
+  activeChapter = chapterNum(c.chapter) || activeChapter;
+  if (!busy) { go("learn"); guarded(() => ask(questionText)); }
 }
 
 // ---------- learn a topic from the start, with the NCERT book (code only, no model) ----------
@@ -531,12 +599,107 @@ function nextTopicsBox(cid) {
     <div class="quick">${next.map((c, i) => `<button type="button" class="${i === 0 ? "strong" : ""}" onclick="learnTopic('${esc(c.concept_id)}')">${esc(c.title)}${hasQuiz(c.concept_id) ? " · quiz ready" : ""}</button>`).join("")}</div></div>`;
 }
 
+function isTopicCompleted(cid) {
+  if (!cid) return false;
+  const mastered = new Set((gameCache && gameCache.mastered) || []);
+  if (mastered.has(cid)) return true;
+  if (planCache) {
+    const all = [...((planCache.suggested) || []), ...(((planCache.assigned || {}).items) || [])];
+    const found = all.find(x => x.concept_id === cid);
+    if (found && (found.status === "mastered" || (found.mastery || 0) >= 0.7)) return true;
+  }
+  return false;
+}
+
+function getConceptMastery(cid) {
+  if (planCache) {
+    const all = [...((planCache.suggested) || []), ...(((planCache.assigned || {}).items) || [])];
+    const found = all.find(x => x.concept_id === cid);
+    if (found && typeof found.mastery === "number") return found.mastery;
+  }
+  return 0;
+}
+
+function getChapterQuestions(c, i) {
+  const points = (gameCache && typeof gameCache.points === "number") ? gameCache.points : 0;
+  const masteredList = (gameCache && gameCache.mastered) || [];
+  const hasProgress = !!studentId() && (points > 0 || masteredList.length > 0);
+
+  // If score is zero or student has no progress, static starter topics are fine
+  if (!hasProgress) {
+    const starters = STARTER_CONCEPTS[c.key] || [];
+    return starters.map((cid, j) => ({
+      concept_id: cid,
+      question: (c.ask && c.ask[j]) || CONCEPT_QUESTIONS[cid] || "Can you explain this topic?"
+    }));
+  }
+
+  // Completed topics should NOT come back. Collect uncompleted topics from plan or rankings.
+  const chapterConcepts = concepts.filter(x => CHAPTER_KEY[x.chapter] === c.key);
+  const uncompleted = chapterConcepts.filter(x => !isTopicCompleted(x.concept_id));
+
+  // 1. From student's plan
+  const assigned = ((planCache && planCache.assigned && planCache.assigned.items) || [])
+    .filter(it => CHAPTER_KEY[it.chapter] === c.key && !isTopicCompleted(it.concept_id))
+    .map(it => it.concept_id);
+  const suggested = ((planCache && planCache.suggested) || [])
+    .filter(it => CHAPTER_KEY[it.chapter] === c.key && !isTopicCompleted(it.concept_id))
+    .map(it => it.concept_id);
+  const nextUp = (planCache && planCache.next_up && CHAPTER_KEY[planCache.next_up.chapter] === c.key && !isTopicCompleted(planCache.next_up.concept_id))
+    ? [planCache.next_up.concept_id] : [];
+
+  // 2. Based on student's rankings/progress (in-progress/weak topics first, then ready prerequisites)
+  const inProgress = uncompleted
+    .filter(x => getConceptMastery(x.concept_id) > 0)
+    .sort((a, b) => getConceptMastery(a.concept_id) - getConceptMastery(b.concept_id))
+    .map(x => x.concept_id);
+  const ready = uncompleted
+    .filter(x => (x.prerequisites || []).every(p => isTopicCompleted(p)))
+    .map(x => x.concept_id);
+  const rest = uncompleted.map(x => x.concept_id);
+
+  const pool = [];
+  [...nextUp, ...assigned, ...suggested, ...inProgress, ...ready, ...rest].forEach(cid => {
+    if (cid && !pool.includes(cid) && !isTopicCompleted(cid)) pool.push(cid);
+  });
+
+  const selected = pool.slice(0, 2);
+  return selected.map(cid => ({
+    concept_id: cid,
+    question: CONCEPT_QUESTIONS[cid] || ("Can you teach me " + ((chapterConcepts.find(x => x.concept_id === cid) || {}).title || cid) + "?")
+  }));
+}
+
 function renderChapterCards() {
+  const points = (gameCache && typeof gameCache.points === "number") ? gameCache.points : 0;
+  const masteredList = (gameCache && gameCache.mastered) || [];
+  const hasProgress = !!studentId() && (points > 0 || masteredList.length > 0);
+
   document.getElementById("chapterCards").innerHTML = CHAPTERS.map((c, i) => {
     const mine = concepts.filter(x => CHAPTER_KEY[x.chapter] === c.key);
+    // If student has completed topics, filter them out so they don't come back
+    const available = hasProgress ? mine.filter(x => !isTopicCompleted(x.concept_id)) : mine;
+    const questions = getChapterQuestions(c, i);
+
+    let learnSection = "";
+    if (available.length) {
+      learnSection = `<div class="learnrow"><select id="lt-${i}" aria-label="Topic to learn">${available.map(x => `<option value="${esc(x.concept_id)}">${esc(x.title)}</option>`).join("")}</select><button type="button" class="primary" onclick="learnTopic(document.getElementById('lt-${i}').value)">Learn from the start</button></div>`;
+    } else if (hasProgress && mine.length) {
+      learnSection = `<div class="learnrow"><span class="chip ok">All topics in this chapter completed!</span></div>`;
+    }
+
+    let askSection = "";
+    if (questions.length) {
+      askSection = `<div class="orask">or ask</div>${questions.map(q => `<button type="button" onclick="startWith('${esc(q.concept_id)}', '${esc(q.question.replace(/'/g, "\\'"))}')">${esc(q.question)}</button>`).join("")}`;
+    } else if (hasProgress) {
+      const reviewCid = (STARTER_CONCEPTS[c.key] || [])[0];
+      const reviewQ = CONCEPT_QUESTIONS[reviewCid] || "Can you test me on this chapter?";
+      askSection = `<div class="orask">review</div><button type="button" onclick="startWith('${esc(reviewCid)}', '${esc(reviewQ.replace(/'/g, "\\'"))}')">Review: ${esc(reviewQ)}</button>`;
+    }
+
     return `<div class="chcard" style="--c:${c.c}"><h3>${esc(c.name)}</h3><div class="topics">${esc(c.topics)}</div>
-      ${mine.length ? `<div class="learnrow"><select id="lt-${i}" aria-label="Topic to learn">${mine.map(x => `<option value="${esc(x.concept_id)}">${esc(x.title)}</option>`).join("")}</select><button type="button" class="primary" onclick="learnTopic(document.getElementById('lt-${i}').value)">Learn from the start</button></div>` : ""}
-      <div class="orask">or ask</div>${c.ask.map((q, j) => `<button type="button" onclick="startWith(${i},${j})">${esc(q)}</button>`).join("")}</div>`;
+      ${learnSection}
+      ${askSection}</div>`;
   }).join("");
 }
 
@@ -714,6 +877,7 @@ async function refreshGame(levelUpCheck) {
   if (levelUpCheck && before && g.level.number > before) note(`Level up! You're now level ${g.level.number}: ${g.level.name}.`, "scenario");
   if (!document.getElementById("v-progress").classList.contains("hidden")) renderGame();
   renderJourney();
+  renderChapterCards();
 }
 const BADGE_ICON = { first_question: "?", quiz_starter: "Q", bullseye: "◎", myth_buster: "✕", topic_master: "★", explorer: "◆", on_a_roll: "3", plan_finisher: "✓", flashcard_fan: "▤" };
 async function renderGame() {
@@ -1004,7 +1168,27 @@ async function runScenario(gi, si) {
   await guarded(async () => { for (const p of (s.personas || [null])) { if (p !== null) setPersona(p); for (const m of s.msgs) await ask(m); } });
 }
 
+function toggleTheme() {
+  const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+  const next = isDark ? "light" : "dark";
+  if (next === "dark") document.documentElement.setAttribute("data-theme", "dark");
+  else document.documentElement.removeAttribute("data-theme");
+  try { localStorage.setItem("theme", next); } catch(e) {}
+  updateThemeBtn();
+}
+function updateThemeBtn() {
+  const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+  const btn = document.getElementById("themeToggle");
+  if (btn) {
+    btn.textContent = isDark ? "☀️" : "🌙";
+    const label = isDark ? "Switch to light mode" : "Switch to dark mode";
+    btn.setAttribute("title", label);
+    btn.setAttribute("aria-label", label);
+  }
+}
+
 // ---------- start ----------
+updateThemeBtn();
 renderChapterCards();
 consentStrip();
 loadRoster();
