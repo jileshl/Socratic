@@ -19,6 +19,7 @@ class SocraticState(TypedDict, total=False):
     chapter: str | None
     intent: str                              # intent check: physics, confused, others_data, role_claim, rude, opt_out, small_talk
     intent_rule: str | None
+    detected_concept_id: str | None          # Concept detected during combined intent + concept classification
     off_topic: bool                          # the turn ended at the intent check with a fixed reply
     rude_count: int                          # rude or fed-up messages in this session (a gentle teacher alert after 3)
     lesson_concept_id: str | None             # "Learn from the start": the lesson topic the tutor stays on

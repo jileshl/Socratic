@@ -7,6 +7,7 @@ from typing import Any
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Command
 from langchain_core.messages import AnyMessage, AIMessage, HumanMessage
+from langchain_core.runnables import RunnableConfig
 
 from socratic_tutor import config
 from socratic_tutor import approval_gate, solver_key, tool_hooks
@@ -113,7 +114,7 @@ def asks_for_more_help(query: str) -> bool:
     return bool(_MORE_HELP.search(query or ""))
 
 
-def node_input_guardrail(state: SocraticState) -> dict:
+def node_input_guardrail(state: SocraticState, config: RunnableConfig) -> dict:
     query = state.get("query", "")
     guard_res = check_input_guardrails(query)
 
@@ -143,6 +144,7 @@ def node_input_guardrail(state: SocraticState) -> dict:
         "teacher_alert_triggered": False,
         "intent": "physics",
         "intent_rule": None,
+        "detected_concept_id": None,
         "off_topic": False,
     }
     if state.get("chapter"):
@@ -217,8 +219,12 @@ def node_input_guardrail(state: SocraticState) -> dict:
     # Only for a student's own message: a teacher's "propose a question set" request runs the same graph.
     if state.get("mode", "practice") == "practice" and not state.get("teacher_approval_required"):
         started = any(getattr(m, "type", "") == "ai" for m in (state.get("messages") or []))
-        kind, rule = intent_check.classify(str(guard_res["sanitized_query"] or ""), in_conversation=started)
+        verdict = intent_check.classify(str(guard_res["sanitized_query"] or ""), in_conversation=started, config_runnable=config)
+        kind, rule = verdict
         reset_state["intent"], reset_state["intent_rule"] = kind, rule
+        cid = getattr(verdict, "concept_id", None)
+        if cid:
+            reset_state["detected_concept_id"] = cid
         if kind == "confused":
             # "huh?": the same topic, explained another way (and it counts as asking for more help).
             reset_state["query"] = intent_check.CONFUSED_REWRITE
@@ -226,7 +232,7 @@ def node_input_guardrail(state: SocraticState) -> dict:
             reset_state["off_topic"] = True
             reset_state["response"] = intent_check.reply_for(kind, rule)
             reset_state["messages"] = [AIMessage(content=reset_state["response"])]
-            if kind in ("rude", "fed_up"):
+            if kind in ("rude", "fed_up", "conduct"):
                 reset_state["rude_count"] = int(state.get("rude_count") or 0) + 1
     return reset_state
 
@@ -296,7 +302,8 @@ def node_supervisor(state: SocraticState) -> dict:
     # the tutor there, also out of a lesson, and its chapter comes along for the book search. A topic the
     # student picked for this turn ("Practise it") still wins.
     chapter_out = state.get("chapter")
-    asked = topics.topic_of(state.get("query", "")) if state.get("mode", "practice") == "practice" else None
+    detected = state.get("detected_concept_id")
+    asked = detected if (detected and detected in cg.concepts) else (topics.topic_of(state.get("query", "")) if state.get("mode", "practice") == "practice" else None)
     if asked and asked in cg.concepts and asked != current_concept and not pinned:
         current_concept = asked
         chapter_out = CHAPTER_TITLE_TO_NUM.get(cg.concepts[asked].get("chapter", ""), chapter_out)
@@ -613,6 +620,23 @@ def node_diagnostician(state: SocraticState) -> dict:
                     break
         except Exception:
             pass
+
+    # Guard against cross-chapter misconception bleed:
+    # A student working on Electricity (Ch 11) must not receive a Light (Ch 9) misconception banner
+    cg = ConceptGraph()
+    active_chapter = state.get("chapter")
+    current_cid = state.get("current_concept_id")
+    if current_cid and current_cid in cg.concepts:
+        concept_ch = cg.concepts[current_cid].get("chapter")
+        if concept_ch:
+            active_chapter = CHAPTER_TITLE_TO_NUM.get(concept_ch, active_chapter)
+
+    if miscon_id and active_chapter:
+        miscon_ch_num = CHAPTER_TITLE_TO_NUM.get(str(miscon_chapter), str(miscon_chapter))
+        active_ch_num = CHAPTER_TITLE_TO_NUM.get(str(active_chapter), str(active_chapter))
+        if miscon_ch_num and active_ch_num and miscon_ch_num != active_ch_num:
+            miscon_id = None
+            miscon_name = None
 
     playbook = ReflexionPlaybook()
     effective_lesson = None

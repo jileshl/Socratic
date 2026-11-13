@@ -31,8 +31,15 @@ def match_misconception_by_keywords(query: str, catalog: list[dict[str, Any]]) -
         return None
     stop_words = {
         "a", "an", "the", "in", "on", "at", "to", "for", "of", "with", "is", "are",
-        "was", "were", "what", "why", "how", "where", "does", "do", "can", "if",
-        "my", "me", "i", "you", "and", "or", "from", "that", "this", "it"
+        "was", "were", "what", "why", "how", "where", "does", "do", "did", "can", "could", "if",
+        "my", "me", "i", "you", "he", "she", "it", "we", "they", "them", "their", "and", "or",
+        "from", "that", "this", "these", "those", "have", "has", "had", "having", "should", "would",
+        "shall", "will", "may", "might", "must", "much", "many", "more", "most", "some", "any",
+        "get", "got", "getting", "give", "given", "take", "make", "need", "want", "know", "use",
+        "used", "using", "tell", "say", "said", "ask", "see", "think", "like", "just", "also",
+        "then", "so", "than", "too", "very", "well", "now", "here", "there", "when", "all",
+        "both", "each", "other", "into", "through", "during", "before", "after", "above", "below",
+        "between", "out", "off", "over", "under", "again", "further", "generate",
     }
     query_tokens = {w for w in re.findall(r"[a-z0-9]+", query.lower()) if w not in stop_words and len(w) > 2}
     if not query_tokens:
@@ -43,12 +50,15 @@ def match_misconception_by_keywords(query: str, catalog: list[dict[str, Any]]) -
     best_common: set[str] = set()
 
     for item in catalog:
+        name_tokens = {w for w in re.findall(r"[a-z0-9]+", item.get("name", "").lower()) if w not in stop_words and len(w) > 2}
+        name_match = query_tokens & name_tokens
+        # At least one specific word from the misconception's actual name must be matched
+        if not (name_match - GENERIC_TOPIC_WORDS):
+            continue
         text = f"{item.get('name', '')} {item.get('description', '')} {item.get('diagnostic_probe', '')}"
         item_tokens = {w for w in re.findall(r"[a-z0-9]+", text.lower()) if w not in stop_words and len(w) > 2}
         common = query_tokens & item_tokens
-        score = len(common)
-        name_tokens = {w for w in re.findall(r"[a-z0-9]+", item.get("name", "").lower())}
-        score += 2 * len(query_tokens & name_tokens)
+        score = len(common) + 2 * len(name_match)
         if score > best_score:
             best_score = score
             best_match = item

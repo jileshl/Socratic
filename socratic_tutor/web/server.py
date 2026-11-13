@@ -72,9 +72,14 @@ def book_figure(name: str) -> FileResponse:
     return FileResponse(path, headers={"Cache-Control": "public, max-age=86400"})
 
 
-@app.get("/static/{name}", include_in_schema=False)
-def static_file(name: str) -> FileResponse:
-    path = (STATIC / name).resolve()
-    if path.parent != STATIC.resolve() or not path.exists():
+@app.get("/static/{path:path}", include_in_schema=False)
+def static_file(path: str) -> FileResponse:
+    target = (STATIC / path).resolve()
+    static_root = STATIC.resolve()
+    try:
+        target.relative_to(static_root)
+    except ValueError:
         raise HTTPException(404)
-    return FileResponse(path)
+    if not target.is_file():
+        raise HTTPException(404)
+    return FileResponse(target)

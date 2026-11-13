@@ -268,3 +268,113 @@ def test_a_clear_question_moves_the_tutor_out_of_a_lesson(monkeypatch: pytest.Mo
     # ... and "huh" in the lesson still stays put
     again = _lesson_turn(app_graph, "huh", "move2")
     assert again["current_concept_id"] == "concept_reflection_laws"
+
+
+# --------------------------------------------------------------------------- quiz intent & LLM observability
+
+
+@pytest.mark.parametrize("msg", [
+    "test me",
+    "yes test me",
+    "Quizza ma",
+    "Quiz please",
+    "can you test me on this chapter?",
+    "give me a quiz",
+    "quizz me",
+])
+def test_quiz_intent_detected(msg: str) -> None:
+    res, rule = intent.classify(msg)
+    assert res == "request_quiz"
+    assert "Switch to the Quiz tab" in intent.reply_for(res, rule)
+
+
+def test_off_syllabus_demand_and_supply() -> None:
+    res, rule = intent.classify("Whats the relationship between Demand and supply")
+    assert res == "off_syllabus"
+
+
+def test_llm_intent_classifier_observability(monkeypatch: pytest.MonkeyPatch) -> None:
+    from socratic_tutor import trace, llm
+    from langchain_core.outputs import ChatResult, ChatGeneration
+    from langchain_core.messages import AIMessage
+
+    monkeypatch.setattr("socratic_tutor.guard_models.guard_models_on", lambda: True)
+
+    real_get_llm = llm.get_llm
+
+    def mock_get_llm(*args: Any, **kwargs: Any) -> Any:
+        client = real_get_llm(*args, **kwargs)
+        def mock_generate(messages: Any, stop: Any = None, run_manager: Any = None, **kw: Any) -> Any:
+            msg = AIMessage(
+                content='{"intent": "off_syllabus", "reason": "economics analogy"}',
+                response_metadata={"token_usage": {"prompt_tokens": 45, "completion_tokens": 12, "cost": 0.00003}, "model_name": "gpt-4o-mini"},
+            )
+            return ChatResult(generations=[ChatGeneration(message=msg)])
+        client._generate = mock_generate
+        return client
+
+    monkeypatch.setattr(llm, "get_llm", mock_get_llm)
+
+    meter = trace.CostMeter()
+    cfg = {"callbacks": [meter]}
+
+    verdict = intent.classify(
+        "I don't understand how inversely proportional is demand to supply. Just like how light is proportional to its medium. IDK",
+        in_conversation=True,
+        config_runnable=cfg,
+    )
+
+    assert verdict == ("off_syllabus", "llm_classifier")
+    snap = meter.snapshot()
+    assert snap["llm_calls"] == 1
+    assert snap["prompt_tokens"] == 45
+    assert snap["completion_tokens"] == 12
+    assert snap["cost_usd"] == 0.00003
+    assert snap["models"].get("gpt-4o-mini") == 1
+
+
+def test_personal_mischief_and_conduct_classification(monkeypatch: pytest.MonkeyPatch) -> None:
+    from socratic_tutor import llm
+    from langchain_core.outputs import ChatResult, ChatGeneration
+    from langchain_core.messages import AIMessage
+
+    monkeypatch.setattr("socratic_tutor.guard_models.guard_models_on", lambda: True)
+
+    def mock_intent(intent_val: str):
+        real_get = llm.get_llm
+        def mock_get(*args: Any, **kw: Any) -> Any:
+            c = real_get(*args, **kw)
+            c._generate = lambda msgs, **k: ChatResult(generations=[ChatGeneration(message=AIMessage(
+                content=f'{{"intent": "{intent_val}", "reason": "test"}}',
+                response_metadata={"token_usage": {"prompt_tokens": 30, "completion_tokens": 10, "cost": 0.00001}}
+            ))])
+            return c
+        return mock_get
+
+    # 1. Personal / voyeurism scenario with concave mirror
+    monkeypatch.setattr(llm, "get_llm", mock_intent("personal"))
+    verdict, rule = intent.classify(
+        "When I see into Diya's eyes the lights refracts and I just see red. at what angle should I keep my concave mirror that I can see her face throughout the class",
+        config_runnable={"callbacks": []}
+    )
+    assert verdict == "personal"
+    assert "concave mirrors" in intent.reply_for(verdict, rule)
+
+    # 2. Conduct / remarks about teachers
+    monkeypatch.setattr(llm, "get_llm", mock_intent("conduct"))
+    verdict, rule = intent.classify(
+        "Our physics teacher gives too much homework, he is so annoying and unfair",
+        config_runnable={"callbacks": []}
+    )
+    assert verdict == "conduct"
+    assert "respectful" in intent.reply_for(verdict, rule)
+
+    # 3. Small talk with LLM classifier
+    monkeypatch.setattr(llm, "get_llm", mock_intent("small_talk"))
+    verdict, rule = intent.classify(
+        "yo what's good my bot friend",
+        config_runnable={"callbacks": []}
+    )
+    assert verdict == "small_talk"
+    assert "science tutor" in intent.reply_for(verdict, rule)
+

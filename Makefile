@@ -56,9 +56,9 @@ ci-deps: ## install packages with the small CPU-only torch (CI uses this; no GPU
 	$(PY) -m pip install --index-url https://download.pytorch.org/whl/cpu torch
 	$(PY) -m pip install -r requirements.txt
 
-ci:      ## everything CI runs: tests, index from data/, Recall@5 gate, offline smoke run of every eval suite
-	$(PY) -m pytest -q tests
+ci:      ## everything CI runs: index from data/, tests, Recall@5 gate, offline smoke run of every eval suite
 	$(PY) -m scripts.build_index --force
+	$(PY) -m pytest -q tests
 	$(PY) -m scripts.check_threshold
 	$(PY) -m evalkit.runner smoke --split dev --limit 3 --stub
 

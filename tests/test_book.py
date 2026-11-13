@@ -82,6 +82,16 @@ def test_the_figure_fits_the_question_or_there_is_none():
     assert pick("Can I have another hint?", "concept_reflection_laws", ["9.1"]) is None
 
 
+@needs_index
+def test_cross_chapter_topic_change_never_shows_stale_figure_or_misconception():
+    # Student asked about 1/v + 1/u = 1/f, then changed topic to electricity with 3.5 ohm and power:
+    # A card for Section 11.8 (Electric Power) must never show Figure 9.9 even if concept_id was still concept_mirror_formula
+    card = book.book_card(["11.8"], "and 3.5Ω to generate this much power how much V should I have", "concept_mirror_formula")
+    assert card is not None
+    assert card["section_id"] == "11.8"
+    assert card["figure"] is None  # Section 11.8 has no figure; must not leak Chapter 9's Figure 9.9
+
+
 def test_quiz_questions_and_flashcards_carry_a_figure_field():
     client = TestClient(app)
     for item in client.get("/api/quiz/questions").json()["items"]:

@@ -11,9 +11,15 @@ os.environ.setdefault("TEACHER_PIN", "test-pin")
 # point INDEX_DIR at a temporary folder, with a copy of the read-only search index if one is built.
 if "INDEX_DIR" not in os.environ:
     import shutil
+    import subprocess
+    import sys
     from pathlib import Path
 
-    _real_index = Path(__file__).resolve().parent.parent / ".index"
+    _repo_root = Path(__file__).resolve().parent.parent
+    _real_index = _repo_root / ".index"
+    if not (_real_index / "chunks.json").exists() and (_repo_root / "data").is_dir():
+        subprocess.run([sys.executable, "-m", "scripts.build_index", "--force"], cwd=_repo_root, check=True)
+
     _test_index = Path(tempfile.mkdtemp(prefix="socratic-test-index-"))
     for _name in ("chunks.json", "exemplars.json"):
         if (_real_index / _name).exists():
