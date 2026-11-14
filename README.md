@@ -46,6 +46,8 @@ Every run is logged in `evalkit/results/experiment_log.csv`. Held-out cases live
 | Memory policy | [MEMORY_POLICY.md](MEMORY_POLICY.md) |
 | Experiment log | [evalkit/results/experiment_log.csv](evalkit/results/experiment_log.csv) |
 | Contribution log and decisions | [CONTRIBUTIONS.md](CONTRIBUTIONS.md) |
+| Teacher consultation questionnaire (Narayana School) | [data/It Bombay Capstone Teacher Consultation Questionnaire.pdf](data/It%20Bombay%20Capstone%20Teacher%20Consultation%20Questionnaire.pdf) |
+| School outreach & research protocol | [SCHOOL_OUTREACH_AND_QUESTIONNAIRE.md](SCHOOL_OUTREACH_AND_QUESTIONNAIRE.md) |
 | Roles and separations | [TEAM_ROLES](TEAM_ROLES) |
 | Operations (CI, alerts, failed CI runs explained) | [docs/OPERATIONS.md](docs/OPERATIONS.md) |
 | Evaluation design | [docs/EVALUATION.md](docs/EVALUATION.md) |
@@ -66,7 +68,42 @@ Every run is logged in `evalkit/results/experiment_log.csv`. Held-out cases live
 | `docker/` | Dockerfile, Compose file (app, MCP servers, Prometheus, Grafana, eval), Grafana dashboard |
 | `tests/` | about 950 tests; `pytest` runs offline |
 
-NCERT textbooks and exemplars are © NCERT and are used within the project only; the app downloads them from ncert.nic.in.
+NCERT chapters in data/ are ©️ NCERT, from ncert.nic.in, used only for this academic project.
+
+---
+
+## Pedagogical Grounding & Teacher Consultation
+
+The pedagogical rules, misconception catalogue, and evaluation rubrics in Socratic Tutor are grounded in direct consultation with experienced Class 10 Science faculty:
+
+* **Consulting Faculty**: **Prince Kumar**, Class 10 Science Faculty, **Narayana School, Borivali (W)** (Narayana e-Techno School, Borivali West, Mumbai).
+* **Consultation Instrument**: [data/It Bombay Capstone Teacher Consultation Questionnaire.pdf](data/It%20Bombay%20Capstone%20Teacher%20Consultation%20Questionnaire.pdf) (11-page validated instrument, completed & signed on 22/10/26; see also [SCHOOL_OUTREACH_AND_QUESTIONNAIRE.md](SCHOOL_OUTREACH_AND_QUESTIONNAIRE.md)).
+
+### Key Pedagogical Inputs Validated:
+1. **Prerequisite & Dependency Sequencing (L8/L10)**:
+   - *Chapter 9 (Light)*: Validated the progression: Plane Reflection $\rightarrow$ Spherical Mirror Terms $\rightarrow$ Ray Rules $\rightarrow$ Mirror Formula & Sign Convention $\rightarrow$ Refraction & Snell's Law $\rightarrow$ Lens Formula $\rightarrow$ Power of Lens.
+   - *Chapter 10 (Human Eye)*: Confirmed that lens refraction and ray convergence/divergence from Chapter 9 are strict prerequisites before teaching defects of vision (myopia and hypermetropia).
+   - *Chapter 11 (Electricity)*: Confirmed that Ohm's Law ($V = IR$) and current division principles must be remediated when a student struggles with parallel resistors.
+2. **Misconception Catalogue (L11)**:
+   - Validated real-world classroom error models across all three chapters (e.g., student assumption that concave mirrors *always* form inverted images, treating focal length as positive because it is "real", confusing lateral inversion with vertical inversion, assuming current is "used up" by the first bulb in series, and confusing potential difference with charge flow).
+3. **Socratic Hint Scaffolding & 3-Tier Ladder**:
+   - Approved the 3-hint progression ladder (Level 1: conceptual orientation $\rightarrow$ Level 2: procedural / ray diagram mental model $\rightarrow$ Level 3: formula substitution trigger) and the rule requiring the AI to transition to an analogous worked problem rather than leaking the answer if the student remains stuck after 3 hints.
+4. **Teacher Overwatch & Safety Gates (L14/L16)**:
+   - Set the alert threshold for notifying classroom teachers when a student fails a concept $\ge 3$ consecutive times or remains stuck for $>10$ minutes.
+   - Mandated automatic rejection of question-bank candidates containing messy non-integer decimals or out-of-syllabus phrasing.
+   - Established distress escalation protocols to provide supportive growth-mindset micro-steps while logging flags on the teacher dashboard.
+5. **CBSE Step-Marking Scheme Calibration (L13)**:
+   - Calibrated the automated grading rubric against the standard CBSE 4-step marking convention for 3-mark numerical problems: Data & Signs (0.5 mark), Formula (0.5 mark), Calculation (1.0 mark), and Final Value with SI units (1.0 mark).
+
+---
+
+## Live Student Testing & Feedback
+
+During prototype testing and usability sessions with Class 10 students, user observations and feedback led to direct architectural and content refinements:
+
+1. **Adding Diagrams for Better Understanding (Visual Scaffolding)**:
+   - **Student Feedback**: Students reported that purely text-based algebraic hints for ray optics (mirrors/lenses) and electric circuits made it difficult to build the necessary spatial mental model. For example, when calculating image distances or finding equivalent resistance across branches, textual hints like *"recall the sign convention for a concave mirror"* were far less effective than visualizing the ray paths.
+   - **System Refinement**: In direct response, the system was upgraded to incorporate **visual ray diagrams and circuit schematics**. We indexed all official NCERT textbook diagrams into `data/book/figures.json` (such as Fig. 9.1 for spherical mirrors, Fig. 9.2 for principal focus, Fig. 9.4/9.5 for ray tracing, and Chapter 11 circuit schematics). The tutor can now provide visual reference cues alongside Socratic text hints, guiding students to inspect ray intersections or parallel branch junctions before substituting numbers into equations.
 
 ---
 

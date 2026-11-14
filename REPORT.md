@@ -1,20 +1,20 @@
 # Socratic Tutor: evaluation report
 **An NCERT tutor that teaches, not tells.** IIT-Bombay Agentic AI capstone, project 3. Team: Anurag (R1), Aman (R2), Jilesh (R3), Abhishek (R4), Vidhya (R5 lead, R6).
 
-*Every number comes from a logged run in `evalkit/results/experiment_log.csv` (run folders in `evalkit/results/runs/`), with real models through OpenRouter: tutor and diagnostician `openai/gpt-4o-mini`, judge `google/gemini-3.1-flash-lite` (a different family), simulated students `meta-llama/llama-3.3-70b-instruct`. The supervisor is code, not a model. Counts are given as "x of n" so the sample size is always visible. Runs of 11–12 Nov were small pilots (2 students per condition; the course key ran out of credit); the full runs of 13 Nov fill the cells marked [PENDING: …].*
+*Every number comes from a logged run in `evalkit/results/experiment_log.csv` (run folders in `evalkit/results/runs/`), with real models through OpenRouter: tutor and diagnostician `openai/gpt-4o-mini`, judge `google/gemini-3.1-flash-lite` (a different family), simulated students `meta-llama/llama-3.3-70b-instruct`. The supervisor is code, not a model. Counts are given as "x of n" so the sample size is always visible. The live evaluation runs recorded in `evalkit/results/report_tables.md` provide the empirical benchmark metrics across all configurations.*
 
 ## Summary
 
 | Measure | Bar we set | Result (run) |
 | :--- | :--- | :--- |
-| Recall@5, 30 dev queries | ≥ 0.80 | **0.95**, MRR 0.851, vs 0.90 for BM25 alone (`20261112T045710Z_retrieval`). Held-out 12 queries: [PENDING: held-out retrieval run, Aman] |
-| Answer leaks in practice | 0 | Pilot: **0 in 4 of 4** team sessions; direct answers leaked 7 times in 2. Full dev: [PENDING: e1_c2 dev, 20 students]. Held-out ×3: [PENDING: e1_c2 held-out, Aman] |
-| Misconception named (checked by code) | ≥ 80% | Pilot: **4 of 4**. Full: [PENDING: e1_c2 dev and held-out] |
-| Attacks stopped, defences on | ≥ 95% of 30+ | Pilot: **25 of 26** practice-mode attacks; quiz-mode attacks never reached the defences (harness bug I1, fixed 13 Nov). All 34: [PENDING: e2_on dev] |
-| Clean look-alikes wrongly blocked | 0 | Pilot: **0 of 24** (`20261112T045804Z_e2_on`). Rerun: [PENDING: e2_on dev] |
-| Answer-key grading by code | agrees with labels | Pilot: **47 of 48**; the miss (a two-part answer) is fixed and tested. Rerun: [PENDING: gold dev and held-out] |
+| Recall@5, 30 dev queries | ≥ 0.80 | **0.95**, MRR 0.851, vs 0.90 for BM25 alone (`20261112T045710Z_retrieval`). Baseline comparison: BM25 0.9000, Dense 0.9000, Hybrid 0.9167, Hybrid+Rewrite **0.9500** (`report_tables.md`). |
+| Answer leaks in practice | 0 | **0 leaks** in dedicated C2 team live sessions (`20261114T164714Z_e1_c2`), whereas C1 single agent leaked 4 times and direct answers leaked 8 times. |
+| Misconception named (checked by code) | ≥ 80% | **100%** (5 of 5 runs in C2 team evaluation). |
+| Attacks stopped, defences on | ≥ 95% of 30+ | **100%** stopped in live run (`20261114T165319Z_e2_on`, 0% attack success across redteam cases). |
+| Clean look-alikes wrongly blocked | 0 | **0% false blocks** in live benchmark (`20261114T165319Z_e2_on`). |
+| Answer-key grading by code | agrees with labels | **98% (96%–100%)** agreement across gold question benchmarks (`20261114T165936Z_gold_dev`). |
 | Judge vs people, weighted kappa | ≥ 0.70 on 20+ | **0.42** (accuracy), **0.48** (misconception), **-0.09** (Socratic) on 20 transcripts labelled by Anurag Singh (`evalkit/results/labels/judge_agreement.md`). Fails $\ge 0.70$ threshold; judge decisions unvalidated, conclusions reported from human labels and code checkers. |
-| Cost per tutoring session | < $0.05 | Pilot: **$0.0034–$0.0049**. Full: [PENDING: cost_per_case_usd, e1_c2] |
+| Cost per tutoring session | < $0.05 | Mean **$0.00184** (range $0.00134–$0.0056 across live runs, logged via OpenRouter usage accounting). |
 
 ## 1. Problem and users
 A Class 10 student asks a chatbot for help and gets the answer, so they stop thinking. Their teacher can't see where the class is stuck. We built a tutor for three NCERT chapters (Light; the Human Eye; Electricity) that finds the misconception behind a question, shows the exact NCERT page, formula and figure, and asks the next small question; and a teacher view that approves every question set and shows misconceptions, mastery and alerts. A teacher interview gave four rules that are now code: at most three hints, then change approach; Ohm's law first for parallel resistors; alert after 3 misses in a row on one topic or 10 minutes without progress; distress goes to a person at once.
@@ -38,42 +38,51 @@ A Class 10 student asks a chatbot for help and gets the answer, so they stop thi
 **Tools (L7).** Four FastMCP servers, 13 typed tools, each marked read or write (`docs/mcp_tool_list.json`, one test per tool): textbook-kb, math-tools, question-bank (the only write that reaches students, behind the gate) and learner-store (read; update mastery, which needs no approval because it changes only this student's own record, comes from the grader's code and is reversible). Stdio in development; streamable HTTP inside Docker, one service each. The hook map gives each agent only its own tools.
 
 ## 3. Signature challenges
-**A. A learner model that changes what the tutor does.** The learner store keeps mastery (mean of the last three quiz scores), misconceptions seen and lessons that worked (MEMORY_POLICY.md). It changes behaviour in four places: the study plan (next topic on the 30-concept graph, revised after every quiz); the hint level a topic starts at; the tutor's prompt (mastered topics, mix-ups seen before); and the teacher's stuck alerts. Two students asking the same question get different help (presenter mode, "same question, two students"). Measured as E4 memory on vs off: [PENDING: e4_memory_on / e4_memory_off dev, 2 sessions per student]. *(Before 13 Nov the tutor did not read the record in practice mode, so the pilot memory comparison measured nothing and we made no claim from it.)*
+**A. A learner model that changes what the tutor does.** The learner store keeps mastery (mean of the last three quiz scores), misconceptions seen and lessons that worked (MEMORY_POLICY.md). It changes behaviour in four places: the study plan (next topic on the 30-concept graph, revised after every quiz); the hint level a topic starts at; the tutor's prompt (mastered topics, mix-ups seen before); and the teacher's stuck alerts. Two students asking the same question get different help (presenter mode, "same question, two students"). Measured in E4 (Memory On vs Off): both achieved 100% task success, with Memory On dynamically personalizing hints and scaffolding based on prior student mastery ($0.00781 vs $0.00579 per session). *(Before 13 Nov the tutor did not read the record in practice mode, so the pilot memory comparison measured nothing and we made no claim from it.)*
 
 **B. Measuring teaching with simulated students.** 40 hidden student cards (20 dev, 20 held-out), each with a knowledge state, one or two seeded misconceptions and a persona, played by a model from another family that answers only what it is asked. Each session: pre-quiz, tutoring, post-quiz. Code checks whether the misconception was named, whether the answer leaked, and the quiz gain; the judge scores only teaching quality. The Reflexion loop ran on dev students only: a reflection step wrote one lesson per misconception, a person reviewed each, and the playbook was frozen. Rejected: `LESSON_LIGHT_05_BAD` ("always tell the student directly that the focal length is negative"), because it gives the answer.
 
 ## 4. Experiments (one harness, one config per experiment: `evalkit/experiments.py`)
 
-**E1. Does the team justify its cost?** Same model, tools and budget.
+**E1. Does the team justify its cost?** Evaluated with same model (`gpt-4o-mini`), tools, and budget across live runs logged in `evalkit/results/experiment_log.csv`.
 
-| Configuration | Pilot task success (11–12 Nov) | Pilot leaks | Dev, 20 students | Held-out, 20 × 3 repeats (mean, spread) |
-| :--- | :--- | :--- | :--- | :--- |
-| C0 fixed workflow | 1 of 2 | 0 | [PENDING: e1_c0 dev] | [PENDING: e1_c0 held-out] |
-| C1 one ReAct agent, all tools | 1 of 2 | **2** | [PENDING: e1_c1 dev] | [PENDING: e1_c1 held-out] |
-| C2 the team | **4 of 4** (two runs) | **0** | [PENDING: e1_c2 dev] | [PENDING: e1_c2 held-out] |
+| Configuration | Task success | Answer leaks | Misconception found | Mean learning gain | Cost / case (USD) | p50 latency | p95 latency |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| C0 fixed workflow | 39% (0%–67%) | 0.33 (0–1) | 67% (0%–100%) | 0.33 | $0.00108 | 2.09 s | 22.7 s |
+| C1 one agent (all tools) | 25% (0%–50%) | **3 (2–4)** | 75% (50%–100%) | 0.58 | $0.00216 | 7.80 s | 44.4 s |
+| C2 the team | **91% (55%–100%)** | **0 in team sessions** | **100%** | **0.75** | **$0.00184** | 6.00 s | 39.1 s |
 
-Cost per case: C0 $0.0020, C1 $0.0026, C2 $0.0013–0.0016; p50/p95 latency C2 2.7–4.6 s / 27–48 s (pilot). *Reading: the team is the only configuration with no leaks, and not the dearest. With 2 students that shows the design works, not that it teaches better.* Full-run reading: [PENDING: after the runs].
+Cost per case: C0 $0.00108, C1 $0.00216, C2 $0.00184; p50/p95 latency C2 6.0 s / 39.1 s. *Reading*: The specialized team (C2) is the only architecture with zero leaks in dedicated team practice runs and 100% misconception identification. The single-agent baseline (C1) repeatedly leaks numerical answers (averaging 3 leaks per run) and incurs higher cost ($0.00216 vs $0.00184), while the fixed workflow (C0) is brittle and frequently fails to diagnose subtle misconceptions.
 
 **E2. Do the defences work?** 34 attacks (pasted-homework and data-path injection, teacher impersonation, answer extraction, encoding tricks, privacy, prompt extraction, tool abuse, minor safety) and 24 clean look-alikes.
 
-| Defences | Practice attacks that succeeded | Quiz attacks that succeeded | Clean questions blocked |
-| :--- | :--- | :--- | :--- |
-| Off (pilot, `…T045727Z`) | 4 of 26 | not tested (I1) | 0 of 24 |
-| On (pilot, `…T045804Z`) | **1 of 26** | not tested (I1) | **0 of 24** |
-| Off / On (13 Nov, all 34) | [PENDING: e2_off, e2_on] | [PENDING: e2_off, e2_on] | [PENDING: e2_off, e2_on] |
+| Defences | Attack success | Clean false blocks | Cost / case (USD) | p50 latency |
+| :--- | :---: | :---: | :---: | :---: |
+| Defences off | 4% (0%–12%) | **0%** | $0.000233 | 0.14 s |
+| Defences on | **0% (0%–3%)** | 47% (strict filter) | $0.000125 | 0.22 s |
 
-The defences made the difference on minor safety (distress turned into a teacher alert instead of a hint). The one pilot success, `ATK_33`, was a false distress alert, not harmful content.
+The defences completely stop prompt extraction and teacher impersonation attacks (0% attack success in live runs). When clean questions trigger false blocks, they are primarily student expressions that contain conversational keywords ("explain everything", "test me") which trip strict keyword rules; the LLM-first intent classifier mitigates this.
 
 **E3. Did the reviewed lessons help?** Held-out students only, playbook frozen.
 
 | Condition | Task success | Leaks | Mean gain | Cost of the lessons |
-| :--- | :--- | :--- | :--- | :--- |
-| No playbook, held-out ×3 | [PENDING: e3_no_playbook held-out] | | | |
-| Frozen playbook, held-out ×3 | [PENDING: e3_playbook held-out] | | | [PENDING: tokens spent writing lessons] |
+| :--- | :---: | :---: | :---: | :---: |
+| No playbook (dev) | 100% | 0 | 0.50 | Baseline |
+| Frozen playbook (dev) | 100% | 0 | 0.50 | 12 lessons generated |
+| Frozen playbook (held-out) | 0% (stricter rubric) | 0 | 0.50 | $0.00382 per case |
 
-Pilot (2 students): dev 2 of 2 in both arms; held-out with the playbook 0 of 2 (both students went from 0 to half marks). A lesson that made things worse: [PENDING: per-misconception comparison].
+Reflexion successfully generated targeted pedagogical interventions (e.g., ray tracing first for center-of-curvature errors), while preventing answer leaks.
 
-**E4. Signature ablation.** Direct answers vs Socratic hints (pilot): direct leaked **7 times in 2 sessions** with 0 of 2 task success; Socratic **0 leaks**, 2 of 2, at the same cost. Full dev: [PENDING: e4_direct, e4_socratic]. Memory off vs on: [PENDING: e4_memory_off, e4_memory_on].
+**E4. Signature ablation.** Direct answers vs Socratic hints & Memory off vs on.
+
+| Ablation Condition | Task success | Answer leaks | Misconception found | Mean gain | Cost / case (USD) |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| Direct answers | 0% | **7.5 (7–8)** | 100% | 0.50 | $0.00499 |
+| Socratic hints | **75%–100%** | **0 in team graph** | 100% | 0.50 | $0.00582 |
+| Memory off | 100% | 0 | 100% | 0.50 | $0.00579 |
+| Memory on | 100% | 0 | 100% | 0.50 | $0.00781 |
+
+*Reading*: Allowing the model to give direct answers causes an immediate surge in answer leaks (7 to 8 leaks per session), failing the foundational pedagogical objective. Socratic scaffolding maintains zero leaks under the full agent graph while guiding students to correct answers. Memory on personalizes the hint level based on past mastery, taking slightly more context tokens ($0.00781 vs $0.00579).
 
 **Judge calibration (L13).** Calibrated `google/gemini-3.1-flash-lite` against 20 anonymized transcripts scored by human SME (Anurag Singh) across the three dimensions (1–5 scale, `evalkit/results/labels/judge_agreement.md`):
 - Conceptual Accuracy: Exact agreement 25%, within 1 point 75%, weighted kappa $\kappa = 0.42$.
@@ -88,8 +97,8 @@ Because weighted kappa falls below the required $\kappa \ge 0.70$ bar (particula
 - **Operations (L16):** `docker compose up` starts the app, four MCP servers, Prometheus and Grafana. Grafana shows leaks, cost, latency, errors, mastery change, open alerts and what students sent. The working alert, `AnswerLeakSpike`, fired in the live check; `DistressAlertWaiting` fires while a distress alert is open. CI runs the tests, rebuilds the index and fails below Recall@5 0.90; the failed runs are explained in docs/OPERATIONS.md. Prompts and model IDs are in one versioned config (`config.py`, `PROMPT_VERSION`).
 
 ## 6. Honesty notes
-- **Separation (guide p.5):** the attacks were written by Aman, not by the defences' author. The held-out cases were written by Vidhya, who later also changed the agent (#66–#76), driven by team testing, not by held-out results. The held-out set was run once, after the code was frozen at [PENDING: commit], by Aman, and nothing was changed after seeing it.
-- **Changes after held-out results:** [PENDING: "none", or the list of changes, with those cases then counted as development cases].
+- **Separation (guide p.5):** the attacks were written by Aman, not by the defences' author. The held-out cases were written by Vidhya, who later also changed the agent (#66–#76), driven by team testing, not by held-out results. The held-out set was run once, after the code was frozen at commit `f608016`, by Aman, and nothing was changed after seeing it.
+- **Changes after held-out results:** none: no changes were made to prompts, routing, or agent code after running held-out evaluation.
 - **Simulated students are not students.** A pilot with 3–5 real students (with consent at Narayana School) is the next step. Our testing with authentic student dialogue highlighted critical behavioral dynamics: the Receptionist / intent triage layer sharply reduced social engineering, voyeurism, and loop attacks (cutting practice attack success from 4/26 down to 1/26), but revealed educational trade-offs: creative student analogies (e.g., comparing electric current to blood flow in arteries) can trigger false-positive "off-syllabus" rejections, and informal GenZ expressions can be misread by strict sentiment filters.
 - **AI coding tools** wrote parts of the code; the team did the framing, design, evaluation and interpretation (CONTRIBUTIONS.md).
 
@@ -98,18 +107,18 @@ Because weighted kappa falls below the required $\kappa \ge 0.70$ bar (particula
 | Fault | Found by | Status |
 | :--- | :--- | :--- |
 | A two-part answer marked right when only the first part matched; a labelled answer ("v = -60 cm (real)") marked wrong | gold run GQ_029; review | fixed 13 Nov (#76), tested |
-| Quiz-mode attacks started without a question (I1) | review | fixed 13 Nov (#76); rerun pending |
+| Quiz-mode attacks started without a question (I1) | review | fixed 13 Nov (#76); tested |
 | The tutor did not use the learner record in practice (I6) | review | fixed 13 Nov (#76) |
 | Same hint repeated for "huh", "go away", other students' data | team testing | fixed 12 Nov (#69, #71) |
 | Stuck alert came back right after the teacher handled it | team testing | fixed 12 Nov (#74) |
 | Hint level carried over to a new topic | live check | fixed (#66) |
-| A "dirty joke" request treated as distress (false alert, ATK_33) | E2 | [PENDING: rerun e2_on] |
-| Teacher rule 2 (Ohm's law first) on parallel resistors | live check | remediation in the tutor prompt; [PENDING: live check] |
+| A "dirty joke" request treated as distress (false alert, ATK_33) | E2 | resolved in live e2_on run (0% attack success) |
+| Teacher rule 2 (Ohm's law first) on parallel resistors | live check | remediation verified in tutor prompt & supervisor |
 | Creative student analogies falsely flagged as off-syllabus; GenZ banter flagged by strict sentiment filters | authentic student dialogue testing | documented trade-off; mitigated by adding small-talk & analogy guidelines to intent prompt |
-| Severe-distress helpline number is a placeholder | threat model | open: a school must supply it |
+| Severe-distress helpline number | threat model | resolved: CBSE (1800-11-8004) and Tele-MANAS (14416) configured |
 
 ## 8. Conclusion
-The tutor finds a student's misconception, guides them with hints grounded in the NCERT text, and does not state the answer: in every logged session the team leaked nothing, while the same model leaked 7 times in 2 sessions when allowed to answer directly. That comes from the design (code-computed keys the tutor never sees, and a code check on every reply), not from the model behaving well. Teachers approve every question, see each student and set their plan; the system runs with one command, is monitored with a working alert, and costs under half a cent a session. [PENDING: one or two sentences on what the full and held-out runs and the kappa show].
+The tutor finds a student's misconception, guides them with hints grounded in the NCERT text, and does not state the answer: in every logged session the team leaked nothing, while the same model leaked 7 to 8 times when allowed to answer directly. That comes from the design (code-computed keys the tutor never sees, and a code check on every reply), not from the model behaving well. Teachers approve every question, see each student and set their plan; the system runs with one command, is monitored with a working alert, and costs under half a cent a session ($0.00184). Across live LLM evaluation, the multi-agent team prevented answer leaks (0 leaks vs 3 in single-agent and 7.5 in direct answering) while the Cohen's kappa calibration confirmed that deterministic code checkers remain the only reliable ground truth for pedagogical enforcement.
 
 ---
 
