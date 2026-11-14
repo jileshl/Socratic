@@ -169,22 +169,32 @@ def react_hint(
 
     found: list[dict[str, Any]] = []
 
+    def _in_active_chapter(section_id: Any) -> bool:
+        section = str(section_id or "").strip()
+        return not chapter or section == chapter or section.startswith(chapter + ".")
+
     def _keep(passages: list[dict[str, Any]]) -> None:
         for p in passages:
-            if p.get("section_id") and all(f.get("section_id") != p["section_id"] for f in found):
+            if (p.get("section_id") and _in_active_chapter(p.get("section_id"))
+                    and all(f.get("section_id") != p["section_id"] for f in found)):
                 found.append(p)
 
     def search_textbook(query: str, chapter_num: str | None = None) -> Any:
         """Search the NCERT Class 10 Science textbook. Returns the best-matching sections with short excerpts and
         their section ids. chapter_num: "9" (Light), "10" (Human eye) or "11" (Electricity), or leave it out."""
-        result = tool_runner("search_textbook", {"query": query, "chapter": chapter_num or chapter, "top_k": 4})
+        # `chapter` came from the selected concept and is authoritative. The model may omit a chapter, but it
+        # may not override a known topic with another chapter.
+        result = tool_runner("search_textbook", {"query": query, "chapter": chapter or chapter_num, "top_k": 4})
         if isinstance(result, list):
+            result = [p for p in result if _in_active_chapter(p.get("section_id"))]
             _keep(result)
             return [{"section_id": p.get("section_id"), "title": p.get("section_title"), "excerpt": str(p.get("content", ""))[:700]} for p in result]
         return str(result)
 
     def get_section(section_id: str) -> Any:
         """Read the whole text of one NCERT section by its id, for example "9.2.4"."""
+        if not _in_active_chapter(section_id):
+            return {"ok": False, "error": f"Section {section_id} is outside the active Chapter {chapter}."}
         result = tool_runner("get_section", {"section_id": section_id})
         if isinstance(result, dict) and result.get("ok"):
             _keep([{"section_id": result.get("section_id"), "section_title": result.get("section_title", ""),
@@ -207,8 +217,9 @@ def react_hint(
         f"  <strategy>{strategy_desc}</strategy>\n"
         + ("  " + "\n  ".join(extra) + "\n" if extra else "")
         + f"</pedagogical_context>\n\n"
-        "<instruction>\n"
-        "Look up what you need, then draft exactly ONE concise, encouraging Socratic reply that cites the NCERT "
+        + "<instruction>\n"
+        + (f"The active topic belongs to NCERT Chapter {chapter}. Search and cite only Chapter {chapter}.\n" if chapter else "")
+        + "Look up what you need, then draft exactly ONE concise, encouraging Socratic reply that cites the NCERT "
         "section ID. If the student has already explained it correctly without misconceptions, confirm it warmly with the citation and "
         "invite them to take the quiz or try the next topic.\n"
         "CRITICAL ANTI-SYCOPHANCY: DO NOT confirm or say 'Exactly right' if the student's statement is physically inaccurate or inverted — "

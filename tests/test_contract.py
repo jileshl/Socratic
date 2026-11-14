@@ -586,6 +586,16 @@ def test_node_tutor_passes_resolved_chapter_to_search_textbook(monkeypatch):
     graph.node_tutor(state3)
     assert search_calls[-1]["chapter"] == "10"
 
+    # 4. A selected concept overrides a stale chapter left by the page that opened the tutor.
+    state4 = {
+        "session_id": "ses_test", "student_id": "stu_test", "mode": "practice",
+        "query": "How does a concave lens correct short-sightedness?",
+        "chapter": "9",
+        "current_concept_id": "concept_myopia",
+    }
+    graph.node_tutor(state4)
+    assert search_calls[-1]["chapter"] == "10"
+
 
 def test_supervisor_selects_chapter_concept_when_unbound():
     """Verify starting in Chapter 10 without concept_id selects a Chapter 10 concept instead of Chapter 9 root."""
@@ -601,6 +611,42 @@ def test_supervisor_selects_chapter_concept_when_unbound():
     cg = graph.ConceptGraph()
     assert cg.concepts[res["current_concept_id"]]["chapter"] == "Human Eye and the Colourful World"
     assert res["chapter"] == "10"
+
+
+def test_supervisor_replaces_stale_chapter_for_pinned_concept():
+    """Flashcard Ask Tutor keeps the selected concept and repairs the page's stale chapter context."""
+    from socratic_tutor import graph
+
+    res = graph.node_supervisor({
+        "mode": "practice",
+        "chapter": "9",
+        "query": "How does a concave lens correct short-sightedness?",
+        "current_concept_id": "concept_myopia",
+        "concept_pinned": True,
+        "detected_concept_id": "concept_myopia",
+    })
+    assert res["current_concept_id"] == "concept_myopia"
+    assert res["chapter"] == "10"
+
+
+def test_output_guard_repairs_visible_cross_chapter_citation():
+    """A correct Chapter 10 retrieval replaces a hallucinated Chapter 9 citation in the visible reply."""
+    from socratic_tutor import graph
+
+    out = graph.node_output_guardrail({
+        "mode": "practice",
+        "query": "How does a concave lens correct myopia?",
+        "current_concept_id": "concept_myopia",
+        "response": "How might divergence move the focus? [NCERT Sec 9.3.5]",
+        "citations": ["10.2", "9.3.5"],
+        "retrieved_sections": [
+            {"section_id": "10.2", "content": "A concave lens corrects myopia."},
+            {"section_id": "9.3.5", "content": "Lens ray diagrams."},
+        ],
+    })
+    assert "9.3.5" not in out["response"]
+    assert "NCERT Sec 10.2" in out["response"]
+    assert out["citations"] == ["10.2"]
 
 
 def test_diagnostician_misconception_routes_chapter_and_citations(monkeypatch):
@@ -997,8 +1043,8 @@ def test_diagnostician_stores_chapter_and_resolves_in_real_run(monkeypatch):
     assert resolved == "9"
 
 
-def test_node_tutor_falls_back_to_unfiltered_search_when_filtered_empty(monkeypatch):
-    """Verify node_tutor falls back to unfiltered search if filtered search finds no passages."""
+def test_node_tutor_rejects_cross_chapter_results_from_broad_fallback(monkeypatch):
+    """The broad retry may run, but a Chapter 11 result cannot be cited for a Chapter 9 topic."""
     from socratic_tutor import graph
 
     calls = []
@@ -1021,7 +1067,8 @@ def test_node_tutor_falls_back_to_unfiltered_search_when_filtered_empty(monkeypa
     assert len(calls) == 2
     assert calls[0]["chapter"] == "9"
     assert calls[1]["chapter"] is None
-    assert "11.2" in out["citations"]
+    assert "11.2" not in out["citations"]
+    assert out["retrieved_sections"] == []
 
 
 def test_reflexion_playbook_alignment_with_catalogue():

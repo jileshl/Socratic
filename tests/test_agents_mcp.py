@@ -84,6 +84,40 @@ def test_the_react_tutor_chooses_its_tool_and_cites_what_it_found(monkeypatch: p
     assert "9.2.4" in reply and fake.calls == 2
 
 
+def test_react_tutor_cannot_override_the_active_concepts_chapter(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A model-requested Chapter 9 search cannot override an active Chapter 10 topic."""
+
+    class WrongChapterModel(FakeToolModel):
+        def _generate(self, messages: Any, stop: Any = None, run_manager: Any = None, **kwargs: Any) -> ChatResult:
+            self.calls += 1
+            if self.calls == 1:
+                msg = AIMessage(content="", tool_calls=[{
+                    "name": "search_textbook",
+                    "args": {"query": "myopia correction", "chapter_num": "9"},
+                    "id": "wrong-chapter",
+                }])
+            else:
+                msg = AIMessage(content="How might diverging the rays move the focus? [NCERT Sec 10.2]")
+            return ChatResult(generations=[ChatGeneration(message=msg)])
+
+    fake = WrongChapterModel()
+    monkeypatch.setattr(tutor.llm, "get_llm", lambda **kwargs: fake)
+    search_args: list[dict[str, Any]] = []
+
+    def runner(name: str, args: dict[str, Any]) -> Any:
+        search_args.append(args)
+        return [{
+            "section_id": "10.2",
+            "section_title": "Defects of Vision and Their Correction",
+            "content": "A concave lens of suitable power corrects myopia.",
+        }]
+
+    reply, found = tutor.react_hint("How does a concave lens correct myopia?", "10", runner)
+    assert search_args[0]["chapter"] == "10"
+    assert found[0]["section_id"] == "10.2"
+    assert "10.2" in reply
+
+
 def test_the_graph_uses_the_react_tutor_through_the_hooks(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(graph.textbook_kb, "search_textbook", _passages)
     monkeypatch.setattr(tutor, "react_available", lambda: True)
