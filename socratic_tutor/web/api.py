@@ -516,11 +516,17 @@ def _book_for(values: dict[str, Any], message: str, concept_id: str | None) -> d
     named = re.findall(r"\b((?:9|10|11)\.\d+(?:\.\d+)?)\b", str(values.get("response") or ""))
     named_ch = named[0].split(".")[0] if named else None
 
-    # Sync concept_id if the reply explicitly cited a section mapped to another concept
+    # Sync concept_id if the reply explicitly cited a section mapped to another concept,
+    # but only if concept_id is unset or the citation is within the same chapter
+    # (a cross-chapter reference like citing Sec 9.3 during a Rainbow lesson must not hijack the topic).
+    concept_secs = book.CONCEPT_SECTIONS.get(concept_id or "", [])
+    concept_ch = concept_secs[0].split(".")[0] if concept_secs else None
     if named:
         mapped_cid = book.concept_for_section(named[0])
-        if mapped_cid:
+        if mapped_cid and (not concept_id or not concept_ch or named_ch == concept_ch):
             concept_id = mapped_cid
+            concept_secs = book.CONCEPT_SECTIONS.get(concept_id or "", [])
+            concept_ch = concept_secs[0].split(".")[0] if concept_secs else None
 
     stands_alone = bool(topics.topic_of(message))
     if not stands_alone and asked and len(asked) > 1 and named_ch:
@@ -533,7 +539,10 @@ def _book_for(values: dict[str, Any], message: str, concept_id: str | None) -> d
     query = message if stands_alone else " ".join([message] + asked[-3:-1])
     cited = list(values.get("citations") or [])
     own = book.CONCEPT_SECTIONS.get(concept_id or "", [])
-    order = list(dict.fromkeys(named + [s for s in own if s in cited] + cited))
+    # Keep sections in the active concept/chapter first; cross-chapter citations shouldn't displace the active topic
+    same_ch_named = [s for s in named if not concept_ch or s.split(".")[0] == concept_ch]
+    other_ch_named = [s for s in named if concept_ch and s.split(".")[0] != concept_ch]
+    order = list(dict.fromkeys(same_ch_named + [s for s in own if s in cited] + own + cited + other_ch_named))
     try:
         return book.book_card(order, query, concept_id)
     except Exception:  # the book card is extra help; a reply never fails because of it
@@ -1067,6 +1076,9 @@ def dashboard() -> dict[str, Any]:
         "highlights": _class_highlights(),
         "demo_students": _demo_student_count(),
         "ops_demo": config.OPS_DEMO == "1",
+        "mode": config.MODE,
+        "grafana_url": config.GRAFANA_URL,
+        "prometheus_url": config.PROMETHEUS_URL,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
 

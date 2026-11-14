@@ -30,10 +30,14 @@ TRACES_DIR = CACHE_DIR / "traces"  # scrubbed traces from the app and the eval h
 INDEX_DIR.mkdir(exist_ok=True)
 CACHE_DIR.mkdir(exist_ok=True)
 
-# Version & Local Server
+# Version & Local Server & Environment Mode
 CONFIG_VERSION = os.getenv("CONFIG_VERSION", "0.2.0")
 HOST = os.getenv("HOST", "127.0.0.1")
 PORT = int(os.getenv("PORT", "8000"))
+MODE = os.getenv("MODE", os.getenv("ENVIRONMENT", "development")).strip().lower()
+IS_PROD = MODE in ("production", "prod")
+GRAFANA_URL = os.getenv("GRAFANA_URL", "https://socratic.duckdns.org/grafana" if IS_PROD else "")
+PROMETHEUS_URL = os.getenv("PROMETHEUS_URL", "https://socratic.duckdns.org/prometheus/alerts" if IS_PROD else "")
 
 # LLM Providers & API Keys
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")

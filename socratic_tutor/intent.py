@@ -130,7 +130,7 @@ class IntentVerdict(tuple):
         return obj
 
 
-def classify_with_llm(text: str, config_runnable: Any = None) -> IntentVerdict | None:
+def classify_with_llm(text: str, config_runnable: Any = None, current_concept: str | None = None) -> IntentVerdict | None:
     """Call a fast small LLM to classify student intent and detect syllabus concept when regex rules are inconclusive.
     Passes config_runnable so CostMeter and TraceCallback capture token usage, latency, and cost."""
     if not guard_models.guard_models_on():
@@ -138,9 +138,12 @@ def classify_with_llm(text: str, config_runnable: Any = None) -> IntentVerdict |
 
     try:
         client = llm.get_llm(model=app_config.INTENT_MODEL, temperature=0.0)
+        user_content = f"<student_message>\n{sanitize_xml(text)}\n</student_message>"
+        if current_concept:
+            user_content = f"<active_lesson_topic>{sanitize_xml(current_concept)}</active_lesson_topic>\n" + user_content
         messages = [
             {"role": "system", "content": INTENT_SYSTEM_PROMPT},
-            {"role": "user", "content": f"<student_message>\n{sanitize_xml(text)}\n</student_message>"}
+            {"role": "user", "content": user_content}
         ]
         resp = client.invoke(messages, config=config_runnable)
         content = str(resp.content or "").strip()
@@ -159,7 +162,7 @@ def classify_with_llm(text: str, config_runnable: Any = None) -> IntentVerdict |
     return None
 
 
-def classify(text: str, in_conversation: bool = False, config_runnable: Any = None) -> tuple[str, str | None]:
+def classify(text: str, in_conversation: bool = False, config_runnable: Any = None, current_concept: str | None = None) -> tuple[str, str | None]:
     """(intent, rule). Order matters: privacy and conduct first, then the physics test.
 
     in_conversation: the tutor has already replied in this chat. Then a message the rules can't place ("I
@@ -196,9 +199,17 @@ def classify(text: str, in_conversation: bool = False, config_runnable: Any = No
     # invoke the fast LLM intent classifier to semantically analyze the student's true intent,
     # catching personal remarks, classroom mischief, teacher comments, off-syllabus topics, or slang.
     if config_runnable is not None or guard_models.guard_models_on():
-        llm_verdict = classify_with_llm(t, config_runnable=config_runnable)
+        llm_verdict = classify_with_llm(t, config_runnable=config_runnable, current_concept=current_concept)
         if llm_verdict:
-            return llm_verdict
+            # When in conversation, student analogies, informal responses, and examples should NOT be rejected as off-syllabus
+            # unless an explicit off-syllabus subject (e.g. photosynthesis, biology, maths) is actually mentioned.
+            if llm_verdict[0] == "off_syllabus" and (in_conversation or physics) and not OFF_SYLLABUS.search(t):
+                pass
+            elif in_conversation and llm_verdict[0] == "small_talk" and not GREETING.match(t):
+                # Conversational responses during active practice go to tutor, not fixed greeting/ack
+                pass
+            else:
+                return llm_verdict
 
     if not physics and _looks_like_gibberish(t):
         return "gibberish", "gibberish"

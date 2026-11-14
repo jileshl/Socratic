@@ -169,6 +169,17 @@ def test_alert_counters_start_at_zero(client):
     assert 'socratic_errors_total{where="chat"}' in text
 
 
+def test_teacher_dashboard_mode_and_monitoring_urls(client, monkeypatch):
+    client.post("/api/teacher/login", json={"pin": "test-pin"})
+    monkeypatch.setattr(config, "MODE", "production")
+    monkeypatch.setattr(config, "GRAFANA_URL", "https://socratic.duckdns.org/grafana")
+    monkeypatch.setattr(config, "PROMETHEUS_URL", "https://socratic.duckdns.org/prometheus/alerts")
+    dash = client.get("/api/teacher/dashboard").json()
+    assert dash["mode"] == "production"
+    assert dash["grafana_url"] == "https://socratic.duckdns.org/grafana"
+    assert dash["prometheus_url"] == "https://socratic.duckdns.org/prometheus/alerts"
+
+
 def test_suggested_plan_puts_the_foundation_first():
     from socratic_tutor.web import study_plan
 

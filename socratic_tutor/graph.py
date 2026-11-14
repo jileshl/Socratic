@@ -219,7 +219,13 @@ def node_input_guardrail(state: SocraticState, config: RunnableConfig) -> dict:
     # Only for a student's own message: a teacher's "propose a question set" request runs the same graph.
     if state.get("mode", "practice") == "practice" and not state.get("teacher_approval_required"):
         started = any(getattr(m, "type", "") == "ai" for m in (state.get("messages") or []))
-        verdict = intent_check.classify(str(guard_res["sanitized_query"] or ""), in_conversation=started, config_runnable=config)
+        active_concept = state.get("current_concept_id") or state.get("lesson_concept_id")
+        verdict = intent_check.classify(
+            str(guard_res["sanitized_query"] or ""),
+            in_conversation=started,
+            config_runnable=config,
+            current_concept=active_concept,
+        )
         kind, rule = verdict
         reset_state["intent"], reset_state["intent_rule"] = kind, rule
         cid = getattr(verdict, "concept_id", None)
@@ -584,6 +590,26 @@ def node_diagnostician(state: SocraticState) -> dict:
     query = state.get("query", "")
     messages = state.get("messages", [])
 
+    # Guard against cross-chapter misconception bleed:
+    # A student working on Electricity (Ch 11) must not receive a Light (Ch 9) misconception banner
+    cg = ConceptGraph()
+    active_chapter = state.get("chapter")
+    current_cid = state.get("current_concept_id")
+    if current_cid and current_cid in cg.concepts:
+        concept_ch = cg.concepts[current_cid].get("chapter")
+        if concept_ch:
+            active_chapter = CHAPTER_TITLE_TO_NUM.get(concept_ch, active_chapter)
+
+    # Filter catalog by active chapter to prioritize relevant domain misconceptions
+    catalog = getattr(diagnostician, "_load_catalog", lambda: [])()
+    chapter_catalog = None
+    if active_chapter and catalog:
+        active_ch_num = CHAPTER_TITLE_TO_NUM.get(str(active_chapter), str(active_chapter))
+        chapter_catalog = [
+            m for m in catalog
+            if CHAPTER_TITLE_TO_NUM.get(str(m.get("chapter")), str(m.get("chapter"))) == active_ch_num
+        ]
+
     # Formulate contextual query using short-term conversational dialogue if available
     contextual_query = query
     if messages and len(messages) > 1:
@@ -595,41 +621,39 @@ def node_diagnostician(state: SocraticState) -> dict:
         if history_lines:
             contextual_query = "\n".join(history_lines)
 
-    diag_res = diagnostician.diagnose_response(contextual_query)
+    diag_res = diagnostician.diagnose_response(contextual_query, chapter_misconceptions=chapter_catalog)
     raw_diag_id = (diag_res.get("identified_misconception_id") or diag_res.get("id")) if isinstance(diag_res, dict) else None
     if not isinstance(diag_res, dict) or not raw_diag_id or (isinstance(raw_diag_id, str) and raw_diag_id.strip().lower() in ("null", "none", "nil", "n/a", "")):
-        diag_res = diagnostician.diagnose_response(query)
+        diag_res = diagnostician.diagnose_response(query, chapter_misconceptions=chapter_catalog)
 
     miscon_id = None
     miscon_name = None
     miscon_chapter = None
+    miscon_desc = None
+    miscon_scaffolding = None
+    miscon_probe = None
     if isinstance(diag_res, dict):
         raw_id = diag_res.get("identified_misconception_id") or diag_res.get("id")
         if isinstance(raw_id, str) and raw_id.strip().lower() not in ("null", "none", "nil", "n/a", ""):
             miscon_id = raw_id.strip()
             miscon_name = diag_res.get("identified_misconception_name") or diag_res.get("name")
             miscon_chapter = diag_res.get("chapter")
+            miscon_desc = diag_res.get("description")
+            miscon_scaffolding = diag_res.get("scaffolding_hint")
+            miscon_probe = diag_res.get("diagnostic_probe")
 
     if miscon_id:
         try:
-            catalog = getattr(diagnostician, "_load_catalog", lambda: [])()
             for m in catalog:
                 if m.get("id") == miscon_id:
                     miscon_name = m.get("name") or miscon_name
                     miscon_chapter = m.get("chapter") or miscon_chapter
+                    miscon_desc = m.get("description") or miscon_desc
+                    miscon_scaffolding = m.get("scaffolding_hint") or miscon_scaffolding
+                    miscon_probe = m.get("diagnostic_probe") or miscon_probe
                     break
         except Exception:
             pass
-
-    # Guard against cross-chapter misconception bleed:
-    # A student working on Electricity (Ch 11) must not receive a Light (Ch 9) misconception banner
-    cg = ConceptGraph()
-    active_chapter = state.get("chapter")
-    current_cid = state.get("current_concept_id")
-    if current_cid and current_cid in cg.concepts:
-        concept_ch = cg.concepts[current_cid].get("chapter")
-        if concept_ch:
-            active_chapter = CHAPTER_TITLE_TO_NUM.get(concept_ch, active_chapter)
 
     if miscon_id and active_chapter:
         miscon_ch_num = CHAPTER_TITLE_TO_NUM.get(str(miscon_chapter), str(miscon_chapter))
@@ -637,6 +661,9 @@ def node_diagnostician(state: SocraticState) -> dict:
         if miscon_ch_num and active_ch_num and miscon_ch_num != active_ch_num:
             miscon_id = None
             miscon_name = None
+            miscon_desc = None
+            miscon_scaffolding = None
+            miscon_probe = None
 
     playbook = ReflexionPlaybook()
     effective_lesson = None
@@ -660,6 +687,9 @@ def node_diagnostician(state: SocraticState) -> dict:
             "id": miscon_id,
             "name": miscon_name,
             "chapter": miscon_chapter,
+            "description": miscon_desc,
+            "scaffolding_hint": miscon_scaffolding,
+            "diagnostic_probe": miscon_probe,
         } if miscon_id else None,
         "effective_lesson_applied": effective_lesson,
     }
@@ -786,6 +816,25 @@ def node_tutor(state: SocraticState) -> dict:
             remediation = "parallel_resistors"
     lesson = state.get("effective_lesson_applied")
 
+    active_miscon = state.get("identified_misconception")
+    if not active_miscon and state.get("last_misconception_id"):
+        last_mid = state["last_misconception_id"]
+        try:
+            catalog = getattr(diagnostician, "_load_catalog", lambda: [])()
+            for m in catalog:
+                if m.get("id") == last_mid:
+                    active_miscon = {
+                        "id": last_mid,
+                        "name": m.get("name"),
+                        "chapter": m.get("chapter"),
+                        "description": m.get("description"),
+                        "scaffolding_hint": m.get("scaffolding_hint"),
+                        "diagnostic_probe": m.get("diagnostic_probe"),
+                    }
+                    break
+        except Exception:
+            pass
+
     # The tutor as a ReAct agent over its MCP tools, when a real model is configured (team review, 13 Nov). It
     # decides what to look up; every call goes through the tool hooks and the textbook-kb MCP server.
     hint: str | None = None
@@ -795,7 +844,7 @@ def node_tutor(state: SocraticState) -> dict:
             hint, found = tutor.react_hint(
                 search_query, chapter, lambda name, args: tool_hooks.run_tool("tutor", _TEXTBOOK_TOOLS[name], args, state),
                 hint_level=hint_step, approved_lesson=lesson, remediation=remediation,
-                misconception=state.get("identified_misconception"), conversation_history=state.get("messages", []),
+                misconception=active_miscon, conversation_history=state.get("messages", []),
                 learner_context=learner_context,
             )
             passages = found
@@ -823,7 +872,7 @@ def node_tutor(state: SocraticState) -> dict:
             hint_level=hint_step,
             approved_lesson=lesson,
             remediation=remediation,
-            misconception=state.get("identified_misconception"),
+            misconception=active_miscon,
             conversation_history=state.get("messages", []),
             learner_context=learner_context,
         )
@@ -840,7 +889,7 @@ def node_tutor(state: SocraticState) -> dict:
             hint_level=hint_step,
             approved_lesson=lesson,
             remediation=remediation,
-            misconception=state.get("identified_misconception"),
+            misconception=active_miscon,
             conversation_history=state.get("messages", []),
             learner_context=learner_context,
         )

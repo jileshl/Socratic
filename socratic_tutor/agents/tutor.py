@@ -27,6 +27,16 @@ def _instructions(
         miscon_name = misconception.get("name") or misconception.get("id")
         if miscon_name:
             extra_instructions.append(f"Targeted Misconception: {miscon_name}")
+        if misconception.get("description"):
+            extra_instructions.append(f"Misconception Detail: {misconception['description']}")
+        if misconception.get("scaffolding_hint"):
+            extra_instructions.append(f"Scaffolding Hint for this mix-up: {misconception['scaffolding_hint']}")
+        if misconception.get("diagnostic_probe"):
+            extra_instructions.append(f"Diagnostic Probe to ask: {misconception['diagnostic_probe']}")
+        extra_instructions.append(
+            "ANTI-SYCOPHANCY RULE: If the student expresses this misconception or an inverted premise (e.g. 'current flows from negative to positive'), "
+            "NEVER say 'Exactly right' or confirm it. Challenge the false premise directly with a guided Socratic question or the diagnostic probe."
+        )
     if approved_lesson:
         extra_instructions.append(f"Approved Teaching Lesson for this misconception: {approved_lesson}")
     if remediation == "parallel_resistors":
@@ -80,9 +90,11 @@ def generate_hint(
         f"<retrieved_ncert_context>\n{passages_text}\n</retrieved_ncert_context>\n\n"
         "<instruction>\n"
         "Draft exactly ONE concise, encouraging Socratic hint that cites the NCERT section ID. "
-        "If the student has already correctly and sufficiently explained the concept or relationship, "
+        "If the student has already correctly and sufficiently explained the concept or relationship without misconceptions, "
         "confirm it warmly, restate in one sentence what they said with the NCERT citation (adding no new facts or numbers), "
         "and invite them to take the quiz or try the next topic instead of asking another probing question.\n"
+        "CRITICAL ANTI-SYCOPHANCY: DO NOT confirm or say 'Exactly right' if the student's statement contains any physical inaccuracy, inverted premise, "
+        "or misconception (e.g. current flowing negative to positive, or wrong signs). Guide them to fix the error with a Socratic question.\n"
         "</instruction>"
     )
 
@@ -197,8 +209,10 @@ def react_hint(
         + f"</pedagogical_context>\n\n"
         "<instruction>\n"
         "Look up what you need, then draft exactly ONE concise, encouraging Socratic reply that cites the NCERT "
-        "section ID. If the student has already explained it correctly, confirm it warmly with the citation and "
+        "section ID. If the student has already explained it correctly without misconceptions, confirm it warmly with the citation and "
         "invite them to take the quiz or try the next topic.\n"
+        "CRITICAL ANTI-SYCOPHANCY: DO NOT confirm or say 'Exactly right' if the student's statement is physically inaccurate or inverted — "
+        "challenge the error with a guiding Socratic question.\n"
         "</instruction>"
     )
     model = llm.get_llm(model=config.SPECIALIST_MODEL, temperature=0.3)
