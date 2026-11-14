@@ -250,7 +250,7 @@ def node_input_guardrail(state: SocraticState, config: RunnableConfig) -> dict:
         "distress_detected": False,
     })
 
-    # [IG5] Intent check (code, practice mode): is this about learning physics? Another student's results, a role
+    # [IG5] Intent check (code rules, then INTENT_MODEL; practice mode): is this about learning physics? Another student's results, a role
     # claim, rudeness, "go away", "hi" or "ok thanks" get a short fixed reply here, with no diagnosis and no new
     # hint, so the tutor no longer answers every message with the same hint (team testing, 12 Nov).
     # Only for a student's own message: a teacher's "propose a question set" request runs the same graph.
