@@ -1018,7 +1018,7 @@ try { if (localStorage.getItem("theme") === "dark") document.documentElement.set
         activeChapter = item.chapter.includes("Light") ? "9" : item.chapter.includes("Eye") ? "10" : item.chapter.includes("Electricity") ? "11" : null;
       }
       go("learn");
-      guarded(() => ask(`Can you help me practise ${conceptTitle(id)}? Ask me a question to start.`));
+      guarded(() => ask(`I want help understanding ${conceptTitle(id)}. Please guide me through it step by step, starting from what I already know.`));
     }
     function quizOn(id) { quizFocus = id; go("quiz"); }
 
