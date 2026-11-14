@@ -79,6 +79,8 @@ def test_the_figure_fits_the_question_or_there_is_none():
     assert pick("Why do stars twinkle?", "concept_atmospheric_refraction", ["10.5"]) == "10.9"
     assert pick("Why do we prefer a convex mirror as a rear-view mirror in vehicles?", "concept_convex_ray_diagrams", ["9.2.2"]) == "9.8"
     assert pick("Draw a labelled diagram to explain the formation of a rainbow.", "concept_rainbow_formation", ["10.4"]) == "10.8"
+    assert pick("I am talking about rainbow colours how does that get formed ?", "concept_refraction_laws", ["9.3"]) is None  # must not spurious match Figure 9.16
+    assert pick("I am talking about rainbow colours how does that get formed ?", "concept_rainbow_formation", ["10.4"]) == "10.8"
     assert pick("Can I have another hint?", "concept_reflection_laws", ["9.1"]) is None
 
 
@@ -90,6 +92,20 @@ def test_cross_chapter_topic_change_never_shows_stale_figure_or_misconception():
     assert card is not None
     assert card["section_id"] == "11.8"
     assert card["figure"] is None  # Section 11.8 has no figure; must not leak Chapter 9's Figure 9.9
+
+
+@needs_index
+def test_cross_chapter_tutor_citation_does_not_hijack_active_topic():
+    from socratic_tutor.web.api import _book_for
+    values = {
+        "messages": [],
+        "response": "A rainbow is formed through refraction, dispersion and reflection [NCERT Sec 9.3].",
+        "citations": ["10.4"],
+    }
+    card = _book_for(values, "I am talking about rainbow colours how does that get formed ?", "concept_rainbow_formation")
+    assert card is not None
+    assert card["section_id"] == "10.4"
+    assert card["figure"]["figure"] == "10.8"
 
 
 def test_quiz_questions_and_flashcards_carry_a_figure_field():

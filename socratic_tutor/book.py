@@ -132,7 +132,10 @@ START_AT: dict[str, tuple[str, str]] = {
 }
 
 _SKIP = re.compile(r"activity|/square|table \d|fig(ure|\.) ?\d|questions?\s*$|\?\s*$|^\s*\(?[ivx]+\)|example \d|^s\. ?no|calculate|\bfind\b|did you|think it over|\[fig|=\s*\d|developing world|^solution", re.IGNORECASE)
-_STOP = set("the a an of to in is are and or for on at by be it this that as with from into its can you we your what why how which does do".split())
+_STOP = set(
+    "the a an of to in is are and or for on at by be it this that as with from into its can you we your what why how which does do "
+    "about get gets got form formed forms make makes made show shown shows draw drawing tell tells talk talking".split()
+)
 
 
 @lru_cache(maxsize=1)
@@ -364,7 +367,7 @@ def pick_figure(query: str, concept_id: str | None, section_ids: list[str], pref
         return figure(mine)
     # Otherwise the best match must be clear: a topic with no figure in the book (why the sky is blue)
     # needs a much stronger match before a figure from elsewhere is shown.
-    bar = 2.2 if (own or best in cited) else 4.0
+    bar = 2.2 if (best in own or best in cited) else 4.0
     return figure(best) if overlap(best) >= bar else None
 
 

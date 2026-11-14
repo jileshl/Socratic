@@ -51,6 +51,8 @@ PHYSICS = [
     "why is the sky blue",
     "What is the far point of the human eye?",
     "how does a prism split light",
+    "how do different colours get formed?",
+    "I am talking about rainbow colours how does that get formed ?",
     "I don't want to use the formula, can I draw a ray diagram instead?",
     "this mirror formula is too hard",
     "strengths of lenses",

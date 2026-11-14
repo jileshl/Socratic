@@ -219,7 +219,13 @@ def node_input_guardrail(state: SocraticState, config: RunnableConfig) -> dict:
     # Only for a student's own message: a teacher's "propose a question set" request runs the same graph.
     if state.get("mode", "practice") == "practice" and not state.get("teacher_approval_required"):
         started = any(getattr(m, "type", "") == "ai" for m in (state.get("messages") or []))
-        verdict = intent_check.classify(str(guard_res["sanitized_query"] or ""), in_conversation=started, config_runnable=config)
+        active_concept = state.get("current_concept_id") or state.get("lesson_concept_id")
+        verdict = intent_check.classify(
+            str(guard_res["sanitized_query"] or ""),
+            in_conversation=started,
+            config_runnable=config,
+            current_concept=active_concept,
+        )
         kind, rule = verdict
         reset_state["intent"], reset_state["intent_rule"] = kind, rule
         cid = getattr(verdict, "concept_id", None)
