@@ -1,7 +1,9 @@
 """The two model calls behind the guardrails (R4, Stage 5).
 
-1. ask_content_guard: Llama Guard 4 labels a message or a reply as safe or unsafe for a minor
-   (capstone guide p.5 and p.12; AAI-15-2.pdf p.48).
+1. ask_content_guard: the content guard labels a message or a reply as safe or unsafe for a minor
+   (capstone guide p.5 and p.12; AAI-15-2.pdf p.48). The model is config.GUARD_MODEL, openai/gpt-4o-mini
+   by default, asked for Llama Guard's categories and reply format (GUARD_SYSTEM_PROMPT), because the
+   course key can't call Llama Guard 4; meta-llama/llama-guard-4-12b works as is if a key allows it.
 2. read_pasted_homework: the quarantined reader. A model call with NO tools copies a pasted worksheet
    into three short typed fields, so the tutor never sees the raw text (AAI-15-2.pdf p.43-44).
 
@@ -54,7 +56,7 @@ def guard_models_on() -> bool:
 
 
 def parse_guard_reply(text: str) -> dict[str, Any]:
-    """Read Llama Guard's reply: "safe", or "unsafe" with category codes on the next line ("S1,S11").
+    """Read the guard's reply, in Llama Guard's format: "safe", or "unsafe" with category codes on the next line ("S1,S11").
 
     Returns {"ok": True, "safe": bool, "categories": [codes]}, or {"ok": False, "error": ...} for any other reply,
     so that a reply we don't understand is never read as "safe".

@@ -27,7 +27,7 @@ if "INDEX_DIR" not in os.environ:
     if (_real_index / "chroma").is_dir():
         shutil.copytree(_real_index / "chroma", _test_index / "chroma")
     os.environ["INDEX_DIR"] = str(_test_index)
-# The guardrails' model calls (Llama Guard, the pasted-homework reader) never run in tests; tests that need them use fakes.
+# The guardrails' model calls (the content guard, the pasted-homework reader) never run in tests; tests that need them use fakes.
 os.environ["GUARD_MODELS"] = "off"
 
 
