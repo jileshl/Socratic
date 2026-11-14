@@ -32,6 +32,10 @@ SUPPORTIVE_REPLY_FALLBACK = (
     "What specific part or formula are you looking at right now?"
 )
 _SECTION_RE = re.compile(r"(?<![\d.])(9|10|11)\.(\d{1,2})(?:\.(\d{1,2}))?(?![\d])")
+_NCERT_CITATION_RE = re.compile(
+    r"(?P<prefix>\bNCERT\s+(?:Sec(?:tion)?\.?|Section)\s*)(?P<section>(?:9|10|11)\.\d{1,2}(?:\.\d{1,2})?)",
+    re.IGNORECASE,
+)
 
 
 def _extract_section_ids(*sources: Any) -> list[str]:
@@ -52,6 +56,21 @@ def _extract_section_ids(*sources: Any) -> list[str]:
     return found
 
 
+def _repair_ncert_citation_text(reply: str, retrieved_ids: list[str]) -> str:
+    """Replace a hallucinated visible NCERT citation with a section that was actually retrieved."""
+    allowed = list(dict.fromkeys(str(section_id) for section_id in retrieved_ids))
+
+    def replace(match: re.Match[str]) -> str:
+        section = match.group("section")
+        if section in allowed:
+            return match.group(0)
+        if allowed:
+            return match.group("prefix") + allowed[0]
+        return "NCERT source unavailable"
+
+    return _NCERT_CITATION_RE.sub(replace, reply)
+
+
 CHAPTER_TITLE_TO_NUM: dict[str, str] = {
     "Light - Reflection and Refraction": "9",
     "Human Eye and the Colourful World": "10",
@@ -59,32 +78,38 @@ CHAPTER_TITLE_TO_NUM: dict[str, str] = {
 }
 
 
+def _concept_chapter(concept_id: str | None) -> str | None:
+    """Return the canonical NCERT chapter for a concept, when the concept is known."""
+    if not concept_id:
+        return None
+    concept = ConceptGraph().concepts.get(concept_id, {})
+    chapter = concept.get("chapter")
+    if chapter in CHAPTER_TITLE_TO_NUM:
+        return CHAPTER_TITLE_TO_NUM[chapter]
+    if chapter:
+        match = re.search(r"\b(9|10|11)\b", str(chapter))
+        if match:
+            return match.group(1)
+    return None
+
+
+def _section_matches_chapter(section_id: Any, chapter: str | None) -> bool:
+    """A section such as 10.2 belongs to Chapter 10; no chapter means no filtering."""
+    if not chapter:
+        return True
+    section = str(section_id or "").strip()
+    return section == chapter or section.startswith(chapter + ".")
+
+
 def _resolve_chapter(state: SocraticState) -> str | None:
-    """Resolve NCERT chapter number (e.g. '9', '10', '11') from state or active concept."""
-    # 1. Direct from state if specified
-    raw_chapter = state.get("chapter")
-    if raw_chapter is not None:
-        ch_str = str(raw_chapter).strip()
-        if ch_str in CHAPTER_TITLE_TO_NUM:
-            return CHAPTER_TITLE_TO_NUM[ch_str]
-        m = re.search(r"\b(9|10|11)\b", ch_str)
-        if m:
-            return m.group(1)
+    """Resolve the NCERT chapter, preferring canonical topic facts over stale UI state."""
+    # 1. The active concept is authoritative. A selected Chapter 10 topic must not be searched in a stale
+    # Chapter 9 UI context (the Flashcard -> Ask Tutor myopia defect found during R1 testing).
+    concept_chapter = _concept_chapter(state.get("current_concept_id"))
+    if concept_chapter:
+        return concept_chapter
 
-    # 2. From active concept in ConceptGraph
-    concept_id = state.get("current_concept_id")
-    if concept_id:
-        cg = ConceptGraph()
-        concept = cg.concepts.get(concept_id, {})
-        ch_title = concept.get("chapter")
-        if ch_title in CHAPTER_TITLE_TO_NUM:
-            return CHAPTER_TITLE_TO_NUM[ch_title]
-        if ch_title:
-            m = re.search(r"\b(9|10|11)\b", str(ch_title))
-            if m:
-                return m.group(1)
-
-    # 3. From identified misconception
+    # 2. A diagnosed misconception is also tied to a canonical chapter.
     miscon = state.get("identified_misconception")
     if isinstance(miscon, dict):
         ch_title = miscon.get("chapter")
@@ -94,6 +119,16 @@ def _resolve_chapter(state: SocraticState) -> str | None:
             m = re.search(r"\b(9|10|11)\b", str(ch_title))
             if m:
                 return m.group(1)
+
+    # 3. Use the caller/UI chapter only when no topic fact is available.
+    raw_chapter = state.get("chapter")
+    if raw_chapter is not None:
+        ch_str = str(raw_chapter).strip()
+        if ch_str in CHAPTER_TITLE_TO_NUM:
+            return CHAPTER_TITLE_TO_NUM[ch_str]
+        m = re.search(r"\b(9|10|11)\b", ch_str)
+        if m:
+            return m.group(1)
 
     return None
 
@@ -349,6 +384,9 @@ def node_supervisor(state: SocraticState) -> dict:
     if asked and asked in cg.concepts and asked != current_concept and not pinned:
         current_concept = asked
         chapter_out = CHAPTER_TITLE_TO_NUM.get(cg.concepts[asked].get("chapter", ""), chapter_out)
+    # Once a topic is known, its catalog chapter wins over a stale chapter supplied by the page that opened
+    # the tutor. This also covers a pinned topic, where `asked == current_concept` and the old code did nothing.
+    chapter_out = _concept_chapter(current_concept) or chapter_out
     lesson_pinned = bool(lesson_concept) and current_concept == lesson_concept
     # A quiz answer belongs to its question's topic (team review, 12 Nov: one of three wrong answers to the same
     # mirror question was logged under another topic, so the "3 in a row" stuck alert never fired).
@@ -411,7 +449,7 @@ def node_supervisor(state: SocraticState) -> dict:
                 "teacher_alert_triggered": teacher_alert,
                 "hint_step": hint_step,
                 "hint_raised_this_turn": hint_raised,
-                "chapter": chapter_out,
+                "chapter": _concept_chapter(current_concept) or chapter_out,
             }
         else:
             # N3: If grader encountered an error (e.g. unapproved question), do not run replan
@@ -433,7 +471,7 @@ def node_supervisor(state: SocraticState) -> dict:
                     "hint_raised_this_turn": hint_raised,
                     "last_concept_id": current_concept,
                     "last_question_id": qid,
-                    "chapter": chapter_out,
+                    "chapter": _concept_chapter(current_concept) or chapter_out,
                 }
 
             # Grader finished! Supervisor saves quiz result and replans
@@ -508,7 +546,7 @@ def node_supervisor(state: SocraticState) -> dict:
                 "hint_raised_this_turn": hint_raised,
                 "last_concept_id": current_concept,
                 "last_question_id": qid,
-                "chapter": chapter_out,
+                "chapter": _concept_chapter(current_concept) or chapter_out,
             }
 
     # Question Setter Mode:
@@ -525,7 +563,7 @@ def node_supervisor(state: SocraticState) -> dict:
             "hint_raised_this_turn": hint_raised,
             "last_concept_id": current_concept,
             "last_question_id": qid,
-            "chapter": chapter_out,
+            "chapter": _concept_chapter(current_concept) or chapter_out,
         }
 
     # Practice Mode:
@@ -544,7 +582,7 @@ def node_supervisor(state: SocraticState) -> dict:
             "last_concept_id": current_concept,
             "last_question_id": qid,
             "last_misconception_id": state.get("last_misconception_id"),
-            "chapter": chapter_out,
+            "chapter": _concept_chapter(current_concept) or chapter_out,
         }
 
     # 2. Has diagnostician produced a result?
@@ -602,7 +640,7 @@ def node_supervisor(state: SocraticState) -> dict:
             "last_concept_id": current_concept,
             "last_question_id": qid,
             "last_misconception_id": miscon_id or last_miscon,
-            "chapter": chapter_out,
+            "chapter": _concept_chapter(current_concept) or chapter_out,
         }
 
     # First pass in practice mode:
@@ -618,7 +656,7 @@ def node_supervisor(state: SocraticState) -> dict:
         "hint_raised_this_turn": hint_raised,
         "last_concept_id": current_concept,
         "last_question_id": qid,
-        "chapter": chapter_out,
+        "chapter": _concept_chapter(current_concept) or chapter_out,
     }
 
 
@@ -835,6 +873,8 @@ def node_tutor(state: SocraticState) -> dict:
     hint_tries = state.get("hint_tries", 0) + 1
     chapter = _resolve_chapter(state)
     passages = state.get("retrieved_sections")
+    if passages and chapter:
+        passages = [p for p in passages if _section_matches_chapter(p.get("section_id"), chapter)]
     # "huh?" or a lesson reply with no topic words of its own ("I don't get it") would search the book for
     # nothing and cite random sections: search with the topic's title instead.
     search_query = query
@@ -891,8 +931,10 @@ def node_tutor(state: SocraticState) -> dict:
         # Both searches go through R4's tool hooks (permission, quiz rule, budget, log), as the tutor's tool.
         passages = _tutor_search({"query": search_query, "chapter": chapter, "top_k": 4}, state)
         if not passages and chapter:
-            # Fall back to unfiltered search if filtered search returned no relevant passages
-            passages = _tutor_search({"query": search_query, "top_k": 4}, state)
+            # A broad retry can recover from incomplete chapter metadata, but it must never import a passage
+            # from another chapter into this topic.
+            broad_passages = _tutor_search({"query": search_query, "top_k": 4}, state)
+            passages = [p for p in broad_passages if _section_matches_chapter(p.get("section_id"), chapter)]
     passages = passages or []
 
     initial_citations = []
@@ -991,9 +1033,10 @@ def node_output_guardrail(state: SocraticState) -> dict:
     for passage in retrieved:
         # Each retrieved passage carries the NCERT section it came from, e.g. "9.2.4".
         section_id: Any = passage.get("section_id")
-        if section_id:
+        if section_id and _section_matches_chapter(section_id, _resolve_chapter(state)):
             retrieved_ids.append(str(section_id))
     validated_citations: list[str] = keep_retrieved_citations(citations, retrieved_ids)
+    response = _repair_ncert_citation_text(response, retrieved_ids)
 
     # Socratic Invariant: If leak occurs in practice mode
     if leak and state.get("mode", "practice") == "practice":
