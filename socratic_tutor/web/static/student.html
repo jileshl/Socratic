@@ -888,7 +888,10 @@ try { if (localStorage.getItem("theme") === "dark") document.documentElement.set
     }
     async function checkAnswer(e, qid) {
       e.preventDefault(); if (busy) return;
-      const card = document.getElementById("q-" + qid); const input = card.querySelector("input"); const answer = input.value.trim(); if (!answer) return;
+      const card = document.getElementById("q-" + qid); const input = card.querySelector("input"); if (input.disabled) return;
+      const answer = input.value.trim(); if (!answer) return;
+      const btn = card.querySelector("form button");
+      if (btn) btn.disabled = true;
       const out = card.querySelector("[data-result]"); out.innerHTML = `<span class="muted">Checking…</span>`;
       await guarded(async () => {
         stream.onstep = steps => renderRay(steps);
@@ -898,6 +901,8 @@ try { if (localStorage.getItem("theme") === "dark") document.documentElement.set
         if (ev.grade && !ev.grade.is_correct) misses[qid] = (misses[qid] || 0) + 1;
         if (ev.grade) out.innerHTML = `<div class="result ${ev.grade.is_correct ? "ok" : "bad"}">${ev.grade.is_correct ? `Correct. Well done.${studentId() ? (ev.grade.already_solved ? " (Already solved)" : ` <span class="plus">+10 points</span>`) : ""}` : `Not yet. ${esc(quizTip(q.concept_id))} Then try again.`}</div>`;
         if (ev.grade && ev.grade.is_correct) {
+          input.disabled = true;
+          if (btn) btn.disabled = true;
           celebrate(card);
           const before = gameCache && gameCache.level; await refreshGame(true); const after = gameCache && gameCache.level;
           out.insertAdjacentHTML("beforeend", await encouragement(q, before, after));
@@ -908,12 +913,17 @@ try { if (localStorage.getItem("theme") === "dark") document.documentElement.set
           out.insertAdjacentHTML("beforeend", `<div class="quick" style="margin-top:8px"><button type="button" onclick="loadQuiz(lastQuizFocus)">Next question</button></div>`);
         }
         else if (ev.grade) {
+          if (btn) btn.disabled = false;
           // Two misses on the same question: an offer to work through it with the tutor (without the answer).
           if (misses[qid] >= 2) out.insertAdjacentHTML("beforeend", `<div class="quick" style="margin-top:8px"><button type="button" class="strong" onclick="tutorOn('${esc(qid)}')">Work through it with the tutor</button><span class="muted">It won't give you the answer, but it will take you there step by step.</span></div>`);
           if (q.concept_id) { out.insertAdjacentHTML("beforeend", await revisionCards(q.concept_id)); showFlashFlow(q.concept_id); }
         }
-        else out.innerHTML = `<div class="result bad">${esc(ev.text || "This answer couldn't be checked.")}</div>`;
+        else {
+          if (btn) btn.disabled = false;
+          out.innerHTML = `<div class="result bad">${esc(ev.text || "This answer couldn't be checked.")}</div>`;
+        }
       });
+      if (btn && !input.disabled) btn.disabled = false;
     }
 
     // What to check after a wrong answer, by topic (it used to say "check your sign convention" even for resistors).

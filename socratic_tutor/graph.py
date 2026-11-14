@@ -146,6 +146,7 @@ def node_input_guardrail(state: SocraticState, config: RunnableConfig) -> dict:
         "intent_rule": None,
         "detected_concept_id": None,
         "off_topic": False,
+        "unproductive_turns": int(state.get("unproductive_turns") or 0),
     }
     if state.get("chapter"):
         reset_state["chapter"] = state["chapter"]
@@ -220,8 +221,9 @@ def node_input_guardrail(state: SocraticState, config: RunnableConfig) -> dict:
     if state.get("mode", "practice") == "practice" and not state.get("teacher_approval_required"):
         started = any(getattr(m, "type", "") == "ai" for m in (state.get("messages") or []))
         active_concept = state.get("current_concept_id") or state.get("lesson_concept_id")
+        raw_query = str(guard_res["sanitized_query"] or "").strip()
         verdict = intent_check.classify(
-            str(guard_res["sanitized_query"] or ""),
+            raw_query,
             in_conversation=started,
             config_runnable=config,
             current_concept=active_concept,
@@ -231,12 +233,46 @@ def node_input_guardrail(state: SocraticState, config: RunnableConfig) -> dict:
         cid = getattr(verdict, "concept_id", None)
         if cid:
             reset_state["detected_concept_id"] = cid
+
+        # Track unproductive / stagnant turns in practice mode (disengaged acks, sighs, or short fillers)
+        stagnant_tokens = {
+            "arrey", "arre", "but", "but then", "oh well", "well", "f9", "ans", "tell", "tell me", "nah", "nope",
+            "k", "kk", "ok", "okay", "idk",
+        }
+        q_lower = raw_query.lower()
+        is_stagnant = (
+            (q_lower in stagnant_tokens)
+            or (kind == "small_talk" and rule == "ack")
+            or (kind in ("rude", "fed_up", "conduct", "gibberish"))
+            or (len(raw_query.split()) <= 2 and not any(ch in raw_query for ch in "=+-*/0123456789?"))
+        )
+
+        curr_unproductive = int(state.get("unproductive_turns") or 0)
+        new_unproductive = (curr_unproductive + 1) if is_stagnant else 0
+        reset_state["unproductive_turns"] = new_unproductive
+
+        if new_unproductive >= 3:
+            reset_state["teacher_alert_triggered"] = True
+
         if kind == "confused":
             # "huh?": the same topic, explained another way (and it counts as asking for more help).
             reset_state["query"] = intent_check.CONFUSED_REWRITE
         elif kind != "physics":
             reset_state["off_topic"] = True
-            reset_state["response"] = intent_check.reply_for(kind, rule)
+            # Anti-repetition: if student repeatedly gives small_talk acks (e.g. "k", "kk"), don't repeat the identical ACK_REPLY
+            if kind == "small_talk" and rule == "ack" and curr_unproductive >= 1:
+                if new_unproductive >= 3:
+                    reset_state["response"] = (
+                        "It looks like we're stuck in a loop on this topic. I've notified your teacher so you can review this "
+                        "together in class. In the meantime, would you like to try another topic or take a break?"
+                    )
+                else:
+                    reset_state["response"] = (
+                        "It seems like you might be stuck or ready for a break. "
+                        "Would you like to try a different topic, or should I ask your teacher to check in with you?"
+                    )
+            else:
+                reset_state["response"] = intent_check.reply_for(kind, rule)
             reset_state["messages"] = [AIMessage(content=reset_state["response"])]
             if kind in ("rude", "fed_up", "conduct"):
                 reset_state["rude_count"] = int(state.get("rude_count") or 0) + 1

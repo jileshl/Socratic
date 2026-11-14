@@ -1710,3 +1710,31 @@ def test_energy_cost_chain_with_calculate_and_convert_from_si() -> None:
     cost = math_tools.solve_energy_cost(energy=energy["value"], rate=3.00)
     assert units["value"] == pytest.approx(96.0)
     assert cost["value"] == pytest.approx(288.0)
+
+
+def test_student_word_answers_and_expressions() -> None:
+    """Natural student phrasing: minus/plus in words, spelled numbers, square roots, and fractions."""
+    # Signs in words
+    res = math_tools.check_numeric_answer("minus 0.6 meters", "-60 cm")
+    assert res["value"] is True
+    res_plus = math_tools.check_numeric_answer("plus 2.5 D", "+2.5 D")
+    assert res_plus["value"] is True
+
+    # Spelled out number words
+    res_words = math_tools.check_numeric_answer("minus sixty centimeters", "-60 cm")
+    assert res_words["value"] is True
+    res_two = math_tools.check_numeric_answer("two meters", "2 m")
+    assert res_two["value"] is True
+
+    # Square roots
+    for expr in ("Squareroot of 4", "SQRT 4", "sqrt 4", "sqrt(4)", "√4"):
+        res_sqrt = math_tools.check_numeric_answer(expr, "2")
+        assert res_sqrt["value"] is True
+    res_sqrt_unit = math_tools.check_numeric_answer("√4 cm", "2 cm")
+    assert res_sqrt_unit["value"] is True
+
+    # Fractions
+    res_frac = math_tools.check_numeric_answer("1/2 A", "0.5 A")
+    assert res_frac["value"] is True
+    res_half = math_tools.check_numeric_answer("half an ampere", "0.5 A")
+    assert res_half["value"] is True

@@ -1252,6 +1252,25 @@ def tidy_answer_text(text: str) -> str:
     tidy = rebuilt
     # [P0e] "× 10^8", "x10^8" or "*10^8" become e-notation: "3 × 10^8" -> "3e8".
     tidy = re.sub(r"\s*[x×*]\s*10\s*\^\s*([+-]?\d+)", r"e\1", tidy)
+    # [P0e2] square roots: "√4", "sqrt 4", "sqrt(4)", "SQRT 4", "square root of 4", "squareroot of 4"
+    def _calc_sqrt(m: re.Match[str]) -> str:
+        val = float(m.group(1))
+        res = math.sqrt(val)
+        return f"{int(res)}" if res.is_integer() else f"{res}"
+    tidy = tidy.replace("√", "sqrt ")
+    tidy = re.sub(r"\b(?:sqrt|squareroot\s*(?:of)?|square\s*root\s*(?:of)?)\s*\(?\s*([0-9.]+)\s*\)?", _calc_sqrt, tidy, flags=re.IGNORECASE)
+    # [P0e3] simple fractions: "1/2 A" -> "0.5 A", "3/4" -> "0.75"
+    def _calc_frac(m: re.Match[str]) -> str:
+        denom = float(m.group(2))
+        if denom == 0:
+            return m.group(0)
+        return str(round(float(m.group(1)) / denom, 6))
+    tidy = re.sub(r"\b(\d+)\s*/\s*(\d+)\b", _calc_frac, tidy)
+    # [P0e4] word signs before numbers or expressions: "minus 0.6" -> "-0.6", "plus 2" -> "+2"
+    tidy = re.sub(r"\b(?:minus|negative)\s*(?=[0-9.])", "-", tidy, flags=re.IGNORECASE)
+    tidy = re.sub(r"\b(?:plus|positive)\s*(?=[0-9.])", "+", tidy, flags=re.IGNORECASE)
+    # [P0e5] collapse spaces between unary signs and numbers: "- 60" -> "-60", "+ 5" -> "+5"
+    tidy = re.sub(r"(?:(?<=^)|(?<=[=;,(\[:/*+-]))(\s*)([+-])\s+(?=[0-9.])", r"\1\2", tidy)
     # [P0f] a currency written first moves behind the number: "Rs 288" -> "288 Rs", "₹288" -> "288 ₹".
     currency_match = re.match(r"^(Rs\.?|₹)\s*(.+)$", tidy)
     if currency_match is not None:
@@ -1260,6 +1279,93 @@ def tidy_answer_text(text: str) -> str:
     # [P0g] a full stop or semicolon left at the very end ("30 cm.") is dropped.
     tidy = tidy.rstrip(".;").strip()
     return tidy
+
+
+NUMBER_WORDS: dict[str, float] = {
+    "zero": 0.0, "one": 1.0, "two": 2.0, "three": 3.0, "four": 4.0, "five": 5.0,
+    "six": 6.0, "seven": 7.0, "eight": 8.0, "nine": 9.0, "ten": 10.0,
+    "eleven": 11.0, "twelve": 12.0, "thirteen": 13.0, "fourteen": 14.0, "fifteen": 15.0,
+    "sixteen": 16.0, "seventeen": 17.0, "eighteen": 18.0, "nineteen": 19.0,
+    "twenty": 20.0, "thirty": 30.0, "forty": 40.0, "fifty": 50.0,
+    "sixty": 60.0, "seventy": 70.0, "eighty": 80.0, "ninety": 90.0,
+    "hundred": 100.0, "thousand": 1000.0,
+    "half": 0.5, "quarter": 0.25,
+}
+CORE_NUMBER_WORDS: set[str] = set(NUMBER_WORDS.keys()) | {"point", "dot"}
+
+WORD_NUMBER_PATTERN: re.Pattern[str] = re.compile(
+    r"\b(?:(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|"
+    r"eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|"
+    r"twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|half|quarter|point|dot|and)\b[- ]?)+",
+    re.IGNORECASE,
+)
+
+
+def parse_word_tokens(tokens: list[str]) -> float | None:
+    """Convert a sequence of number word tokens (e.g. ['sixty'], ['zero', 'point', 'six']) to a number."""
+    if not any(t in CORE_NUMBER_WORDS for t in tokens):
+        return None
+    if "point" in tokens or "dot" in tokens:
+        idx = tokens.index("point") if "point" in tokens else tokens.index("dot")
+        left = tokens[:idx]
+        right = tokens[idx + 1:]
+        left_val = parse_word_tokens(left) if left else 0.0
+        if left_val is None:
+            left_val = 0.0
+        dec_str = ""
+        for t in right:
+            if t in NUMBER_WORDS and NUMBER_WORDS[t] < 10:
+                dec_str += str(int(NUMBER_WORDS[t]))
+            elif t.isdigit():
+                dec_str += t
+            else:
+                return None
+        if dec_str:
+            return float(f"{int(left_val)}.{dec_str}")
+        return float(left_val)
+
+    total = 0.0
+    current = 0.0
+    matched = False
+    for t in tokens:
+        if t == "and":
+            continue
+        if t in ("hundred", "thousand"):
+            scale = NUMBER_WORDS[t]
+            current = (current if current else 1.0) * scale
+            total += current
+            current = 0.0
+            matched = True
+        elif t in NUMBER_WORDS:
+            current += NUMBER_WORDS[t]
+            matched = True
+        else:
+            return None
+    return (total + current) if matched else None
+
+
+def tidy_student_text(text: str) -> str:
+    """Normalize student answer text so natural phrasing (number words, signs) can be checked."""
+    if not text:
+        return ""
+    cleaned = text.strip()
+    # Normalize phrases like "half an ampere" -> "half ampere"
+    cleaned = re.sub(r"\bhalf\s+(?:an?)\s+", "half ", cleaned, flags=re.IGNORECASE)
+
+    def repl(m: re.Match[str]) -> str:
+        match_str = m.group(0).strip()
+        tokens = [t.lower() for t in re.split(r"[- ]+", match_str) if t]
+        if not any(t in CORE_NUMBER_WORDS for t in tokens):
+            return m.group(0)
+        val = parse_word_tokens(tokens)
+        if val is not None:
+            num_str = f"{int(val)}" if val == int(val) else f"{val}"
+            trailing = " " if m.group(0).endswith(" ") else ""
+            return num_str + trailing
+        return m.group(0)
+
+    cleaned = WORD_NUMBER_PATTERN.sub(repl, cleaned)
+    return tidy_answer_text(cleaned)
 
 
 def read_quantity(text: str) -> dict[str, Any]:
@@ -1369,8 +1475,8 @@ def check_numeric_answer(student_text: str, gold_text: str, tolerance: float = 0
     if not gold["ok"]:
         return make_error("The answer key '" + gold_text + "' could not be read: " + gold["error"])
 
-    # [C2] the student's answer.
-    student = read_quantity(student_text)
+    # [C2] the student's answer (tidied for number words, square roots, fractions and signs).
+    student = read_quantity(tidy_student_text(student_text))
     if not student["ok"]:
         return make_check_result("correct", False, rule, "Could not read a number and unit from the answer. " + student["error"])
 

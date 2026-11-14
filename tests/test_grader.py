@@ -300,3 +300,13 @@ def test_a_two_part_key_needs_both_parts_and_labels_are_read() -> None:
     assert grader.grade_answer("R = 24 ohm, I = 6/24 = 0.25 A", key, is_numeric=True)["is_correct"] is True
     assert grader.grade_answer("v = -60 cm (real)", "-60 cm", is_numeric=True)["is_correct"] is True
     assert grader.grade_answer("v = 60 cm", "-60 cm", is_numeric=True)["is_correct"] is False
+    # Words in student answers: signs, numbers and square roots
+    assert grader.grade_answer("minus 0.6 meters", "-60 cm", is_numeric=True)["is_correct"] is True
+    assert grader.grade_answer("minus sixty centimeters", "-60 cm", is_numeric=True)["is_correct"] is True
+    assert grader.grade_answer("v = minus sixty centimeters", "-60 cm", is_numeric=True)["is_correct"] is True
+    assert grader.grade_answer("- sixty cm", "-60 cm", is_numeric=True)["is_correct"] is True
+    assert grader.grade_answer("- 60 cm", "-60 cm", is_numeric=True)["is_correct"] is True
+    assert grader.grade_answer("-sixty cm", "-60 cm", is_numeric=True)["is_correct"] is True
+    assert grader.grade_answer("Squareroot of 4", "2", is_numeric=True)["is_correct"] is True
+    assert grader.grade_answer("SQRT 4", "2", is_numeric=True)["is_correct"] is True
+    assert grader.grade_answer("√4 cm", "2 cm", is_numeric=True)["is_correct"] is True
