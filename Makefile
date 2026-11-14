@@ -1,7 +1,17 @@
 VENV_PY := $(shell if [ -x ./.venv/bin/python ]; then echo ./.venv/bin/python; elif [ -x ./venv/bin/python ]; then echo ./venv/bin/python; else echo python; fi)
 PY ?= $(VENV_PY)
 
-.PHONY: help check setup index run dev test app reflexion clean eval eval-list report gate up seed-demo ci-deps ci docker-check
+PACKAGE_NAME ?= socratic-deploy.tar.gz
+DIST_DIR ?= dist
+PROD_HOST ?= socratic
+PROD_DIR ?= socratic
+DOMAIN ?= socratic.duckdns.org
+EMAIL ?= lakhani.jilesh@gmail.com
+
+DOCKER_COMPOSE := $(shell if docker compose version >/dev/null 2>&1; then echo "docker compose"; elif command -v docker-compose >/dev/null 2>&1; then echo "docker-compose"; else echo "docker compose"; fi)
+COMPOSE ?= $(DOCKER_COMPOSE)
+
+.PHONY: help check setup index run dev test app reflexion clean eval eval-list report gate up down logs ps seed-demo ci-deps ci docker-check docker-build docker-seed-demo docker-index package deploy ssl
 
 help:
 	@grep -E '^[a-z-]+:.*?##' $(MAKEFILE_LIST) | sed 's/:.*##/\t/' | column -t -s "$$(printf '\t')"
@@ -36,7 +46,30 @@ test:    ## run contract tests, guardrails & tool validation
 	$(PY) -m pytest tests -v
 
 clean:   ## remove index artifacts, caches, and run traces
-	rm -rf .index .cache dev_traces.jsonl traces.jsonl
+	rm -rf .index .cache dev_traces.jsonl traces.jsonl $(DIST_DIR)
+
+package: ## create deployable package archive (dist/socratic-deploy.tar.gz)
+	@mkdir -p $(DIST_DIR)
+	@echo "Creating deployment package $(DIST_DIR)/$(PACKAGE_NAME)..."
+	@COPYFILE_DISABLE=1 tar -czf $(DIST_DIR)/$(PACKAGE_NAME) \
+		--exclude='*.pyc' \
+		--exclude='__pycache__' \
+		--exclude='.pytest_cache' \
+		--exclude='.DS_Store' \
+		--exclude='*.swp' \
+		--exclude='.venv' \
+		--exclude='venv' \
+		--exclude='.git' \
+		--exclude='$(DIST_DIR)' \
+		docker socratic_tutor scripts data requirements.txt requirements-reranker.txt .dockerignore .env.example Makefile \
+		$(if $(wildcard .index),.index,)
+	@echo "Package created at $(DIST_DIR)/$(PACKAGE_NAME) ($$(du -h $(DIST_DIR)/$(PACKAGE_NAME) | cut -f1))"
+
+deploy: package ## push package to production server and deploy (ssh socratic)
+	@./scripts/deploy_prod.sh $(PROD_HOST) $(PROD_DIR)
+
+ssl:     ## setup SSL cert with Certbot: make ssl EMAIL=you@example.com [DOMAIN=socratic.duckdns.org]
+	@./scripts/setup_ssl.sh $(DOMAIN) $(EMAIL)
 
 # --- evaluation (R5) and operations (R6) ---
 # Written as "python -m ..." so they also work on Windows (no PYTHONPATH or env-var prefixes).
@@ -63,11 +96,29 @@ ci:      ## everything CI runs: index from data/, tests, Recall@5 gate, offline 
 	$(PY) -m evalkit.runner smoke --split dev --limit 3 --stub
 
 docker-check: ## validate the compose file and build the image (CI runs this too)
-	docker compose -f docker/docker-compose.yml config --quiet
+	$(COMPOSE) -f docker/docker-compose.yml config --quiet
 	docker build -f docker/Dockerfile -t socratic-tutor:ci .
 
-up:      ## start everything with Docker (app, Prometheus, Grafana)
-	docker compose -f docker/docker-compose.yml up --build
+docker-build: ## build the Socratic Tutor docker image directly (bypasses compose buildx requirements)
+	docker build -f docker/Dockerfile -t socratic-tutor:local .
+
+up: docker-build ## start everything with Docker with fresh code recreation
+	$(COMPOSE) -f docker/docker-compose.yml up -d --force-recreate
+
+down:    ## stop docker containers
+	$(COMPOSE) -f docker/docker-compose.yml down
+
+logs:    ## tail docker container logs
+	$(COMPOSE) -f docker/docker-compose.yml logs -f
+
+ps:      ## list running docker containers
+	$(COMPOSE) -f docker/docker-compose.yml ps
 
 seed-demo: ## demo data: [DEMO] questions for approval; add CLASS=1 for personas A/B and a demo class, CLEAR=1 to remove it
 	$(PY) -m scripts.seed_demo $(if $(CLASS),--class,) $(if $(CLEAR),--clear,)
+
+docker-seed-demo: ## seed demo data in docker: make docker-seed-demo [CLASS=1] [CLEAR=1]
+	$(COMPOSE) -f docker/docker-compose.yml exec app python -m scripts.seed_demo $(if $(CLASS),--class,) $(if $(CLEAR),--clear,)
+
+docker-index: ## rebuild textbook index in docker: make docker-index
+	$(COMPOSE) -f docker/docker-compose.yml exec app python -m scripts.build_index --force

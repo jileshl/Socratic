@@ -1,10 +1,18 @@
 # Everything with one command, from the repository root:
-#   docker compose -f docker/docker-compose.yml up --build      (or: make up)
+#   docker compose -f docker/docker-compose.yml up      (or: make up)
 #
-#   http://localhost:8000          student view
-#   http://localhost:8000/teacher  teacher view (TEACHER_PIN in .env)
-#   http://localhost:3000          Grafana, dashboard "Socratic Tutor" (admin / admin to edit)
-#   http://localhost:9090          Prometheus (Alerts tab: AnswerLeakSpike)
+# Unified SSL entrypoint on https://socratic.duckdns.org (via Nginx & Certbot):
+#   https://socratic.duckdns.org/               student view
+#   https://socratic.duckdns.org/teacher        teacher view (TEACHER_PIN in .env)
+#   https://socratic.duckdns.org/grafana/       Grafana dashboard "Socratic Tutor" (admin / admin)
+#   https://socratic.duckdns.org/prometheus/    Prometheus (Alerts tab: AnswerLeakSpike)
+#
+# HTTP (:80) automatically redirects to HTTPS (:443).
+#
+# Direct service ports (configurable via env vars):
+#   http://localhost:8000          student view (app)
+#   http://localhost:3000          Grafana
+#   http://localhost:9090          Prometheus
 #
 # Evaluation runs in its own container:
 #   docker compose -f docker/docker-compose.yml --profile eval run --rm eval e1_c2 --split dev
@@ -83,7 +91,11 @@ services:
 
   prometheus:
     image: prom/prometheus:v2.55.1
-    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=15d"]
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.route-prefix=/prometheus"
+      - "--web.external-url=/prometheus/"
     configs:
       - source: prometheus
         target: /etc/prometheus/prometheus.yml
@@ -92,7 +104,7 @@ services:
     volumes:
       - prometheus-data:/prometheus
     ports:
-      - "9090:9090"
+      - "${PROMETHEUS_PORT:-9090}:9090"
     depends_on: [app]
     restart: unless-stopped
 
@@ -102,6 +114,8 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_SERVER_ROOT_URL: "%(protocol)s://%(domain)s:%(http_port)s/grafana/"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/socratic.json
     configs:
       - source: grafana_datasource
@@ -113,9 +127,32 @@ services:
     volumes:
       - grafana-data:/var/lib/grafana
     ports:
-      - "3000:3000"
+      - "${GRAFANA_PORT:-3000}:3000"
     depends_on: [prometheus]
     restart: unless-stopped
+
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - certbot-etc:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+    depends_on:
+      - app
+      - grafana
+      - prometheus
+    restart: unless-stopped
+
+  certbot:
+    image: certbot/certbot:v3.1.0
+    restart: unless-stopped
+    volumes:
+      - certbot-etc:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
 
   eval:
     build:
@@ -176,7 +213,7 @@ configs:
     content: |
       apiVersion: 1
       datasources:
-        - {name: Prometheus, uid: prometheus, type: prometheus, access: proxy, url: "http://prometheus:9090", isDefault: true}
+        - {name: Prometheus, uid: prometheus, type: prometheus, access: proxy, url: "http://prometheus:9090/prometheus", isDefault: true}
 
   grafana_dashboards:
     content: |
@@ -193,3 +230,5 @@ volumes:
   eval-index:
   prometheus-data:
   grafana-data:
+  certbot-etc:
+  certbot-www:

@@ -25,6 +25,10 @@ GENERIC_TOPIC_WORDS = {
 }
 
 
+def _stem(w: str) -> str:
+    return re.sub(r"(s|es|ing|ed)$", "", w.lower())
+
+
 def match_misconception_by_keywords(query: str, catalog: list[dict[str, Any]]) -> dict[str, Any] | None:
     """Deterministic matching based on token overlap with catalogued misconceptions."""
     if not query.strip() or not catalog:
@@ -41,7 +45,9 @@ def match_misconception_by_keywords(query: str, catalog: list[dict[str, Any]]) -
         "both", "each", "other", "into", "through", "during", "before", "after", "above", "below",
         "between", "out", "off", "over", "under", "again", "further", "generate",
     }
-    query_tokens = {w for w in re.findall(r"[a-z0-9]+", query.lower()) if w not in stop_words and len(w) > 2}
+    raw_query_tokens = [w for w in re.findall(r"[a-z0-9]+", query.lower()) if w not in stop_words and len(w) > 2]
+    query_tokens = set(raw_query_tokens)
+    stemmed_query = {_stem(w) for w in raw_query_tokens if len(_stem(w)) > 2}
     if not query_tokens:
         return None
 
@@ -50,14 +56,18 @@ def match_misconception_by_keywords(query: str, catalog: list[dict[str, Any]]) -
     best_common: set[str] = set()
 
     for item in catalog:
-        name_tokens = {w for w in re.findall(r"[a-z0-9]+", item.get("name", "").lower()) if w not in stop_words and len(w) > 2}
-        name_match = query_tokens & name_tokens
+        raw_name_tokens = [w for w in re.findall(r"[a-z0-9]+", item.get("name", "").lower()) if w not in stop_words and len(w) > 2]
+        name_tokens = set(raw_name_tokens)
+        stemmed_name = {_stem(w) for w in raw_name_tokens if len(_stem(w)) > 2}
+        name_match = (query_tokens & name_tokens) | (stemmed_query & stemmed_name)
         # At least one specific word from the misconception's actual name must be matched
         if not (name_match - GENERIC_TOPIC_WORDS):
             continue
         text = f"{item.get('name', '')} {item.get('description', '')} {item.get('diagnostic_probe', '')}"
-        item_tokens = {w for w in re.findall(r"[a-z0-9]+", text.lower()) if w not in stop_words and len(w) > 2}
-        common = query_tokens & item_tokens
+        raw_item_tokens = [w for w in re.findall(r"[a-z0-9]+", text.lower()) if w not in stop_words and len(w) > 2]
+        item_tokens = set(raw_item_tokens)
+        stemmed_item = {_stem(w) for w in raw_item_tokens if len(_stem(w)) > 2}
+        common = (query_tokens & item_tokens) | (stemmed_query & stemmed_item)
         score = len(common) + 2 * len(name_match)
         if score > best_score:
             best_score = score
@@ -68,7 +78,7 @@ def match_misconception_by_keywords(query: str, catalog: list[dict[str, Any]]) -
     # and one of them must be more than a general topic word. (Before, the mix-up's name counted double, so the
     # single word "mirrors" flagged "Concave mirrors always invert images" on any message about mirrors, and the
     # repeated mix-up then pushed the hint up every turn. Team testing, 12 Nov.)
-    specific = best_common - GENERIC_TOPIC_WORDS
+    specific = (best_common - GENERIC_TOPIC_WORDS)
     if best_score >= 2 and best_match and len(best_common) >= 2 and specific:
         return {
             "identified_misconception_id": best_match["id"],
@@ -76,6 +86,9 @@ def match_misconception_by_keywords(query: str, catalog: list[dict[str, Any]]) -
             "chapter": best_match.get("chapter"),
             "confidence": min(1.0, 0.4 + 0.15 * best_score),
             "probing_question": best_match.get("diagnostic_probe", "Can you explain your reasoning step by step?"),
+            "description": best_match.get("description"),
+            "scaffolding_hint": best_match.get("scaffolding_hint"),
+            "diagnostic_probe": best_match.get("diagnostic_probe"),
         }
     return None
 
@@ -106,6 +119,9 @@ def diagnose_response(query: str, chapter_misconceptions: list[dict] | None = No
                     "chapter": cat.get("chapter") or res.get("chapter"),
                     "confidence": float(res.get("confidence") or 0.7),
                     "probing_question": res.get("probing_question") or cat.get("diagnostic_probe", "Can you explain your reasoning step by step?"),
+                    "description": cat.get("description"),
+                    "scaffolding_hint": cat.get("scaffolding_hint"),
+                    "diagnostic_probe": cat.get("diagnostic_probe"),
                 }
     keyword_match = match_misconception_by_keywords(query, catalog)
     if keyword_match:

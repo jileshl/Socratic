@@ -187,10 +187,20 @@ function liveToggle() {
   // Live refresh pauses on Approvals so an open edit is never redrawn under the teacher.
   if (document.getElementById("live").checked) liveTimer = setInterval(() => { if (!document.getElementById("t-appr").classList.contains("hidden")) return; refresh().catch(() => {}); }, 15000);
 }
-function links() {
-  const host = location.hostname || "localhost";
-  document.getElementById("grafanaLink").href = `${location.protocol}//${host}:3000`;
-  document.getElementById("promLink").href = `${location.protocol}//${host}:9090/alerts`;
+function links(info) {
+  const isProd = (info && (info.mode === "production" || info.mode === "prod")) ||
+                 location.hostname === "socratic.duckdns.org";
+  if (info && info.grafana_url && info.prometheus_url) {
+    document.getElementById("grafanaLink").href = info.grafana_url;
+    document.getElementById("promLink").href = info.prometheus_url;
+  } else if (isProd) {
+    document.getElementById("grafanaLink").href = "https://socratic.duckdns.org/grafana";
+    document.getElementById("promLink").href = "https://socratic.duckdns.org/prometheus/alerts";
+  } else {
+    const host = location.hostname || "localhost";
+    document.getElementById("grafanaLink").href = `${location.protocol}//${host}:3000`;
+    document.getElementById("promLink").href = `${location.protocol}//${host}:9090/alerts`;
+  }
 }
 function byChapter(rows) {
   const g = {}; rows.forEach(r => (g[r.chapter || "Other"] = g[r.chapter || "Other"] || []).push(r));
@@ -198,6 +208,7 @@ function byChapter(rows) {
 }
 async function refresh() {
   const { body: d } = await api("/api/teacher/dashboard");
+  links(d);
   opsDemo = !!d.ops_demo;
   const distress = d.open_alerts.filter(a => a.kind === "distress").length;
   document.getElementById("attention").innerHTML = [

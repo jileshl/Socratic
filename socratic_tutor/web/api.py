@@ -1076,6 +1076,9 @@ def dashboard() -> dict[str, Any]:
         "highlights": _class_highlights(),
         "demo_students": _demo_student_count(),
         "ops_demo": config.OPS_DEMO == "1",
+        "mode": config.MODE,
+        "grafana_url": config.GRAFANA_URL,
+        "prometheus_url": config.PROMETHEUS_URL,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
 
