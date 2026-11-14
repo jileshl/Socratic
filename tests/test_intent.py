@@ -40,6 +40,9 @@ TEAM_CHAT = [
     ("I dont like this.. dont want to do this", "opt_out"),
     ("this is boring", "fed_up"),
     ("asdfgh", "gibberish"),
+    ("tea time", "opt_out"),
+    ("break time", "opt_out"),
+    ("take a break", "opt_out"),
 ]
 
 # Real physics questions and answers must still reach the tutor.

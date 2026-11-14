@@ -40,7 +40,7 @@ def extract_numeric_quantities(text: str) -> list[str]:
     if not text:
         return []
 
-    tidy = math_tools.tidy_answer_text(text)
+    tidy = math_tools.tidy_student_text(text)
     if math_tools.read_quantity(tidy)["ok"]:
         return [tidy]
 
@@ -52,7 +52,7 @@ def extract_numeric_quantities(text: str) -> list[str]:
         clause = clause.strip()
         if not clause:
             continue
-        tidy_c = math_tools.tidy_answer_text(clause)
+        tidy_c = math_tools.tidy_student_text(clause)
         if math_tools.read_quantity(tidy_c)["ok"]:
             results.append(tidy_c)
             continue
@@ -60,7 +60,7 @@ def extract_numeric_quantities(text: str) -> list[str]:
         # Strip variable labels: e.g. "v =", "P =", "I =", "h' =", "Equivalent resistance ="
         stripped = re.sub(r"^[a-zA-Z\s_\'\"’]+\s*=\s*", "", clause).strip()
         if stripped:
-            tidy_s = math_tools.tidy_answer_text(stripped)
+            tidy_s = math_tools.tidy_student_text(stripped)
             if math_tools.read_quantity(tidy_s)["ok"]:
                 results.append(tidy_s)
                 continue
@@ -68,7 +68,7 @@ def extract_numeric_quantities(text: str) -> list[str]:
         # Handle chained equations e.g. "I = Q/t = 300/120 = 2.5 A"
         if "=" in clause:
             last_part = clause.split("=")[-1].strip()
-            tidy_last = math_tools.tidy_answer_text(last_part)
+            tidy_last = math_tools.tidy_student_text(last_part)
             if math_tools.read_quantity(tidy_last)["ok"]:
                 results.append(tidy_last)
                 continue
