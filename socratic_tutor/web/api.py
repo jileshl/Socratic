@@ -436,12 +436,16 @@ def _run_turn(
         ops.add_alert(student_id, session_id, "distress", alert_detail)
         metrics.DISTRESS_ALERTS.inc()
         alert_filed = True
-    if _update_stuck_alerts(student_id, session_id, concept_id, delta, values.get("grade_result") if error is None else None):
+    unproductive_turns = int(values.get("unproductive_turns") or 0)
+    if _update_stuck_alerts(student_id, session_id, concept_id, delta, values.get("grade_result") if error is None else None, unproductive_turns=unproductive_turns):
         alert_filed = True
-    # Rude three times in one session: often frustration, so a gentle heads-up for the teacher (once per session).
-    if values.get("off_topic") and values.get("intent") in ("rude", "fed_up", "conduct") and int(values.get("rude_count") or 0) >= 3 \
+    # Rude in this session: often frustration, so a gentle heads-up for the teacher (once per session).
+    # Either 3 rude turns, or 2 rude turns combined with practice deadlock.
+    rude_count = int(values.get("rude_count") or 0)
+    if values.get("off_topic") and values.get("intent") in ("rude", "fed_up", "conduct") \
+            and (rude_count >= 3 or (rude_count >= 2 and unproductive_turns >= 2)) \
             and not ops.has_open_alert(student_id, "conduct"):
-        ops.add_alert(student_id, session_id, "conduct", "Rude or fed-up messages three times in one session; they may be frustrated. A quick check-in could help.")
+        ops.add_alert(student_id, session_id, "conduct", "Rude or fed-up messages in this session; they may be frustrated. A quick check-in could help.")
         alert_filed = True
     # PR-2: a student's turn never pauses for the teacher any more (question sets wait on their own "qbset:"
     # thread), so nothing is saved here. The old save hashed the whole interrupt value, while the graph's gate
@@ -622,9 +626,9 @@ def lesson(concept_id: str, request: Request, student_id: str | None = None) -> 
     return out
 
 
-def _update_stuck_alerts(student_id: str, session_id: str, concept_id: str | None, delta: float | None, grade_now: Any) -> bool:
+def _update_stuck_alerts(student_id: str, session_id: str, concept_id: str | None, delta: float | None, grade_now: Any, unproductive_turns: int = 0) -> bool:
     """"Stuck" alerts (teacher rules: 3 quiz answers in a row not yet right on one topic, or 10+ minutes in a
-    session without progress). Progress closes them: a quiz answer fully right, or mastery going up, resolves
+    session without progress, or 3+ consecutive unproductive practice turns). Progress closes them: a quiz answer fully right, or mastery going up, resolves
     the student's open "stuck" alerts, and only the CURRENT topic's streak can raise a new one.
 
     Team review (12 Nov): after the teacher pressed "Mark as handled", the student's very next message filed
@@ -638,6 +642,17 @@ def _update_stuck_alerts(student_id: str, session_id: str, concept_id: str | Non
     if ops.has_open_alert(student_id, "stuck"):
         return False
     earlier = ops.alerts_of(student_id, "stuck")
+    if unproductive_turns >= 3:
+        if not any(a.get("session_id") == session_id and a.get("meta", {}).get("rule") == "practice_deadlock" for a in earlier):
+            title = _concept_titles().get(concept_id or "", concept_id or "this topic")
+            ops.add_alert(
+                student_id,
+                session_id,
+                "stuck",
+                f"Stuck in practice loop on {title}: 3+ unproductive turns without progress.",
+                meta={"rule": "practice_deadlock", "concept": concept_id, "turns": unproductive_turns},
+            )
+            return True
     streak = int((learners.get_profile(student_id).get("failure_streaks") or {}).get(concept_id or "", 0))
     if streak >= config.STUCK_FAILURE_COUNT:
         # The last alert about this topic's streak, if the teacher handled it and the student hasn't made
