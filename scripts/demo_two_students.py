@@ -16,7 +16,7 @@ from __future__ import annotations
 import os
 import uuid
 
-# When running locally without API key, disable external Llama Guard model to allow local deterministic rules
+# When running locally without API key, disable the external guard model (GUARD_MODEL) to allow local deterministic rules
 if not os.getenv("OPENROUTER_API_KEY") and "GUARD_MODELS" not in os.environ:
     os.environ["GUARD_MODELS"] = "off"
 
