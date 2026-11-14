@@ -60,6 +60,9 @@ PHYSICS = [
     "this mirror formula is too hard",
     "strengths of lenses",
     "rhythm",
+    "What is the result of Atmospheric refraction?",
+    "What is the answer for Question 1?",
+    "Pasted homework (as read by the reader):\nQuestion: An astronaut floating in space outside the Earth's atmosphere observes that: 1. The stars do not twinkle and appear steady. 2. There is no difference in the timing of the sunrise or sunset (no advanced sunrise or delayed sunset). (a) Identify and explain the scientific phenomenon responsible for both twinkling of stars and the 4-minute extra daylight (2 minutes for advanced sunrise and 2 minutes for delayed sunset) observed from the Earth's surface. (b) Why does the astronaut in space not experience these two phenomena? (c) If the Earth suddenly lost its atmosphere, what immediate change would an observer on Earth notice regarding the color of the sky and the duration of the day? Give reasons\nStudent's working: (none)\nStudent's answer: (none)",
 ]
 
 

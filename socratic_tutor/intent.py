@@ -44,10 +44,18 @@ PHYSICS_WORDS = re.compile(
 )
 
 _RESULTS = r"(score|scores|result|results|marks?|grades?|progress|report|performance|rank|mastery|answers?)"
-# "score of Mac-Jilesh" / "results for my class" (a name is capitalised: "the results of increasing resistance" is physics)
-OTHERS_NAMED = re.compile(rf"\b(?i:{_RESULTS})\s+(?i:of|for)\s+([A-Z][\w-]+|(?i:my (class|students?|son|daughter|child|friend|ward)))")
+_EXCLUDE_NAMES = (
+    r"(Part|Section|Question|Problem|Example|Exercise|Chapter|Step|Activity|Experiment|Trial|Case|Figure|Table"
+    r"|Atmospheric|Reflection|Refraction|Dispersion|Scattering|Light|Electricity|Resistance|Resistors?"
+    r"|Current|Voltage|Power|Energy|Heating|Series|Parallel|Mirrors?|Lens(es)?|Prism|Spectrum|Rainbow"
+    r"|Eye|Vision|Myopia|Hypermetropia|Presbyopia|Increasing|Decreasing|Connecting|Placing|Adding)"
+)
+
+OTHERS_NAMED = re.compile(
+    rf"\b(?i:{_RESULTS})\s+(?i:of|for)\s+((?!{_EXCLUDE_NAMES}\b)[A-Z][\w-]+|(?i:my (class|students?|son|daughter|child|friend|ward)))"
+)
 OTHERS_DATA = re.compile(
-    rf"\b(his|her|their|my (class|students?|son|daughter|child|friend|ward)|[a-z]+['’]s)\s+(\w+\s+)?{_RESULTS}\b"
+    rf"\b(his|her|their|my (class|students?|son|daughter|child|friend|ward)|(?!student\b|learner\b|user\b)[a-z]+['’]s)\s+(\w+\s+)?{_RESULTS}\b"
     rf"|\b(how is|how's|how did)\s+(?!it\b|this\b|that\b|the\b)[a-z][\w-]+\s+(doing|getting on|performing|do)\b"
     rf"|\b(sharing|share|send|show|tell)\s+(me\s+)?(his|her|their)\s+{_RESULTS}\b",
     re.IGNORECASE,
