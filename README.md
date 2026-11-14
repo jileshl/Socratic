@@ -51,6 +51,7 @@ Every run is logged in `evalkit/results/experiment_log.csv`. Held-out cases live
 | Roles and separations | [TEAM_ROLES](TEAM_ROLES) |
 | Operations (CI, alerts, failed CI runs explained) | [docs/OPERATIONS.md](docs/OPERATIONS.md) |
 | Evaluation design | [docs/EVALUATION.md](docs/EVALUATION.md) |
+| Live demo & presentation guide | [DEMO.md](DEMO.md) |
 | MCP tool list with schemas | [docs/mcp_tool_list.json](docs/mcp_tool_list.json) |
 
 ## Repository map
