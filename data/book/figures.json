@@ -197,7 +197,7 @@
   "page": 8,
   "caption": "Atmospheric refraction effects at sunrise and sunset",
   "file": "fig_10_10.png",
-  "about": "sunrise sunset advanced sunrise delayed sunset two minutes horizon atmospheric refraction"
+  "about": "sunrise sunset advanced sunrise delayed sunset two minutes horizon atmospheric refraction air density atmosphere earth daylight"
  },
  {
   "figure": "10.9",
@@ -205,7 +205,7 @@
   "page": 8,
   "caption": "Apparent star position due to atmospheric refraction",
   "file": "fig_10_9.png",
-  "about": "stars twinkle twinkling apparent star position atmospheric refraction planets do not twinkle"
+  "about": "stars twinkle twinkling apparent star position atmospheric refraction planets do not twinkle air density atmosphere atmospheric bending bend ray light starlight flicker flickering point source extended source"
  },
  {
   "figure": "11.1",

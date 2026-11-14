@@ -33,7 +33,12 @@ TOPIC_PHRASES: dict[str, tuple[str, ...]] = {
     "concept_prism_refraction": ("glass prism", "triangular prism", "angle of deviation"),
     "concept_dispersion": ("dispersion", "spectrum", "vibgyor", "white light"),
     "concept_rainbow_formation": ("rainbow",),
-    "concept_atmospheric_refraction": ("twinkle", "twinkling", "atmospheric refraction", "advance sunrise", "delayed sunset"),
+    "concept_atmospheric_refraction": (
+        "twinkle", "twinkling", "atmospheric refraction", "advance sunrise", "delayed sunset",
+        "advanced sunrise", "delayed sunset", "planets do not twinkle", "planets don't twinkle",
+        "starlight", "air density", "varying air densities", "turbulent air", "hot air rising",
+        "atmosphere bends", "point source", "extended source", "point-sized source",
+    ),
     "concept_scattering": ("scattering", "scatter", "sky blue", "sky is blue", "sky appear blue", "tyndall", "danger signal"),
     "concept_electric_current": ("electric current", "ammeter", "ampere", "coulomb"),
     "concept_potential_difference": ("potential difference", "voltmeter", "electric potential"),
