@@ -85,7 +85,7 @@ Pilot (2 students): dev 2 of 2 in both arms; held-out with the playbook 0 of 2 (
 ## 6. Honesty notes
 - **Separation (guide p.5):** the attacks were written by Aman, not by the defences' author. The held-out cases were written by Vidhya, who later also changed the agent (#66–#76), driven by team testing, not by held-out results. The held-out set was run once, after the code was frozen at [PENDING: commit], by Aman, and nothing was changed after seeing it.
 - **Changes after held-out results:** [PENDING: "none", or the list of changes, with those cases then counted as development cases].
-- **Simulated students are not students.** A pilot with 3–5 real students, with consent, is the next step.
+- **Simulated students are not students.** A pilot with 3–5 real students (with consent at Narayana School) is the next step. Our testing with authentic student dialogue highlighted critical behavioral dynamics: the Receptionist / intent triage layer sharply reduced social engineering, voyeurism, and loop attacks (cutting practice attack success from 4/26 down to 1/26), but revealed educational trade-offs: creative student analogies (e.g., comparing electric current to blood flow in arteries) can trigger false-positive "off-syllabus" rejections, and informal GenZ expressions can be misread by strict sentiment filters.
 - **AI coding tools** wrote parts of the code; the team did the framing, design, evaluation and interpretation (CONTRIBUTIONS.md).
 
 ## 7. Known faults
@@ -100,6 +100,7 @@ Pilot (2 students): dev 2 of 2 in both arms; held-out with the playbook 0 of 2 (
 | Hint level carried over to a new topic | live check | fixed (#66) |
 | A "dirty joke" request treated as distress (false alert, ATK_33) | E2 | [PENDING: rerun e2_on] |
 | Teacher rule 2 (Ohm's law first) on parallel resistors | live check | remediation in the tutor prompt; [PENDING: live check] |
+| Creative student analogies falsely flagged as off-syllabus; GenZ banter flagged by strict sentiment filters | authentic student dialogue testing | documented trade-off; mitigated by adding small-talk & analogy guidelines to intent prompt |
 | Severe-distress helpline number is a placeholder | threat model | open: a school must supply it |
 
 ## 8. Conclusion

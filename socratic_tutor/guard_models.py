@@ -17,7 +17,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from socratic_tutor import config, llm
-from socratic_tutor.prompts import GUARD_SYSTEM_PROMPT, READER_PROMPT
+from socratic_tutor.prompts import GUARD_SYSTEM_PROMPT, READER_PROMPT, sanitize_xml
 
 # Llama Guard's "Suicide & Self-Harm" category. [Own knowledge] Confirm with the live format check.
 SELF_HARM_CATEGORY: str = "S11"
@@ -154,7 +154,7 @@ def read_pasted_homework(text: str) -> dict[str, Any]:
     for attempt in range(MODEL_TRIES):
         try:
             # [Q1] one call: the instructions, then the pasted text as the user's message.
-            fields: Any = reader.invoke([("system", READER_PROMPT), ("user", text)])
+            fields: Any = reader.invoke([("system", READER_PROMPT), ("user", f"<pasted_text>\n{sanitize_xml(text)}\n</pasted_text>")])
             # [Q2] only a filled schema is accepted.
             if isinstance(fields, PastedHomework):
                 return {
