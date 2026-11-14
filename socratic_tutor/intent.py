@@ -201,9 +201,12 @@ def classify(text: str, in_conversation: bool = False, config_runnable: Any = No
     if config_runnable is not None or guard_models.guard_models_on():
         llm_verdict = classify_with_llm(t, config_runnable=config_runnable, current_concept=current_concept)
         if llm_verdict:
-            # Safety safeguard: Do not allow LLM to falsely classify a question containing syllabus physics words
-            # as off_syllabus unless explicit off-syllabus keywords (e.g. photosynthesis, biology, maths) are present.
-            if llm_verdict[0] == "off_syllabus" and physics and not OFF_SYLLABUS.search(t):
+            # When in conversation, student analogies, informal responses, and examples should NOT be rejected as off-syllabus
+            # unless an explicit off-syllabus subject (e.g. photosynthesis, biology, maths) is actually mentioned.
+            if llm_verdict[0] == "off_syllabus" and (in_conversation or physics) and not OFF_SYLLABUS.search(t):
+                pass
+            elif in_conversation and llm_verdict[0] == "small_talk" and not GREETING.match(t):
+                # Conversational responses during active practice go to tutor, not fixed greeting/ack
                 pass
             else:
                 return llm_verdict

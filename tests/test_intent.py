@@ -380,3 +380,14 @@ def test_personal_mischief_and_conduct_classification(monkeypatch: pytest.Monkey
     assert verdict == "small_talk"
     assert "science tutor" in intent.reply_for(verdict, rule)
 
+    # 4. In conversation: student everyday analogy is not falsely rejected as off-syllabus
+    monkeypatch.setattr(llm, "get_llm", mock_intent("off_syllabus"))
+    verdict, rule = intent.classify(
+        "peek when I turn on the ceiling fan it goes woosh woosh and the bang bang",
+        in_conversation=True,
+        config_runnable={"callbacks": []},
+        current_concept="concept_electric_current",
+    )
+    assert verdict == "physics"
+
+
