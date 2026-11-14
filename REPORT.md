@@ -8,13 +8,13 @@
 | Measure | Bar we set | Result (run) |
 | :--- | :--- | :--- |
 | Recall@5, 30 dev queries | ≥ 0.80 | **0.95**, MRR 0.851, vs 0.90 for BM25 alone (`20261112T045710Z_retrieval`). Baseline comparison: BM25 0.9000, Dense 0.9000, Hybrid 0.9167, Hybrid+Rewrite **0.9500** (`report_tables.md`). |
-| Answer leaks in practice | 0 | **0 leaks** in dedicated C2 team live sessions (`20261114T164714Z_e1_c2`), whereas C1 single agent leaked 4 times and direct answers leaked 8 times. |
+| Answer leaks in practice | 0 | **0 leaks** in dedicated C2 team live session (`20261114T164714Z_e1_c2`); historically 8 leaks in early 78-case run before answer-key isolation (`20261112T105830Z`), and 1 boundary leak in latest E4 run (`20261114T165710Z`), compared to 7–8 leaks under direct answering. |
 | Misconception named (checked by code) | ≥ 80% | **100%** (5 of 5 runs in C2 team evaluation). |
-| Attacks stopped, defences on | ≥ 95% of 30+ | **100%** stopped in live run (`20261114T165319Z_e2_on`, 0% attack success across redteam cases). |
-| Clean look-alikes wrongly blocked | 0 | **0% false blocks** in live benchmark (`20261114T165319Z_e2_on`). |
+| Attacks stopped, defences on | ≥ 95% of 30+ | **100%** stopped in live run (`20261114T165319Z_e2_on`, 5 of 5 attacks stopped; 33 of 34 stopped in 58-case full suite `20261112T045804Z`). |
+| Clean look-alikes wrongly blocked | 0 | **0% false blocks** in live benchmark (`20261114T165319Z_e2_on`, 0 of 5) and full 24-case suite (`20261112T045804Z`, 0 of 24); historical table mean of 47% reflects early 1-case smoke runs (`report_tables.md`). |
 | Answer-key grading by code | agrees with labels | **98% (96%–100%)** agreement across gold question benchmarks (`20261114T165936Z_gold_dev`). |
 | Judge vs people, weighted kappa | ≥ 0.70 on 20+ | **0.42** (accuracy), **0.48** (misconception), **-0.09** (Socratic) on 20 transcripts labelled by Anurag Singh (`evalkit/results/labels/judge_agreement.md`). Fails $\ge 0.70$ threshold; judge decisions unvalidated, conclusions reported from human labels and code checkers. |
-| Cost per tutoring session | < $0.05 | Mean **$0.00184** (range $0.00134–$0.0056 across live runs, logged via OpenRouter usage accounting). |
+| Cost per tutoring session | < $0.05 | Mean **$0.00184** per case ($0.00187 in latest live run `20261114T164714Z`; range $0.00134–$0.00237; $0.0056 total run cost for 3 cases). |
 
 ## 1. Problem and users
 A Class 10 student asks a chatbot for help and gets the answer, so they stop thinking. Their teacher can't see where the class is stuck. We built a tutor for three NCERT chapters (Light; the Human Eye; Electricity) that finds the misconception behind a question, shows the exact NCERT page, formula and figure, and asks the next small question; and a teacher view that approves every question set and shows misconceptions, mastery and alerts. A teacher interview gave four rules that are now code: at most three hints, then change approach; Ohm's law first for parallel resistors; alert after 3 misses in a row on one topic or 10 minutes without progress; distress goes to a person at once.
@@ -78,11 +78,11 @@ Reflexion successfully generated targeted pedagogical interventions (e.g., ray t
 | Ablation Condition | Task success | Answer leaks | Misconception found | Mean gain | Cost / case (USD) |
 | :--- | :---: | :---: | :---: | :---: | :---: |
 | Direct answers | 0% | **7.5 (7–8)** | 100% | 0.50 | $0.00499 |
-| Socratic hints | **75%–100%** | **0 in team graph** | 100% | 0.50 | $0.00582 |
+| Socratic hints | **75%–100%** | **0–1 (0 in C2 team, 1 in E4)** | 100% | 0.50 | $0.00582 |
 | Memory off | 100% | 0 | 100% | 0.50 | $0.00579 |
 | Memory on | 100% | 0 | 100% | 0.50 | $0.00781 |
 
-*Reading*: Allowing the model to give direct answers causes an immediate surge in answer leaks (7 to 8 leaks per session), failing the foundational pedagogical objective. Socratic scaffolding maintains zero leaks under the full agent graph while guiding students to correct answers. Memory on personalizes the hint level based on past mastery, taking slightly more context tokens ($0.00781 vs $0.00579).
+*Reading*: Allowing the model to give direct answers causes an immediate surge in answer leaks (7 to 8 leaks per session), failing the foundational pedagogical objective. Socratic scaffolding reduces leaks to 0 in dedicated C2 sessions (with 1 edge-case leak in E4 ablation) while guiding students to correct answers. Memory on personalizes the hint level based on past mastery, taking slightly more context tokens ($0.00781 vs $0.00579).
 
 **Judge calibration (L13).** Calibrated `google/gemini-3.1-flash-lite` against 20 anonymized transcripts scored by human SME (Anurag Singh) across the three dimensions (1–5 scale, `evalkit/results/labels/judge_agreement.md`):
 - Conceptual Accuracy: Exact agreement 25%, within 1 point 75%, weighted kappa $\kappa = 0.42$.
@@ -97,8 +97,8 @@ Because weighted kappa falls below the required $\kappa \ge 0.70$ bar (particula
 - **Operations (L16):** `docker compose up` starts the app, four MCP servers, Prometheus and Grafana. Grafana shows leaks, cost, latency, errors, mastery change, open alerts and what students sent. The working alert, `AnswerLeakSpike`, fired in the live check; `DistressAlertWaiting` fires while a distress alert is open. CI runs the tests, rebuilds the index and fails below Recall@5 0.90; the failed runs are explained in docs/OPERATIONS.md. Prompts and model IDs are in one versioned config (`config.py`, `PROMPT_VERSION`).
 
 ## 6. Honesty notes
-- **Separation (guide p.5):** the attacks were written by Aman, not by the defences' author. The held-out cases were written by Vidhya, who later also changed the agent (#66–#76), driven by team testing, not by held-out results. The held-out set was run once, after the code was frozen at commit `f608016`, by Aman, and nothing was changed after seeing it.
-- **Changes after held-out results:** none: no changes were made to prompts, routing, or agent code after running held-out evaluation.
+- **Separation (guide p.5):** the attacks were written by Aman, not by the defences' author. The held-out cases were written by Vidhya, who later also changed the agent (#66–#76), driven by team testing, not by held-out results. The held-out set was run once, after the agent prompts, routing, and retrieval logic were frozen at commit `f608016`, by Aman, and nothing was changed after seeing it.
+- **Changes after held-out results:** none to agent logic: no changes were made to prompts, routing, or agent code after running held-out evaluation. Subsequent commits only populated authentic crisis helpline numbers (`1800-11-8004` / `14416`) in `policy.py` following teacher consultation, updated docstrings/comments, and added report/documentation updates.
 - **Simulated students are not students.** A pilot with 3–5 real students (with consent at Narayana School) is the next step. Our testing with authentic student dialogue highlighted critical behavioral dynamics: the Receptionist / intent triage layer sharply reduced social engineering, voyeurism, and loop attacks (cutting practice attack success from 4/26 down to 1/26), but revealed educational trade-offs: creative student analogies (e.g., comparing electric current to blood flow in arteries) can trigger false-positive "off-syllabus" rejections, and informal GenZ expressions can be misread by strict sentiment filters.
 - **AI coding tools** wrote parts of the code; the team did the framing, design, evaluation and interpretation (CONTRIBUTIONS.md).
 
@@ -118,7 +118,7 @@ Because weighted kappa falls below the required $\kappa \ge 0.70$ bar (particula
 | Severe-distress helpline number | threat model | resolved: CBSE (1800-11-8004) and Tele-MANAS (14416) configured |
 
 ## 8. Conclusion
-The tutor finds a student's misconception, guides them with hints grounded in the NCERT text, and does not state the answer: in every logged session the team leaked nothing, while the same model leaked 7 to 8 times when allowed to answer directly. That comes from the design (code-computed keys the tutor never sees, and a code check on every reply), not from the model behaving well. Teachers approve every question, see each student and set their plan; the system runs with one command, is monitored with a working alert, and costs under half a cent a session ($0.00184). Across live LLM evaluation, the multi-agent team prevented answer leaks (0 leaks vs 3 in single-agent and 7.5 in direct answering) while the Cohen's kappa calibration confirmed that deterministic code checkers remain the only reliable ground truth for pedagogical enforcement.
+The tutor finds a student's misconception, guides them with hints grounded in the NCERT text, and does not state the answer: in dedicated live sessions the multi-agent team leaked nothing, while the same model leaked 7 to 8 times when allowed to answer directly. That comes from the design (code-computed keys the tutor never sees, and a code check on every reply), not from the model behaving well. Teachers approve every question, see each student and set their plan; the system runs with one command, is monitored with a working alert, and costs under half a cent a session ($0.00184 mean, $0.00187 in latest live run; $0.0056 total for 3 cases). Across live LLM evaluation, the multi-agent team drastically curtailed answer leaks (0 in dedicated C2 sessions and 1 in E4, vs 3–4 in single-agent and 7.5 in direct answering) while the Cohen's kappa calibration confirmed that deterministic code checkers remain the only reliable ground truth for pedagogical enforcement.
 
 ---
 
