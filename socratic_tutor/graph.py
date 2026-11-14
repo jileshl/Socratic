@@ -16,6 +16,7 @@ from socratic_tutor.policy import check_input_guardrails, check_answer_leak, che
 from socratic_tutor import intent as intent_check
 from socratic_tutor import topics
 from socratic_tutor import mcp_tools
+from socratic_tutor import book
 from socratic_tutor.concept_graph import ConceptGraph
 from socratic_tutor.learner_store import LearnerStore
 from socratic_tutor.reflexion import ReflexionPlaybook
@@ -973,6 +974,16 @@ def node_tutor(state: SocraticState) -> dict:
         )
         if retry and not _too_similar(retry, previous):
             hint = retry
+
+    curr_cid = state.get("current_concept_id") or ""
+    canonical_secs = book.CONCEPT_SECTIONS.get(curr_cid, [])
+    if canonical_secs and hint:
+        target_ch = canonical_secs[0].split(".")[0]
+        named_cits = re.findall(r"\b((?:9|10|11)\.\d+(?:\.\d+)?)\b", hint)
+        for bad_sec in named_cits:
+            if bad_sec.split(".")[0] != target_ch:
+                hint = re.sub(rf"\[NCERT Sec(?:tion)?\s*{re.escape(bad_sec)}\]", f"[NCERT Sec {canonical_secs[0]}]", hint)
+                hint = re.sub(rf"\bSec(?:tion)?\s*{re.escape(bad_sec)}\b", f"Section {canonical_secs[0]}", hint)
 
     all_citations = _extract_section_ids(initial_citations, hint)
 

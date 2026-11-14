@@ -497,6 +497,12 @@ def test_replan_falls_back_to_prerequisite_after_three_failures(monkeypatch, tmp
     assert output["current_concept_id"] == "concept_reflection_laws"
     assert output["teacher_alert_triggered"] is True
 
+    # Book card anchors to the prerequisite topic without figure leakage
+    from socratic_tutor import book
+    card = book.book_card(book.CONCEPT_SECTIONS["concept_reflection_laws"], "reflection", output["current_concept_id"])
+    assert card["section_id"] == "9.1"
+    assert card["figure"] is None  # Reflection laws has no figures; spherical mirror figures must not leak
+
 
 def test_graph_leak_retry_max_tries_falls_back_to_scaffold(monkeypatch, tmp_path):
     """Verify that when tutor leaks repeatedly, graph uses scaffold after 2 attempts (Bug 2)."""
