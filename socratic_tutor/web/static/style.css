@@ -100,6 +100,7 @@ button.danger { color: var(--bad); }
 button.ghost { border-color: transparent; background: none; color: var(--ink-2); }
 button.theme-toggle { width: 34px; height: 34px; padding: 0; justify-content: center; flex: none; font-size: 16px; border-radius: var(--r-sm); }
 button:disabled { opacity: .5; cursor: default; }
+input:disabled, textarea:disabled, select:disabled { opacity: .6; cursor: not-allowed; background: var(--rule-2); }
 input, textarea, select { font: inherit; color: var(--ink); background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--r-sm); padding: 9px 11px; }
 textarea { width: 100%; resize: vertical; }
 select { max-width: 100%; }
