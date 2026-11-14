@@ -14,7 +14,7 @@ Input flowchart (each [box] matches a comment in the code below):
                    academic -> gentle one-step reply, the teacher is alerted, the turn ends
   [I3] MASK        phone numbers, emails, 12-digit IDs, "my name is ...", "I study at ..."
   [I4] WORD RULES  a named rule matches -> polite refusal, the turn ends
-  [I5] CONTENT     Llama Guard 4 reads the masked text:
+  [I5] CONTENT     the content guard (GUARD_MODEL, gpt-4o-mini by default) reads the masked text:
        GUARD       self-harm label -> the severe-distress path (never a refusal)
                    a label that may mean the child is in danger -> blocked, and the teacher is alerted
                    other unsafe, or no answer -> refusal, the turn ends (fail closed)
@@ -27,7 +27,7 @@ Output flowchart:
   [O1] LEAK?       check_answer_leak: a number of the key's size (sign ignored), or the key's words
   [O2] LINKS       images, links and web addresses -> "[link removed]"
   [O3] CITATIONS   only sections that were really retrieved; none retrieved -> none kept
-  [O4] CONTENT     Llama Guard 4 reads the reply; unsafe or no answer -> a fixed safe reply
+  [O4] CONTENT     the content guard reads the reply; unsafe or no answer -> a fixed safe reply
        GUARD
   any crash inside [O2]-[O4] -> the fixed safe reply (fail closed)
 
@@ -58,7 +58,7 @@ MAX_STUDENT_NUMBERS: int = 2    # a student who writes more numbers than this ma
 # ---------------------------------------------------------------- fixed replies
 
 # A placeholder until a teacher confirms the right helpline for our students.
-HELPLINE_TEXT: str = "<HELPLINE NUMBER: to be confirmed by a teacher>"
+HELPLINE_TEXT: str = "1800-11-8004 (CBSE Toll-Free Student Helpline) or 14416 (Tele-MANAS)"
 SEVERE_DISTRESS_REPLY: str = (
     "I'm really sorry you're feeling this way. You don't have to deal with it alone. "
     "I've let your teacher know so a person can help you now. "
@@ -398,7 +398,7 @@ def find_word_rule(match_text: str) -> str | None:
 
 
 def content_guard_verdict(messages: list[tuple[str, str]]) -> dict[str, str]:
-    """[I5]/[O4] Ask Llama Guard (guard_models.py) and turn its answer into one word.
+    """[I5]/[O4] Ask the content guard (guard_models.py, GUARD_MODEL) and turn its answer into one word.
 
     "verdict" is "safe", "self_harm", "safety_concern", "unsafe" or "unavailable";
     "categories" lists the codes, e.g. "S1,S10".

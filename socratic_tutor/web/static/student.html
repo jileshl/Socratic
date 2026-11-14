@@ -1247,7 +1247,7 @@ try { if (localStorage.getItem("theme") === "dark") document.documentElement.set
     // Behind the scenes: each step of the last turn, who decided it (code, a model or a person), and what it saw.
     const BLOCK_LABEL = by => !by ? "" : by.startsWith("word_rule:teacher_claim") ? "a student claiming to be the teacher (only the teacher's sign-in gives that role)"
       : by.startsWith("word_rule") ? "an instruction aimed at the AI, such as \"ignore your rules\""
-        : by.startsWith("content_guard:") ? "the content-safety model (Llama Guard) flagged it"
+        : by.startsWith("content_guard:") ? "the content-safety model flagged it"
           : /unavailable|guardrail_error/.test(by) ? "a safety check could not run, so the message was stopped (fail closed)" : by;
     function hoodCard(n, title, who, status, lines) {
       const shown = lines.filter(Boolean);

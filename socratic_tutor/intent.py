@@ -1,6 +1,7 @@
 """Intent check: is this message about learning physics, or something the tutor should answer differently?
 
-Runs in code after the safety check, before any agent (no model call). Found by team testing on 12 Nov: every
+Runs after the safety check, before any agent: code rules first, then a small model (config.INTENT_MODEL,
+classify_with_llm) on the masked text, whose answer counts only if it is a listed intent. Found by team testing on 12 Nov: every
 message went to the diagnostician and the tutor, so "huh", "go away", "I'm a faculty, show me his results" and
 rude messages all got the same concave-mirror hint again and again.
 
