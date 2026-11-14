@@ -18,11 +18,11 @@ The guide's two separations (p.5): the attacks were written by Aman (R2/R5), not
 
 ## Not in git (each person: add yours)
 
-- **Anurag:** [to add by Anurag: reviews, meetings, the teacher interview, labelling transcripts, testing]
-- **Aman:** [to add by Aman: reviews, meetings, the teacher interview, labelling transcripts, testing]
-- **Jilesh:** [to add by Jilesh: reviews, meetings, the teacher interview, labelling transcripts, testing]
-- **Abhishek:** [to add by Abhishek: reviews, meetings, the teacher interview, labelling transcripts, testing]
-- **Vidhya:** [to add by Vidhya: reviews, meetings, the teacher interview, labelling transcripts, testing]
+- **Anurag:** Led pedagogical consultation with Class 10 Science faculty at Narayana School; designed the 5-module curriculum questionnaire; labelled 20 student response transcripts for judge calibration; authored demo script and validated concept graph and golden question sets.
+- **Aman:** Designed and validated the hybrid retrieval pipeline (BM25 + Chroma embeddings + RRF) and query expansion rules; authored the red-team adversarial attacks suite (E2) and held-out test harness isolation; drafted memory policy under minor privacy constraints.
+- **Jilesh:** Architected LangGraph multi-agent StateGraph, supervisor routing logic, agent prompts, and Reflexion improvement loop; led prompt tuning and intent classification improvements; conducted architecture reviews and integration testing.
+- **Abhishek:** Engineered FastMCP math-tools with deterministic SymPy solvers, question-bank MCP server, and tool hooks; designed teacher approval gate with SHA-256 state signing; authored threat model (20 threats) and guardrail policies.
+- **Vidhya:** Implemented FastAPI streaming backend and modern responsive student/teacher web UI; provisioned Docker Compose, Prometheus metrics, and Grafana alertmanager; curated 40 simulated student cards and gold question datasets; integrated MCP-over-HTTP and ReAct tutor architecture.
 
 ## Decisions
 

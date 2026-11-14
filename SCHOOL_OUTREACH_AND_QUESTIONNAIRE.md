@@ -5,7 +5,7 @@
 
 # PART 1: Formal Letter of Request to the Principal
 
-**Date:** [Date]  
+**Date:** 25 October 2026  
 **To:**  
 The Principal,  
 Narayana e-Techno School,  
@@ -39,10 +39,10 @@ Thanking you in anticipation.
 
 Yours sincerely,  
 
-**[Your Name]**  
-Roll No. / Participant ID: [Your ID]  
+**Anurag Singh** (Domain & Product Lead)  
+Team: Aman, Jilesh, Abhishek, Vidhya  
 IIT-Bombay Agentic AI Program  
-Contact: [Your Phone Number] | [Your Email]  
+Project: Socratic Tutor (https://socratic.duckdns.org/)  
 
 ---
 \pagebreak

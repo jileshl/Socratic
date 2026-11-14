@@ -443,20 +443,30 @@ def test_a_negative_value_equals_name_key_is_refused(temp_bank: None) -> None:
 
 
 def test_a_name_equals_arithmetic_key_is_refused_with_calculate_suggested(temp_bank: None) -> None:
-    """[Q4a]: "f = 1/20" is a sum left unworked; the message says to work it out with math-tools' calculate."""
+    """[Q4a]: "f = 1 + 2" is a sum left unworked; the message says to work it out with math-tools' calculate.
+    "f = 1/20" is readable as a fractional quantity, so it is refused as 'name = value'."""
     result = question_bank_server.propose(
         concept_id="concept_mirror_formula",
         difficulty="medium",
-        # f = 1/P = 1/20 m, which the key should give worked out, as "0.05 m".
         prompt="A convex lens has a power of 20 D. What is its focal length in metres?",
-        gold_answer="f = 1/20",
+        gold_answer="f = 1 + 2",
     )
     assert result["ok"] is False
     assert "'name = arithmetic'" in result["error"]
     # It names the arithmetic to work out, and the math-tools tool that does it.
-    assert "'1/20'" in result["error"]
+    assert "'1 + 2'" in result["error"]
     assert "calculate" in result["error"]
     assert read_saved_rows() == []
+
+    # Also verify fractional quantity format is refused as 'name = value'
+    result_frac = question_bank_server.propose(
+        concept_id="concept_mirror_formula",
+        difficulty="medium",
+        prompt="A convex lens has a power of 20 D. What is its focal length in metres?",
+        gold_answer="f = 1/20",
+    )
+    assert result_frac["ok"] is False
+    assert "'name = value'" in result_frac["error"]
 
 
 def test_arithmetic_with_no_letters_is_refused_even_when_calculate_refuses_it(temp_bank: None) -> None:
@@ -473,17 +483,18 @@ def test_arithmetic_with_no_letters_is_refused_even_when_calculate_refuses_it(te
 
 
 def test_arithmetic_followed_by_a_unit_is_accepted_a_documented_limit(temp_bank: None) -> None:
-    """[Q4a] KNOWN GAP, documented in the server: "f = 1/20 m" is unworked arithmetic, but the unit "m" is a
-    letter, so it passes as a formula and is saved; the teacher has to catch it in review. This test pins the
-    current behaviour: if the server starts refusing it, change this test to expect a refusal."""
+    """[Q4a]: "f = 1/20 m" has a unit 'm' with a fractional quantity '1/20 m', which is now read as a
+    quantity by math_tools.read_quantity and cleanly refused as 'name = value'."""
     result = question_bank_server.propose(
         concept_id="concept_mirror_formula",
         difficulty="medium",
         prompt="A convex lens has a power of 20 D. What is its focal length?",
         gold_answer="f = 1/20 m",
     )
-    assert result["ok"] is True
-    assert read_saved_rows()[0][4] == "f = 1/20 m"
+    # The server now refuses it as 'name = value' because '1/20 m' is parsed by read_quantity
+    assert result["ok"] is False
+    assert "'name = value'" in result["error"]
+    assert read_saved_rows() == []
 
 
 def test_has_a_letter_cases() -> None:

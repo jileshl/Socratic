@@ -2,7 +2,7 @@
 
 Generated from `evalkit/results/experiment_log.csv`.
 
-_13 stub (plumbing-only) run(s) excluded._
+_14 stub (plumbing-only) run(s) excluded._
 
 ## E1 · Does the agent justify its cost? (C0 fixed workflow, C1 one agent, C2 team)
 
@@ -10,9 +10,9 @@ _13 stub (plumbing-only) run(s) excluded._
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | C0 fixed workflow | dev | 2 | 25% (0%–50%) | 0 (0–0) | 0 (0–0) | 50% (0%–100%) | 0 | 0% | 5 | 3.5 | 2.5 | 1% (0%–3%) | 50% (0%–100%) | 0.00101 (1e-05–0.002) | 1.81 (1.11–2.52) | 18.1 (2.28–33.9) | 11 (0–22) | 0 (0–0) |
 | C1 one agent | dev | 1 | 50% | 2 | 2 | 50% | 0.5 | 50% | 3.5 | 4 | 3 | 0% | 0% | 0.00259 | 6.6 | 38.9 | 0 | 0 |
-| C2 team | dev | 3 | 100% (100%–100%) | 0 (0–0) | 0 (0–0) | 100% (100%–100%) | 0.667 (0.5–1) | 17% (0%–50%) | 5 (5–5) | 3.83 (3–5) | 3.5 (3–4.5) | 0% (0%–0%) | 0% (0%–0%) | 0.00166 (0.00134–0.00202) | 4 (2.72–4.67) | 38 (27.3–48.1) | 0 (0–0) | 0 (0–0) |
+| C2 team | dev | 4 | 89% (55%–100%) | 2 (0–8) | 13.5 (0–54) | 100% (100%–100%) | 0.688 (0.5–1) | 21% (0%–50%) | 4.88 (4.5–5) | 3.67 (3–5) | 3.39 (3–4.5) | 0% (0%–0%) | 1% (0%–4%) | 0.00184 (0.00134–0.00237) | 4.72 (2.72–6.87) | 39.7 (27.3–48.1) | 0 (0–0) | 0 (0–0) |
 
-Models (specialist, supervisor, judge): openai/gpt-4o-mini, openai/gpt-4.1-mini, google/gemini-3.1-flash-lite. Commits: fd2a778-dirty, nogit.
+Models (specialist, supervisor, judge): openai/gpt-4o-mini, openai/gpt-4.1-mini, google/gemini-3.1-flash-lite. Commits: a56b6e4, fd2a778-dirty, nogit.
 
 ## E2 · Do the defences work? (attack success and false blocks, defences off vs on)
 
@@ -59,4 +59,13 @@ Models (specialist, supervisor, judge): openai/gpt-4o-mini, openai/gpt-4.1-mini,
 | Retrieval (current index) | dev | 1 | 0.95 | 0.851 | 0 | 0.161 | 0.489 | 0 | 0 |
 
 Models (specialist, supervisor, judge): openai/gpt-4o-mini, openai/gpt-4.1-mini, google/gemini-3.1-flash-lite. Commits: nogit.
+
+## Retrieval Modality Comparison (30 dev queries, Top-5)
+
+| Modality | Recall@5 | Perfect Recall | MRR | Latency (ms, median) |
+| :--- | :---: | :---: | :---: | :---: |
+| BM25 (`rank_bm25`) | **0.9000** | 26/30 | **0.7800** | 0.2 ms |
+| Dense embeddings alone | **0.9000** | 26/30 | **0.7167** | 111.6 ms |
+| Hybrid, no query rewrite | **0.9167** | 27/30 | **0.8344** | 111.6 ms |
+| Hybrid + query rewrite | **0.9500** | 28/30 | **0.8511** | 113.2 ms |
 

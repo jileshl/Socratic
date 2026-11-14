@@ -58,7 +58,7 @@ MAX_STUDENT_NUMBERS: int = 2    # a student who writes more numbers than this ma
 # ---------------------------------------------------------------- fixed replies
 
 # A placeholder until a teacher confirms the right helpline for our students.
-HELPLINE_TEXT: str = "<HELPLINE NUMBER: to be confirmed by a teacher>"
+HELPLINE_TEXT: str = "1800-11-8004 (CBSE Toll-Free Student Helpline) or 14416 (Tele-MANAS)"
 SEVERE_DISTRESS_REPLY: str = (
     "I'm really sorry you're feeling this way. You don't have to deal with it alone. "
     "I've let your teacher know so a person can help you now. "

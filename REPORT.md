@@ -13,7 +13,7 @@
 | Attacks stopped, defences on | ≥ 95% of 30+ | Pilot: **25 of 26** practice-mode attacks; quiz-mode attacks never reached the defences (harness bug I1, fixed 13 Nov). All 34: [PENDING: e2_on dev] |
 | Clean look-alikes wrongly blocked | 0 | Pilot: **0 of 24** (`20261112T045804Z_e2_on`). Rerun: [PENDING: e2_on dev] |
 | Answer-key grading by code | agrees with labels | Pilot: **47 of 48**; the miss (a two-part answer) is fixed and tested. Rerun: [PENDING: gold dev and held-out] |
-| Judge vs people, weighted kappa | ≥ 0.70 on 20+ | [PENDING: python -m evalkit.calibrate score after the team scores 24 transcripts in "Score conversations"] |
+| Judge vs people, weighted kappa | ≥ 0.70 on 20+ | **0.42** (accuracy), **0.48** (misconception), **-0.09** (Socratic) on 20 transcripts labelled by Anurag Singh (`evalkit/results/labels/judge_agreement.md`). Fails $\ge 0.70$ threshold; judge decisions unvalidated, conclusions reported from human labels and code checkers. |
 | Cost per tutoring session | < $0.05 | Pilot: **$0.0034–$0.0049**. Full: [PENDING: cost_per_case_usd, e1_c2] |
 
 ## 1. Problem and users
@@ -75,7 +75,12 @@ Pilot (2 students): dev 2 of 2 in both arms; held-out with the playbook 0 of 2 (
 
 **E4. Signature ablation.** Direct answers vs Socratic hints (pilot): direct leaked **7 times in 2 sessions** with 0 of 2 task success; Socratic **0 leaks**, 2 of 2, at the same cost. Full dev: [PENDING: e4_direct, e4_socratic]. Memory off vs on: [PENDING: e4_memory_off, e4_memory_on].
 
-**Judge calibration (L13).** [PENDING: weighted kappa per criterion, from evalkit/results/labels/judge_agreement.md]. Until then every judge column is unvalidated, and no conclusion rests on one.
+**Judge calibration (L13).** Calibrated `google/gemini-3.1-flash-lite` against 20 anonymized transcripts scored by human SME (Anurag Singh) across the three dimensions (1–5 scale, `evalkit/results/labels/judge_agreement.md`):
+- Conceptual Accuracy: Exact agreement 25%, within 1 point 75%, weighted kappa $\kappa = 0.42$.
+- Identified Misconception: Exact agreement 35%, within 1 point 60%, weighted kappa $\kappa = 0.48$.
+- Socratic Guidance: Exact agreement 25%, within 1 point 80%, weighted kappa $\kappa = -0.09$.
+
+Because weighted kappa falls below the required $\kappa \ge 0.70$ bar (particularly on subtle Socratic guidance where conversational models often award high scores to direct solutions disguised as polite hints), the automated LLM judge is uncalibrated and not relied upon for evaluative conclusions. All core claims rely strictly on deterministic code verification (e.g., solver key checks, leak filters, regex/code misconception matching) and human rubric scores.
 
 ## 5. Human control, security, operations
 - **Approval (L14):** the teacher approves the SHA-256 of the exact question set; an edit makes a new version, and the old approval is refused (HTTP 409). Shown live, and in `tests/test_integration_approval.py`.
